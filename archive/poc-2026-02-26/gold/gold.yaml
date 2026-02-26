@@ -1,0 +1,27 @@
+version: 1
+profile: ../interest_profile.yaml
+cases:
+  - id: sample_minutes_1
+    meeting_id: gold-sample-minutes-1
+    text: inputs/sample_minutes_1.txt
+    expected:
+      - category: neighborhood_sunset_flats
+        must_link: agenda_item
+        must_include: ["sunset flats"]
+      - category: city_code_changes_residential
+        must_link: agenda_item
+        must_include: ["ordinance", "amend", "residential"]
+      - category: laundromat_new_or_approved
+        must_link: agenda_item
+        must_include: ["laundromat", "permit"]
+
+  - id: sample_packet_attachment_1
+    meeting_id: gold-sample-attachment-1
+    text: inputs/sample_packet_attachment_1.txt
+    expected:
+      - category: neighborhood_sunset_flats
+        must_link: attachment
+        must_include: ["sunset flats"]
+      - category: laundromat_new_or_approved
+        must_link: attachment
+        must_include: ["laundromat", "permit"]

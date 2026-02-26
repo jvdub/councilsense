@@ -1,0 +1,10 @@
+# PDF extraction (optional but recommended)
+PyMuPDF==1.24.14
+pdfplumber==0.11.5
+pypdf==5.1.0
+
+# Parsing/config
+PyYAML==6.0.2
+
+# Testing
+pytest==8.4.1

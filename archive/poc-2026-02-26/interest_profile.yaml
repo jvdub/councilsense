@@ -1,0 +1,84 @@
+version: 1
+profile_name: "jtvanwage"
+
+# Simple, explicit rules first. We'll evolve these once we see real minutes format.
+rules:
+  - id: neighborhood_sunset_flats
+    description: "Mentions Sunset Flats (neighborhood)"
+    type: keyword_any
+    enabled: true
+    keywords:
+      - "sunset flats"
+      - "sunset flat" # sometimes pluralization varies
+    min_hits: 1
+
+  - id: city_code_changes_residential
+    description: "City code / ordinance changes, especially residential"
+    type: keyword_with_context
+    enabled: true
+    keywords:
+      - "ordinance"
+      - "city code"
+      - "zoning code"
+      - "code amendment"
+      - "ordinance amendment"
+      - "amendment to"
+      - "chapter"
+      - "section"
+      - "emmc" # council packet reference format (seen in extracted text)
+    context_keywords:
+      # Change/adoption signals
+      - "amend"
+      - "amendment"
+      - "repeal"
+      - "adopt"
+      - "adoption"
+      - "update"
+      - "revise"
+      - "modify"
+      - "change"
+      - "first reading"
+      - "second reading"
+      - "public hearing"
+      - "proposed ordinance"
+      - "draft ordinance"
+      # Residential emphasis (still alerts if code-change signal exists)
+      - "residential"
+      - "single-family"
+      - "multi-family"
+      - "dwelling"
+      - "accessory dwelling"
+      - "adu"
+    window_chars: 400
+    min_hits: 1
+
+  - id: laundromat_new_or_approved
+    description: "Laundromat mentioned in a build/approval context"
+    type: keyword_with_context
+    enabled: true
+    keywords:
+      - "laundromat"
+      - "washateria" # regional synonym
+      - "coin laundry"
+    context_keywords:
+      - "conditional use"
+      - "special use"
+      - "permit"
+      - "approval"
+      - "approve"
+      - "application"
+      - "site plan"
+      - "development"
+      - "build"
+      - "construct"
+      - "proposed"
+      - "rezoning"
+      - "zoning"
+      - "public hearing"
+    window_chars: 300
+    min_hits: 1
+
+output:
+  evidence:
+    snippet_chars: 260
+    max_snippets_per_rule: 5
