@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-001-01](TASK-ST-001-01-auth-google-config.md) — Configure Google managed auth and local callbacks
+- [x] [TASK-ST-001-01](TASK-ST-001-01-auth-google-config.md) — Configure Google managed auth and local callbacks
 - [ ] [TASK-ST-001-02](TASK-ST-001-02-backend-auth-middleware.md) — Add backend auth and session validation middleware
 - [ ] [TASK-ST-001-03](TASK-ST-001-03-user-bootstrap-onboarding-guard.md) — Implement user bootstrap and onboarding guard
 - [ ] [TASK-ST-001-04](TASK-ST-001-04-frontend-onboarding-city-selection.md) — Build onboarding city selection flow

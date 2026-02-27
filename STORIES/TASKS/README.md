@@ -6,6 +6,14 @@ Task instances now exist under per-story folders using the conventions below.
 
 Story grouping used for subagent batching is documented in [GROUPS.md](GROUPS.md).
 
+## Execution Policy (Orchestration)
+
+- Treat `archive/` as historical reference only.
+- Do not modify, move, or delete files under `archive/`.
+- Implement active work in net-new project paths outside `archive/`.
+- Each task execution must end with a concise commit scoped to that task ID.
+- Preferred commit message format: `<TASK-ID>: <short action>`.
+
 ## Goals
 
 - Keep each task small enough for one focused AI-agent run.
