@@ -1,3 +1,4 @@
+import React from "react";
 import { redirect } from "next/navigation";
 
 import { fetchBootstrap } from "../../lib/api/bootstrap";
