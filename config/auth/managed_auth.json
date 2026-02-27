@@ -1,0 +1,25 @@
+{
+  "provider": "cognito",
+  "social_providers": {
+    "enabled": ["google"],
+    "disabled": ["amazon", "apple", "facebook"]
+  },
+  "environments": {
+    "local": {
+      "callback_urls": [
+        "http://localhost:3000/auth/callback"
+      ],
+      "logout_urls": [
+        "http://localhost:3000/"
+      ]
+    },
+    "dev": {
+      "callback_urls": [
+        "https://dev.councilsense.app/auth/callback"
+      ],
+      "logout_urls": [
+        "https://dev.councilsense.app/"
+      ]
+    }
+  }
+}
