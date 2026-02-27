@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
 class UserProfile:
     user_id: str
     home_city_id: str | None = None
+    notifications_enabled: bool = True
+    notifications_paused_until: datetime | None = None
 
 
 class UnsupportedCityError(Exception):
@@ -22,11 +25,18 @@ class InMemoryUserProfileRepository:
     def get_or_create(self, user_id: str) -> UserProfile:
         existing = self._profiles_by_user_id.get(user_id)
         if existing is not None:
+            self._ensure_schema_defaults(existing)
             return existing
 
         created = UserProfile(user_id=user_id)
         self._profiles_by_user_id[user_id] = created
         return created
+
+    def _ensure_schema_defaults(self, profile: UserProfile) -> None:
+        if not hasattr(profile, "notifications_enabled"):
+            profile.notifications_enabled = True
+        if not hasattr(profile, "notifications_paused_until"):
+            profile.notifications_paused_until = None
 
     def set_home_city(self, user_id: str, home_city_id: str) -> UserProfile:
         profile = self.get_or_create(user_id)

@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-002-01](TASK-ST-002-01-profile-preference-schema-alignment.md) — Align profile preference schema fields
+- [x] [TASK-ST-002-01](TASK-ST-002-01-profile-preference-schema-alignment.md) — Align profile preference schema fields
 - [ ] [TASK-ST-002-02](TASK-ST-002-02-profile-api-get-patch.md) — Implement profile read/update endpoints
 - [ ] [TASK-ST-002-03](TASK-ST-002-03-self-only-authz-and-pause-rules.md) — Enforce self-only authz and pause rules
 - [ ] [TASK-ST-002-04](TASK-ST-002-04-frontend-settings-preferences.md) — Build settings editor for profile preferences
