@@ -19,6 +19,8 @@ Most residents do not have time to read long council packets/minutes but still w
 
 ## 4) MVP Scope (What must exist)
 
+MVP is defined as the first end-to-end production slice that works reliably for one pilot city while keeping architecture and data models ready to scale to many configured cities.
+
 ### 4.1 User Account & Onboarding
 
 1. User authentication is handled by a managed identity provider (no custom auth implementation).
@@ -28,11 +30,12 @@ Most residents do not have time to read long council packets/minutes but still w
 
 ### 4.2 City Coverage
 
-1. System supports a defined list of cities (start with one or a small pilot set).
-2. Each city has meeting sources configured by admin/dev team.
-3. Meetings are linked to a city identifier.
-4. Ingestion coverage is city-driven (configured city list), not strictly user-driven.
-5. System may ingest cities with zero active subscribers so history is available when users join.
+1. System supports a defined list of cities and is designed to scale to many configured cities.
+2. MVP launches with one pilot city enabled by default, while keeping configuration and data models city-agnostic.
+3. Each city has meeting sources configured by admin/dev team.
+4. Meetings are linked to a city identifier.
+5. Ingestion coverage is city-driven (configured city list), not strictly user-driven.
+6. System may ingest cities with zero active subscribers so history is available when users join.
 
 ### 4.3 Meeting Ingestion & Processing
 
@@ -106,9 +109,9 @@ Most residents do not have time to read long council packets/minutes but still w
 ### FR-5 Notification Delivery
 
 - On successful processing, all subscribed users in that city are queued for push notification.
-- Delivery attempts and failures are logged.
+- Delivery attempts and failures are logged (basic logs in MVP; expanded analytics in hardening).
 - Notification sends must use a deterministic dedupe key (`user_id + meeting_id + notification_type`) to enforce idempotency.
-- Retries use exponential backoff with a configurable max-attempt policy; exhausted attempts route to dead-letter handling.
+- Retries use exponential backoff with a configurable max-attempt policy; exhausted attempts route to dead-letter handling in hardening phase.
 - Invalid/expired push subscriptions are marked and suppressed from further sends until refreshed.
 
 ### FR-6 User Access Control
@@ -118,7 +121,7 @@ Most residents do not have time to read long council packets/minutes but still w
 
 ### FR-7 Ingestion Resilience
 
-- Each configured city source has health checks and last-success timestamps.
+- Each configured city source has health checks and last-success timestamps (minimum viable checks in MVP; expanded checks in hardening).
 - Source/parser version used per processing run is recorded for reproducibility.
 - If extraction confidence is below threshold, the meeting is flagged for manual review and user-facing outputs indicate limited confidence.
 - Source failures degrade gracefully and do not block processing for other cities.
@@ -148,8 +151,8 @@ Most residents do not have time to read long council packets/minutes but still w
 
 - Track ingestion success/failures, processing duration, and notification delivery rates.
 - Maintain audit trail of source artifacts and summary generation timestamps.
-- Alert thresholds for ingestion failure rate, processing latency, and notification delivery errors are defined.
-- Dead-letter queue volume and replay outcomes are visible in operational dashboards.
+- MVP includes basic operational visibility; hardening defines alert thresholds for ingestion failure rate, processing latency, and notification delivery errors.
+- Dead-letter queue volume and replay outcomes are visible in operational dashboards during hardening.
 
 ### NFR-5 Local-First + Cloud Portability
 
@@ -169,28 +172,44 @@ Most residents do not have time to read long council packets/minutes but still w
 - User data export is supported for profile/preferences and notification history.
 - Summary provenance records are immutable append-only once published.
 
-## 8) Success Metrics (MVP)
+## 8) Success Metrics (Pilot + Hardening)
 
 1. **Activation:** % of signups completing city selection.
 2. **Coverage:** # of meetings processed per supported city per month.
 3. **Delivery:** notification send success rate.
 4. **Engagement:** notification click-through/open-to-view rate.
 5. **Retention:** % of users active again within 30 days.
-6. **Quality proxy:** % of summaries passing internal evidence-grounding checks.
+6. **Quality floor (ECR):** Evidence Coverage Rate = % of key claims in a summary with at least one valid evidence citation/snippet.
+7. **Phase 1.5 quality gate:** weekly audited sample must show ECR >= 85%; claims without adequate evidence must be labeled limited-confidence.
 
 ## 9) Launch Phasing
 
 ### Phase 1 (Pilot)
 
+**MVP-Core objective:** deliver a reliable first end-to-end slice for one city with minimum operational complexity.
+
 - 1 city
-- manual or semi-automated ingestion
+- architecture, schemas, and pipelines remain city-agnostic and ready for many configured cities
+- automated scheduled ingestion for pilot city
 - push notifications
 - basic meeting summaries
 - local-first setup validated end-to-end
+- baseline reliability controls in production path (deterministic dedupe key, bounded retries, basic failure logging)
+- baseline quality controls in production path (evidence pointers + limited-confidence labeling when evidence is weak)
+- baseline source operations (last-success visibility + basic manual-review path for low-confidence runs)
+
+### Phase 1.5 (Hardening)
+
+**Hardening objective:** raise reliability, observability, and quality operations from baseline to sustained operational cadence.
+
+- notification reliability hardening (retry/backoff tuning, dead-letter handling, replay tooling)
+- observability hardening (dashboards, alert thresholds, failure triage)
+- quality operations hardening (regular ECR audits, confidence calibration, reviewer workflow)
+- source health and parser drift monitoring at operational cadence
 
 ### Phase 2
 
-- multi-city support
+- multi-city rollout (operational expansion beyond pilot)
 - improved extraction/summarization quality
 - better user preferences
 - AWS deployment hardening (monitoring, autoscaling, backups)
@@ -205,9 +224,9 @@ Most residents do not have time to read long council packets/minutes but still w
 1. **Auth provider:** AWS Cognito via Amplify Auth.
    - Rationale: aligns with existing Amplify hosting and avoids custom auth implementation.
 2. **City model:** predefined city list only.
-3. **Pilot cities:**
-   - Primary: Eagle Mountain, UT
-   - Secondary: Saratoga Springs, UT
+3. **Pilot launch strategy:**
+   - Launch with one pilot city active by default (Primary: Eagle Mountain, UT)
+   - Keep additional city configurations ready for expansion after pilot validation (Secondary candidate: Saratoga Springs, UT)
 4. **Ingestion operation:** automated scheduled scraping/ingestion (not manual-only).
 5. **Notification cadence:** immediate after meeting analysis completes.
 6. **Push architecture:** PWA web push for MVP; native app push is post-MVP.
@@ -313,12 +332,6 @@ MVP is complete when all are true:
 4. Subscribed users receive one correct push notification per new meeting in their city.
 5. Unsubscribe/pause works and is respected.
 6. Basic operational dashboard/logs exist for ingestion + notification health.
-7. Notification reliability contract is validated (dedupe, retry/backoff, dead-letter handling).
-8. Summary quality gate passes agreed internal evidence-grounding thresholds.
-9. Source health monitoring and manual-review workflow are operational for pilot cities.
-
----
-
-## 14) Notes
-
-This document intentionally resets scope to the city-based notification product. Existing `SPEC.md` and `STORIES.md` can be reconciled to this baseline in a follow-up pass.
+7. Notification reliability baseline is validated for MVP (deterministic dedupe key + bounded retry/backoff policy in operation); dead-letter/replay tooling is Phase 1.5.
+8. Summary baseline quality controls are in place for MVP (evidence pointers for key claims where possible, and low-evidence claims are labeled limited-confidence); regular audited ECR operations (>= 85% weekly sample gate) are Phase 1.5.
+9. Source health visibility and manual-review workflow are operational for pilot cities at a basic level; parser drift monitoring and advanced operational tooling are Phase 1.5.
