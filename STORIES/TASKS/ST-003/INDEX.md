@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-003-01](TASK-ST-003-01-city-registry-schema.md) — Create city and city-source schema foundations
+- [x] [TASK-ST-003-01](TASK-ST-003-01-city-registry-schema.md) — Create city and city-source schema foundations
 - [ ] [TASK-ST-003-02](TASK-ST-003-02-pilot-city-source-seed.md) — Seed pilot city and initial source configuration
 - [ ] [TASK-ST-003-03](TASK-ST-003-03-registry-service-layer.md) — Implement configured city/source selection service
 - [ ] [TASK-ST-003-04](TASK-ST-003-04-meeting-city-linkage-enforcement.md) — Enforce mandatory city linkage in meeting writes

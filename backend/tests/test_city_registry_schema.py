@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import sqlite3
+
+import pytest
+
+from councilsense.db import apply_migrations, get_migration_status
+
+
+@pytest.fixture
+def connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connection) -> None:
+    before = get_migration_status(connection)
+    assert "0001_city_registry.sql" in before.pending
+
+    applied_once = apply_migrations(connection)
+    assert applied_once == ("0001_city_registry.sql",)
+
+    after_first_apply = get_migration_status(connection)
+    assert after_first_apply.pending == ()
+    assert "0001_city_registry.sql" in after_first_apply.applied
+
+    applied_twice = apply_migrations(connection)
+    assert applied_twice == ()
+
+
+def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
+    apply_migrations(connection)
+
+    table_names = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    assert {"cities", "city_sources", "schema_migrations"}.issubset(table_names)
+
+    index_names = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()
+    }
+    assert "idx_cities_enabled_priority" in index_names
+    assert "idx_city_sources_city_enabled" in index_names
+    assert "idx_city_sources_health_last_success" in index_names
+
+
+def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:
+    apply_migrations(connection)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO cities (id, slug, name, state_code, timezone, enabled, priority_tier)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("city-1", "seattle-wa", "Seattle", "WA", "America/Los_Angeles", 2, 1),
+        )
+
+    connection.execute(
+        """
+        INSERT INTO cities (id, slug, name, state_code, timezone, enabled, priority_tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("city-1", "seattle-wa", "Seattle", "WA", "America/Los_Angeles", 1, 1),
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO city_sources (id, city_id, source_type, source_url, parser_name, parser_version)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("source-1", "missing-city", "minutes", "https://example.gov/minutes", "parser", "v1"),
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO city_sources (id, city_id, source_type, source_url, parser_name, parser_version)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("source-1", "city-1", "minutes", "https://example.gov/minutes", "", "v1"),
+        )
+
+    connection.execute(
+        """
+        INSERT INTO city_sources (
+            id,
+            city_id,
+            source_type,
+            source_url,
+            parser_name,
+            parser_version,
+            enabled,
+            health_status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "source-1",
+            "city-1",
+            "minutes",
+            "https://example.gov/minutes",
+            "minutes-parser",
+            "v1",
+            1,
+            "unknown",
+        ),
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO city_sources (id, city_id, source_type, source_url, parser_name, parser_version)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "source-2",
+                "city-1",
+                "minutes",
+                "https://example.gov/minutes",
+                "minutes-parser",
+                "v1",
+            ),
+        )
+
+    enabled_rows = connection.execute(
+        """
+        SELECT c.slug, cs.source_type
+        FROM cities c
+        JOIN city_sources cs ON cs.city_id = c.id
+        WHERE c.enabled = 1 AND cs.enabled = 1
+        """
+    ).fetchall()
+    assert enabled_rows == [("seattle-wa", "minutes")]
