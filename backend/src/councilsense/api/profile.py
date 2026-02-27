@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 UNSET = object()
@@ -14,11 +14,52 @@ class UserProfile:
     notifications_enabled: bool = True
     notifications_paused_until: datetime | None = None
 
+    def notification_eligibility(self, *, as_of: datetime | None = None) -> "NotificationEligibility":
+        pause_window_active = is_pause_window_active(
+            self.notifications_paused_until,
+            as_of=as_of,
+        )
+        notifications_eligible = self.notifications_enabled and not pause_window_active
+        return NotificationEligibility(
+            notifications_enabled=self.notifications_enabled,
+            pause_window_active=pause_window_active,
+            notifications_eligible=notifications_eligible,
+        )
+
+
+@dataclass(frozen=True)
+class NotificationEligibility:
+    notifications_enabled: bool
+    pause_window_active: bool
+    notifications_eligible: bool
+
 
 class UnsupportedCityError(Exception):
     def __init__(self, home_city_id: str) -> None:
         self.home_city_id = home_city_id
         super().__init__(f"Unsupported home_city_id: {home_city_id}")
+
+
+class SelfOnlyAuthorizationError(Exception):
+    def __init__(self, *, actor_user_id: str, subject_user_id: str) -> None:
+        self.actor_user_id = actor_user_id
+        self.subject_user_id = subject_user_id
+        super().__init__("Access denied: user may only access their own profile")
+
+
+def is_pause_window_active(paused_until: datetime | None, *, as_of: datetime | None = None) -> bool:
+    if paused_until is None:
+        return False
+
+    evaluation_time = _normalize_utc_datetime(as_of or datetime.now(tz=UTC))
+    pause_until_utc = _normalize_utc_datetime(paused_until)
+    return pause_until_utc > evaluation_time
+
+
+def _normalize_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class InMemoryUserProfileRepository:
@@ -90,7 +131,11 @@ class UserProfileService:
         self._supported_city_ids = supported_city_ids
 
     def get_profile(self, user_id: str) -> UserProfile:
-        profile = self._repository.get_or_create(user_id)
+        return self.get_profile_for_subject(actor_user_id=user_id, subject_user_id=user_id)
+
+    def get_profile_for_subject(self, *, actor_user_id: str, subject_user_id: str) -> UserProfile:
+        self._enforce_self_only(actor_user_id=actor_user_id, subject_user_id=subject_user_id)
+        profile = self._repository.get_or_create(subject_user_id)
         self._validate_home_city_if_set(profile)
         return profile
 
@@ -102,7 +147,25 @@ class UserProfileService:
         notifications_enabled: bool | object = UNSET,
         notifications_paused_until: datetime | None | object = UNSET,
     ) -> UserProfile:
-        profile = self._repository.get_or_create(user_id)
+        return self.patch_profile_for_subject(
+            actor_user_id=user_id,
+            subject_user_id=user_id,
+            home_city_id=home_city_id,
+            notifications_enabled=notifications_enabled,
+            notifications_paused_until=notifications_paused_until,
+        )
+
+    def patch_profile_for_subject(
+        self,
+        *,
+        actor_user_id: str,
+        subject_user_id: str,
+        home_city_id: str | object = UNSET,
+        notifications_enabled: bool | object = UNSET,
+        notifications_paused_until: datetime | None | object = UNSET,
+    ) -> UserProfile:
+        self._enforce_self_only(actor_user_id=actor_user_id, subject_user_id=subject_user_id)
+        profile = self._repository.get_or_create(subject_user_id)
 
         if home_city_id is not UNSET:
             if not isinstance(home_city_id, str):
@@ -118,6 +181,20 @@ class UserProfileService:
 
         self._repository.save(profile)
         return profile
+
+    def get_notification_eligibility_for_subject(
+        self,
+        *,
+        actor_user_id: str,
+        subject_user_id: str,
+        as_of: datetime | None = None,
+    ) -> NotificationEligibility:
+        profile = self.get_profile_for_subject(actor_user_id=actor_user_id, subject_user_id=subject_user_id)
+        return profile.notification_eligibility(as_of=as_of)
+
+    def _enforce_self_only(self, *, actor_user_id: str, subject_user_id: str) -> None:
+        if actor_user_id != subject_user_id:
+            raise SelfOnlyAuthorizationError(actor_user_id=actor_user_id, subject_user_id=subject_user_id)
 
     def _validate_home_city_if_set(self, profile: UserProfile) -> None:
         if profile.home_city_id is None:
