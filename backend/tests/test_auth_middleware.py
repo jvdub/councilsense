@@ -69,6 +69,11 @@ def test_injects_authenticated_identity_into_protected_routes(monkeypatch):
     bootstrap_response = client.get("/v1/me/bootstrap", headers={"Authorization": f"Bearer {token}"})
 
     assert me_response.status_code == 200
-    assert me_response.json() == {"user_id": "user-abc"}
+    assert me_response.json() == {
+        "email": None,
+        "home_city_id": None,
+        "notifications_enabled": True,
+        "notifications_paused_until": None,
+    }
     assert bootstrap_response.status_code == 200
     assert bootstrap_response.json()["user_id"] == "user-abc"

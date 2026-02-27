@@ -26,6 +26,7 @@ UNAUTHORIZED_BODY = {
 @dataclass(frozen=True)
 class AuthenticatedUser:
     user_id: str
+    email: str | None = None
 
 
 class SessionValidationError(Exception):
@@ -68,17 +69,20 @@ def decode_session_token(token: str, secret: str) -> AuthenticatedUser:
 
     subject = payload.get("sub")
     expiry = payload.get("exp")
+    email = payload.get("email")
 
     if not isinstance(subject, str) or not subject.strip():
         raise SessionValidationError("Session missing subject")
     if not isinstance(expiry, int):
         raise SessionValidationError("Session missing expiration")
+    if email is not None and not isinstance(email, str):
+        raise SessionValidationError("Session email claim is invalid")
 
     now = int(datetime.now(tz=UTC).timestamp())
     if expiry <= now:
         raise SessionValidationError("Session expired")
 
-    return AuthenticatedUser(user_id=subject)
+    return AuthenticatedUser(user_id=subject, email=email)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

@@ -2,7 +2,12 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from councilsense.api.auth import AuthMiddleware, UNAUTHORIZED_BODY, UnauthorizedError
-from councilsense.api.profile import InMemoryUserProfileRepository, UnsupportedCityError, UserBootstrapService
+from councilsense.api.profile import (
+    InMemoryUserProfileRepository,
+    UnsupportedCityError,
+    UserBootstrapService,
+    UserProfileService,
+)
 from councilsense.api.routes.me import router as me_router
 from councilsense.app.settings import get_settings
 
@@ -10,8 +15,13 @@ from councilsense.app.settings import get_settings
 def create_app() -> FastAPI:
     app = FastAPI(title="CouncilSense API")
     settings = get_settings()
+    repository = InMemoryUserProfileRepository()
     app.state.bootstrap_service = UserBootstrapService(
-        repository=InMemoryUserProfileRepository(),
+        repository=repository,
+        supported_city_ids=settings.supported_city_ids,
+    )
+    app.state.profile_service = UserProfileService(
+        repository=repository,
         supported_city_ids=settings.supported_city_ids,
     )
 
