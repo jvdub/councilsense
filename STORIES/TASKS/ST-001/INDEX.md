@@ -8,7 +8,7 @@
 - [x] [TASK-ST-001-01](TASK-ST-001-01-auth-google-config.md) — Configure Google managed auth and local callbacks
 - [x] [TASK-ST-001-02](TASK-ST-001-02-backend-auth-middleware.md) — Add backend auth and session validation middleware
 - [x] [TASK-ST-001-03](TASK-ST-001-03-user-bootstrap-onboarding-guard.md) — Implement user bootstrap and onboarding guard
-- [ ] [TASK-ST-001-04](TASK-ST-001-04-frontend-onboarding-city-selection.md) — Build onboarding city selection flow
+- [x] [TASK-ST-001-04](TASK-ST-001-04-frontend-onboarding-city-selection.md) — Build onboarding city selection flow
 - [ ] [TASK-ST-001-05](TASK-ST-001-05-auth-onboarding-integration-tests.md) — Add auth and onboarding integration coverage
 
 ## Dependency Chain
