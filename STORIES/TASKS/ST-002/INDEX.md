@@ -9,7 +9,7 @@
 - [x] [TASK-ST-002-02](TASK-ST-002-02-profile-api-get-patch.md) — Implement profile read/update endpoints
 - [x] [TASK-ST-002-03](TASK-ST-002-03-self-only-authz-and-pause-rules.md) — Enforce self-only authz and pause rules
 - [x] [TASK-ST-002-04](TASK-ST-002-04-frontend-settings-preferences.md) — Build settings editor for profile preferences
-- [ ] [TASK-ST-002-05](TASK-ST-002-05-profile-preferences-integration-tests.md) — Add profile preferences integration tests
+- [x] [TASK-ST-002-05](TASK-ST-002-05-profile-preferences-integration-tests.md) — Add profile preferences integration tests
 
 ## Dependency Chain
 

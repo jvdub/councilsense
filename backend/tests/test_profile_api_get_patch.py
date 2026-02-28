@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
@@ -156,6 +157,62 @@ def test_patch_me_rejects_invalid_payload_shape(monkeypatch):
     )
 
     assert response.status_code == 422
+    payload = response.json()
+    assert "detail" in payload
+    assert isinstance(payload["detail"], list)
+    assert len(payload["detail"]) > 0
+    error = payload["detail"][0]
+    assert error["loc"][-1] == "notifications_paused_until"
+    assert str(error["type"]).startswith("datetime")
+
+
+def test_patch_me_pause_unpause_transitions_persist_and_evaluate_correctly(monkeypatch):
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids="seattle-wa,portland-or",
+    )
+    token = _issue_token("user-pause", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    pause_response = client.patch(
+        "/v1/me",
+        headers=headers,
+        json={"notifications_paused_until": "2026-03-01T18:00:00Z"},
+    )
+    paused_profile = client.get("/v1/me", headers=headers)
+    app = cast(Any, client.app)
+
+    eligibility_during_pause = app.state.profile_service.get_notification_eligibility_for_subject(
+        actor_user_id="user-pause",
+        subject_user_id="user-pause",
+        as_of=datetime(2026, 3, 1, 17, 59, tzinfo=UTC),
+    )
+    eligibility_after_pause = app.state.profile_service.get_notification_eligibility_for_subject(
+        actor_user_id="user-pause",
+        subject_user_id="user-pause",
+        as_of=datetime(2026, 3, 1, 18, 1, tzinfo=UTC),
+    )
+
+    unpause_response = client.patch(
+        "/v1/me",
+        headers=headers,
+        json={"notifications_paused_until": None},
+    )
+    unpaused_profile = client.get("/v1/me", headers=headers)
+
+    assert pause_response.status_code == 200
+    assert paused_profile.status_code == 200
+    assert paused_profile.json()["notifications_paused_until"] == "2026-03-01T18:00:00Z"
+    assert eligibility_during_pause.pause_window_active is True
+    assert eligibility_during_pause.notifications_eligible is False
+    assert eligibility_after_pause.pause_window_active is False
+    assert eligibility_after_pause.notifications_eligible is True
+
+    assert unpause_response.status_code == 200
+    assert unpause_response.json()["notifications_paused_until"] is None
+    assert unpaused_profile.status_code == 200
+    assert unpaused_profile.json()["notifications_paused_until"] is None
 
 
 def test_patch_me_rejects_unknown_fields(monkeypatch):
