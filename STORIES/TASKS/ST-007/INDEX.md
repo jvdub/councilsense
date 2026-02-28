@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-007-01](TASK-ST-007-01.md) — Meetings Reader Client and Models
+- [x] [TASK-ST-007-01](TASK-ST-007-01.md) — Meetings Reader Client and Models
 - [ ] [TASK-ST-007-02](TASK-ST-007-02.md) — Meetings List Page
 - [ ] [TASK-ST-007-03](TASK-ST-007-03.md) — Meeting Detail Page with Evidence and Confidence
 - [ ] [TASK-ST-007-04](TASK-ST-007-04.md) — Notification Deep-Link Routing to Meeting Detail
