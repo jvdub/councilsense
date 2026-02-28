@@ -182,6 +182,129 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
     assert [item["id"] for item in filtered.json()["items"]] == ["meeting-b"]
 
 
+def test_city_meetings_list_response_contract_includes_required_fields(monkeypatch) -> None:
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token = _issue_token("user-contract", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    set_city_response = client.patch("/v1/me", headers=headers, json={"home_city_id": PILOT_CITY_ID})
+    assert set_city_response.status_code == 200
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-contract-1",
+        meeting_uid="uid-contract-1",
+        title="Meeting Contract 1",
+        created_at="2026-02-24 12:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-contract-1",
+        meeting_id="meeting-contract-1",
+        publication_status="limited_confidence",
+        confidence_label="limited_confidence",
+        published_at="2026-02-24 12:30:00",
+    )
+
+    response = client.get(f"/v1/cities/{PILOT_CITY_ID}/meetings", headers=headers, params={"limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload.keys()) == {"items", "next_cursor", "limit"}
+    assert payload["limit"] == 1
+    assert isinstance(payload["next_cursor"], str)
+    assert len(payload["items"]) == 1
+
+    item = payload["items"][0]
+    assert set(item.keys()) == {
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+    }
+    assert item["id"] == "meeting-contract-1"
+    assert item["status"] == "limited_confidence"
+    assert item["confidence_label"] == "limited_confidence"
+    assert item["reader_low_confidence"] is True
+
+
+def test_city_meetings_list_pagination_traversal_is_stable(monkeypatch) -> None:
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token = _issue_token("user-pagination", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    set_city_response = client.patch("/v1/me", headers=headers, json={"home_city_id": PILOT_CITY_ID})
+    assert set_city_response.status_code == 200
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-page-d",
+        meeting_uid="uid-page-d",
+        title="Meeting Page D",
+        created_at="2026-02-25 09:00:00",
+    )
+    _insert_meeting(
+        client,
+        meeting_id="meeting-page-c",
+        meeting_uid="uid-page-c",
+        title="Meeting Page C",
+        created_at="2026-02-25 09:00:00",
+    )
+    _insert_meeting(
+        client,
+        meeting_id="meeting-page-b",
+        meeting_uid="uid-page-b",
+        title="Meeting Page B",
+        created_at="2026-02-24 09:00:00",
+    )
+    _insert_meeting(
+        client,
+        meeting_id="meeting-page-a",
+        meeting_uid="uid-page-a",
+        title="Meeting Page A",
+        created_at="2026-02-23 09:00:00",
+    )
+
+    expected_order = ["meeting-page-d", "meeting-page-c", "meeting-page-b", "meeting-page-a"]
+
+    seen_ids: list[str] = []
+    cursor: str | None = None
+    while True:
+        params = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        response = client.get(f"/v1/cities/{PILOT_CITY_ID}/meetings", headers=headers, params=params)
+        assert response.status_code == 200
+        payload = response.json()
+
+        page_ids = [item["id"] for item in payload["items"]]
+        seen_ids.extend(page_ids)
+        cursor = payload["next_cursor"]
+        if cursor is None:
+            break
+
+    assert seen_ids == expected_order
+
+    replay_first_page = client.get(f"/v1/cities/{PILOT_CITY_ID}/meetings", headers=headers, params={"limit": 2})
+    assert replay_first_page.status_code == 200
+    replay_payload = replay_first_page.json()
+    assert [item["id"] for item in replay_payload["items"]] == expected_order[:2]
+
+
 def test_city_meetings_list_rejects_city_scope_bypass(monkeypatch) -> None:
     client = _client_with_configured_cities(
         monkeypatch,

@@ -207,6 +207,24 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
 
     assert response.status_code == 200
     payload = response.json()
+    assert set(payload.keys()) == {
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+    }
     assert payload["id"] == "meeting-detail-1"
     assert payload["status"] == "processed"
     assert payload["confidence_label"] == "high"
@@ -232,6 +250,15 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
             ],
         }
     ]
+    first_evidence = payload["claims"][0]["evidence"][0]
+    assert set(first_evidence.keys()) == {
+        "id",
+        "artifact_id",
+        "section_ref",
+        "char_start",
+        "char_end",
+        "excerpt",
+    }
 
 
 def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) -> None:
