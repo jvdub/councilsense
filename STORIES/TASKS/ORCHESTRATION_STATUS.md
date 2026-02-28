@@ -80,6 +80,16 @@ Last updated: 2026-02-27
 | TASK-ST-010-04 | ✅ Done | b16d889 |
 | TASK-ST-010-05 | ✅ Done | 13d6958 |
 
+### ST-007 — Frontend Meetings List + Detail Experience
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-007-01 | ✅ Done | b0291cd |
+| TASK-ST-007-02 | ✅ Done | 0565875 |
+| TASK-ST-007-03 | ✅ Done | dbd5549 |
+| TASK-ST-007-04 | ✅ Done | 7961c3f |
+| TASK-ST-007-05 | ✅ Done | b790da7 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -88,6 +98,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Start ST-007 (`TASK-ST-007-01` → `TASK-ST-007-05`)
-2. Then run ST-008 (`TASK-ST-008-01` → `TASK-ST-008-05`)
-3. After ST-008, start ST-009 and then ST-011
+1. Start ST-008 (`TASK-ST-008-01` → `TASK-ST-008-05`)
+2. Then run ST-009 (`TASK-ST-009-01` → `TASK-ST-009-05`)
+3. After ST-009, start ST-011
