@@ -194,6 +194,55 @@ def test_claim_evidence_records_reject_missing_required_fields() -> None:
         )
 
 
+def test_claim_evidence_records_reject_malformed_offsets() -> None:
+    with pytest.raises(ClaimEvidenceValidationError, match="char_start and char_end must both be provided"):
+        SummarizationOutput.from_payload(
+            {
+                "summary": "Summary",
+                "key_decisions": [],
+                "key_actions": [],
+                "notable_topics": [],
+                "claims": [
+                    {
+                        "claim_text": "The council approved Resolution 77.",
+                        "evidence": [
+                            {
+                                "artifact_id": "artifact-minutes-77",
+                                "section_ref": "minutes.section.4",
+                                "char_start": 100,
+                                "excerpt": "Motion carried unanimously for Resolution 77.",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    with pytest.raises(ClaimEvidenceValidationError, match="char_end must be greater than char_start"):
+        SummarizationOutput.from_payload(
+            {
+                "summary": "Summary",
+                "key_decisions": [],
+                "key_actions": [],
+                "notable_topics": [],
+                "claims": [
+                    {
+                        "claim_text": "The council approved Resolution 77.",
+                        "evidence": [
+                            {
+                                "artifact_id": "artifact-minutes-77",
+                                "section_ref": "minutes.section.4",
+                                "char_start": 300,
+                                "char_end": 300,
+                                "excerpt": "Motion carried unanimously for Resolution 77.",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
 def test_end_to_end_processing_run_persists_summarization_sections(
     connection: sqlite3.Connection,
 ) -> None:
@@ -478,3 +527,90 @@ def test_publish_quality_gate_routes_sufficient_evidence_to_processed(
     assert result.publication.publication_status == "processed"
     assert result.publication.confidence_label == "medium"
     assert result.quality_gate.reason_codes == ("quality_gate_pass",)
+
+
+def test_published_claim_evidence_is_retrievable_in_reader_shape(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-contract-6", uid="meeting-contract-uid-6")
+
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "Council discussed school-zone traffic calming.",
+            "key_decisions": ["Request final engineering review"],
+            "key_actions": ["Public works to publish revised design"],
+            "notable_topics": ["Traffic", "School safety"],
+            "claims": [
+                {
+                    "claim_text": "Council requested final engineering review.",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-traffic-1",
+                            "section_ref": "minutes.section.2",
+                            "char_start": 88,
+                            "char_end": 156,
+                            "excerpt": "Council directed staff to complete final engineering review.",
+                        }
+                    ],
+                },
+                {
+                    "claim_text": "Public works will publish revised design.",
+                    "evidence": [],
+                },
+            ],
+        }
+    )
+
+    result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-contract-6",
+        meeting_id="meeting-contract-6",
+        processing_run_id=None,
+        publish_stage_outcome_id=None,
+        version_no=1,
+        base_confidence_label="medium",
+        output=output,
+        published_at="2026-02-27T17:00:30Z",
+    )
+
+    repository = MeetingSummaryRepository(connection)
+    claims = repository.list_claims_for_publication(publication_id=result.publication.id)
+    retrieved = [
+        {
+            "claim_text": claim.claim_text,
+            "evidence": [
+                {
+                    "artifact_id": pointer.artifact_id,
+                    "section_ref": pointer.section_ref,
+                    "char_start": pointer.char_start,
+                    "char_end": pointer.char_end,
+                    "excerpt": pointer.excerpt,
+                }
+                for pointer in repository.list_evidence_for_claim(claim_id=claim.id)
+            ],
+        }
+        for claim in claims
+    ]
+
+    assert result.publication.publication_status == "limited_confidence"
+    assert result.publication.confidence_label == "limited_confidence"
+    assert retrieved == [
+        {
+            "claim_text": "Council requested final engineering review.",
+            "evidence": [
+                {
+                    "artifact_id": "artifact-minutes-traffic-1",
+                    "section_ref": "minutes.section.2",
+                    "char_start": 88,
+                    "char_end": 156,
+                    "excerpt": "Council directed staff to complete final engineering review.",
+                }
+            ],
+        },
+        {
+            "claim_text": "Public works will publish revised design.",
+            "evidence": [],
+        },
+    ]

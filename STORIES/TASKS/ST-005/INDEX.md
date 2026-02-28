@@ -9,7 +9,7 @@
 - [x] [TASK-ST-005-02](TASK-ST-005-02.md) — Summarization Output Contract
 - [x] [TASK-ST-005-03](TASK-ST-005-03.md) — Claim Evidence Attachment
 - [x] [TASK-ST-005-04](TASK-ST-005-04.md) — Quality Gate and Append-Only Publish Path
-- [ ] [TASK-ST-005-05](TASK-ST-005-05.md) — ST-005 Verification and Evidence Retrieval Coverage
+- [x] [TASK-ST-005-05](TASK-ST-005-05.md) — ST-005 Verification and Evidence Retrieval Coverage
 
 ## Dependency Chain
 
