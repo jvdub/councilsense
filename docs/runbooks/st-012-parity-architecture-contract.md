@@ -72,6 +72,10 @@ Current implemented baseline knobs:
 | `SUPPORTED_CITY_IDS` | Optional, comma-separated override | Optional, comma-separated override | Empty/omitted falls back to configured default set. |
 | `MANUAL_REVIEW_CONFIDENCE_THRESHOLD` | Optional float in `[0,1]` | Optional float in `[0,1]` | Must parse as probability and remain <= warn threshold. |
 | `WARN_CONFIDENCE_THRESHOLD` | Optional float in `[0,1]` | Optional float in `[0,1]` | Must parse as probability and remain >= manual-review threshold. |
+| `NOTIFICATION_DELIVERY_MAX_ATTEMPTS` | Optional positive integer | Optional positive integer | Bounds retry attempts before terminal DLQ transition. |
+| `NOTIFICATION_RETRY_BACKOFF_SECONDS` | Optional comma-separated positive integers | Optional comma-separated positive integers | Monotonic non-decreasing retry delay curve applied by worker. |
+| `NOTIFICATION_RETRY_JITTER_FACTOR` | Optional float in `[0,1]` | Optional float in `[0,1]` | Bounded delay jitter factor applied to retry schedule. |
+| `NOTIFICATION_RETRY_POLICY_VERSION` | Optional non-empty string | Optional non-empty string | Overrides derived retry policy version emitted in delivery telemetry/audit logs. |
 | `NEXT_PUBLIC_API_BASE_URL` | Required for frontend runtime | Required for frontend runtime | Must target active API endpoint for environment. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Required when enabling browser push | Required when enabling browser push | Missing key must disable push registration path, not crash unrelated flows. |
 

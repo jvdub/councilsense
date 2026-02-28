@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Callable, Literal
@@ -85,15 +86,48 @@ def validate_worker_startup_environment() -> None:
 @dataclass(frozen=True)
 class NotificationDeliveryWorkerConfig:
     claim_batch_size: int = 50
+    max_attempts: int = 5
     retry_backoff_seconds: tuple[int, ...] = (15, 60, 300, 900, 3600)
+    retry_jitter_factor: float = 0.0
+    retry_policy_version: str | None = None
 
     def __post_init__(self) -> None:
         if self.claim_batch_size <= 0:
             raise ValueError("claim_batch_size must be > 0")
+        if self.max_attempts <= 0:
+            raise ValueError("max_attempts must be > 0")
         if not self.retry_backoff_seconds:
             raise ValueError("retry_backoff_seconds must not be empty")
+        if any(current < previous for previous, current in zip(self.retry_backoff_seconds, self.retry_backoff_seconds[1:])):
+            raise ValueError("retry_backoff_seconds must be monotonic non-decreasing")
         if any(value <= 0 for value in self.retry_backoff_seconds):
             raise ValueError("retry_backoff_seconds values must be > 0")
+        if not 0.0 <= self.retry_jitter_factor <= 1.0:
+            raise ValueError("retry_jitter_factor must be in [0.0, 1.0]")
+        if self.retry_policy_version is not None and not self.retry_policy_version.strip():
+            raise ValueError("retry_policy_version must be non-empty when provided")
+
+    @property
+    def effective_policy_version(self) -> str:
+        if self.retry_policy_version is not None:
+            return self.retry_policy_version.strip()
+        return _derive_retry_policy_version(
+            max_attempts=self.max_attempts,
+            retry_backoff_seconds=self.retry_backoff_seconds,
+            retry_jitter_factor=self.retry_jitter_factor,
+        )
+
+
+def _default_worker_config() -> NotificationDeliveryWorkerConfig:
+    settings = get_settings(service_name="worker")
+    policy = settings.notification_retry_policy
+    return NotificationDeliveryWorkerConfig(
+        claim_batch_size=50,
+        max_attempts=policy.max_attempts,
+        retry_backoff_seconds=policy.backoff_seconds,
+        retry_jitter_factor=policy.jitter_factor,
+        retry_policy_version=policy.version,
+    )
 
 
 @dataclass(frozen=True)
@@ -120,7 +154,7 @@ class NotificationDeliveryWorker:
         self._sender = sender
         self._suppression_sink = suppression_sink
         self._metric_emitter = metric_emitter
-        self._config = config or NotificationDeliveryWorkerConfig()
+        self._config = config or _default_worker_config()
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
 
     def run_once(self) -> NotificationDeliveryRunResult:
@@ -188,7 +222,7 @@ class NotificationDeliveryWorker:
                     SELECT id
                     FROM notification_outbox
                     WHERE status IN ('queued', 'failed')
-                      AND attempt_count < max_attempts
+                                            AND attempt_count < MIN(max_attempts, ?)
                       AND next_retry_at <= ?
                     ORDER BY next_retry_at ASC, created_at ASC
                     LIMIT ?
@@ -213,7 +247,7 @@ class NotificationDeliveryWorker:
                     created_at,
                     updated_at
                 """,
-                (claim_cutoff, limit),
+                (self._config.max_attempts, claim_cutoff, limit),
             ).fetchall()
 
         return tuple(self._row_to_outbox_record(row=row) for row in rows)
@@ -284,8 +318,9 @@ class NotificationDeliveryWorker:
     ) -> bool:
         attempted_at = self._now_provider().astimezone(UTC)
         attempt_number = record.attempt_count + 1
+        effective_max_attempts = self._effective_max_attempts(record.max_attempts)
 
-        if attempt_number >= record.max_attempts:
+        if attempt_number >= effective_max_attempts:
             self._record_terminal_failure(
                 record=record,
                 attempted_at=attempted_at,
@@ -294,10 +329,13 @@ class NotificationDeliveryWorker:
                 failure_classification="transient",
                 error_code=error.error_code,
                 provider_response_summary=error.provider_response_summary,
+                effective_max_attempts=effective_max_attempts,
             )
             return False
 
-        next_retry_at = attempted_at + timedelta(seconds=self._retry_backoff_seconds(attempt_number=attempt_number))
+        next_retry_at = attempted_at + timedelta(
+            seconds=self._retry_delay_seconds(record=record, attempt_number=attempt_number)
+        )
         payload_json = self._updated_payload_json(
             existing_payload_json=record.payload_json,
             next_status="failed",
@@ -335,6 +373,7 @@ class NotificationDeliveryWorker:
                 SET
                     status = 'failed',
                     attempt_count = ?,
+                    max_attempts = ?,
                     payload_json = ?,
                     next_retry_at = ?,
                     last_attempt_at = ?,
@@ -345,6 +384,7 @@ class NotificationDeliveryWorker:
                 """,
                 (
                     attempt_number,
+                    effective_max_attempts,
                     payload_json,
                     next_retry_at.isoformat(),
                     attempted_at.isoformat(),
@@ -363,6 +403,7 @@ class NotificationDeliveryWorker:
         record: NotificationOutboxRecord,
         error: NotificationDeliveryError,
     ) -> None:
+        effective_max_attempts = self._effective_max_attempts(record.max_attempts)
         self._record_terminal_failure(
             record=record,
             attempted_at=self._now_provider().astimezone(UTC),
@@ -371,6 +412,7 @@ class NotificationDeliveryWorker:
             failure_classification="permanent",
             error_code=error.error_code,
             provider_response_summary=error.provider_response_summary,
+            effective_max_attempts=effective_max_attempts,
         )
 
     def _record_subscription_terminal_status(
@@ -456,6 +498,7 @@ class NotificationDeliveryWorker:
         failure_classification: Literal["transient", "permanent", "unknown"],
         error_code: str,
         provider_response_summary: str,
+        effective_max_attempts: int,
     ) -> None:
         if not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sending", next_status="dlq"):
             raise ValueError("Invalid transition from sending to dlq")
@@ -549,6 +592,7 @@ class NotificationDeliveryWorker:
                 SET
                     status = 'dlq',
                     attempt_count = ?,
+                    max_attempts = ?,
                     payload_json = ?,
                     last_attempt_at = ?,
                     error_code = ?,
@@ -558,6 +602,7 @@ class NotificationDeliveryWorker:
                 """,
                 (
                     attempt_number,
+                    effective_max_attempts,
                     payload_json,
                     attempted_at.isoformat(),
                     error_code,
@@ -569,6 +614,31 @@ class NotificationDeliveryWorker:
     def _retry_backoff_seconds(self, *, attempt_number: int) -> int:
         index = min(max(attempt_number - 1, 0), len(self._config.retry_backoff_seconds) - 1)
         return self._config.retry_backoff_seconds[index]
+
+    def _retry_delay_seconds(self, *, record: NotificationOutboxRecord, attempt_number: int) -> int:
+        base_seconds = self._retry_backoff_seconds(attempt_number=attempt_number)
+        jitter_seconds = self._retry_jitter_seconds(
+            dedupe_key=record.dedupe_key,
+            attempt_number=attempt_number,
+            base_seconds=base_seconds,
+        )
+        return max(base_seconds + jitter_seconds, 1)
+
+    def _retry_jitter_seconds(self, *, dedupe_key: str, attempt_number: int, base_seconds: int) -> int:
+        if self._config.retry_jitter_factor <= 0.0:
+            return 0
+
+        jitter_window = max(int(round(base_seconds * self._config.retry_jitter_factor)), 1)
+        digest = hashlib.sha256(
+            f"{dedupe_key}:{attempt_number}:{self._config.effective_policy_version}".encode("utf-8")
+        ).digest()
+        bucket = int.from_bytes(digest[:8], byteorder="big", signed=False)
+        return (bucket % (2 * jitter_window + 1)) - jitter_window
+
+    def _effective_max_attempts(self, outbox_max_attempts: int) -> int:
+        if outbox_max_attempts <= 0:
+            return self._config.max_attempts
+        return min(outbox_max_attempts, self._config.max_attempts)
 
     @staticmethod
     def _row_to_outbox_record(*, row: sqlite3.Row | tuple[object, ...]) -> NotificationOutboxRecord:
@@ -636,6 +706,7 @@ class NotificationDeliveryWorker:
         source_id = _extract_optional_source_id(parsed_raw)
         if source_id is not None:
             validated_payload["source_id"] = source_id
+        validated_payload["retry_policy_version"] = self._config.effective_policy_version
         return json.dumps(validated_payload, ensure_ascii=False, separators=(",", ":"))
 
     def _emit_delivery_outcome(
@@ -674,6 +745,7 @@ class NotificationDeliveryWorker:
                     "stage": _NOTIFY_DELIVER_STAGE,
                     "outcome": outcome,
                     "attempt_count": record.attempt_count + 1,
+                    "retry_policy_version": self._config.effective_policy_version,
                     "error_code": resolved_error_code,
                     "error_summary": _normalize_error_summary(resolved_error_summary),
                 }
@@ -741,3 +813,18 @@ def _extract_optional_source_id(payload: dict[str, object]) -> str | None:
     if not normalized:
         return None
     return normalized
+
+
+def _derive_retry_policy_version(
+    *,
+    max_attempts: int,
+    retry_backoff_seconds: tuple[int, ...],
+    retry_jitter_factor: float,
+) -> str:
+    fingerprint_input = (
+        f"max={max_attempts}|"
+        f"backoff={','.join(str(value) for value in retry_backoff_seconds)}|"
+        f"jitter={retry_jitter_factor:.6f}"
+    )
+    digest = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()[:12]
+    return f"notif-retry-v1-{digest}"

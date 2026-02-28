@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+import hashlib
 from typing import Literal, Mapping, Protocol
 
 
@@ -25,6 +26,14 @@ class MappingSecretSource:
 
 
 @dataclass(frozen=True)
+class NotificationRetryPolicySettings:
+    max_attempts: int
+    backoff_seconds: tuple[int, ...]
+    jitter_factor: float
+    version: str
+
+
+@dataclass(frozen=True)
 class Settings:
     runtime_env: RuntimeEnvironment
     secret_source: SecretSourceKind
@@ -32,6 +41,7 @@ class Settings:
     supported_city_ids: tuple[str, ...]
     manual_review_confidence_threshold: float
     warn_confidence_threshold: float
+    notification_retry_policy: NotificationRetryPolicySettings
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -42,6 +52,9 @@ SUPPORTED_SECRET_SOURCES: tuple[SecretSourceKind, ...] = ("env", "aws-secretsman
 DEFAULT_SUPPORTED_CITY_IDS = ("seattle-wa",)
 DEFAULT_MANUAL_REVIEW_CONFIDENCE_THRESHOLD = 0.6
 DEFAULT_WARN_CONFIDENCE_THRESHOLD = 0.8
+DEFAULT_NOTIFICATION_DELIVERY_MAX_ATTEMPTS = 5
+DEFAULT_NOTIFICATION_RETRY_BACKOFF_SECONDS = (15, 60, 300, 900, 3600)
+DEFAULT_NOTIFICATION_RETRY_JITTER_FACTOR = 0.0
 
 
 def _parse_supported_city_ids(raw: str | None) -> tuple[str, ...]:
@@ -66,6 +79,93 @@ def _parse_probability_threshold(*, raw: str | None, default: float, env_name: s
     if not 0.0 <= value <= 1.0:
         raise ValueError(f"{env_name} must be a float in [0.0, 1.0]")
     return value
+
+
+def _parse_positive_int(*, raw: str | None, default: int, env_name: str) -> int:
+    if raw is None:
+        return default
+
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{env_name} must be an integer > 0") from exc
+
+    if value <= 0:
+        raise ValueError(f"{env_name} must be an integer > 0")
+    return value
+
+
+def _parse_backoff_seconds(*, raw: str | None) -> tuple[int, ...]:
+    if raw is None:
+        return DEFAULT_NOTIFICATION_RETRY_BACKOFF_SECONDS
+
+    parts = tuple(item.strip() for item in raw.split(",") if item.strip())
+    if not parts:
+        raise ValueError("NOTIFICATION_RETRY_BACKOFF_SECONDS must contain at least one positive integer")
+
+    values: list[int] = []
+    for part in parts:
+        try:
+            value = int(part)
+        except ValueError as exc:
+            raise ValueError(
+                "NOTIFICATION_RETRY_BACKOFF_SECONDS must be a comma-separated list of positive integers"
+            ) from exc
+        if value <= 0:
+            raise ValueError(
+                "NOTIFICATION_RETRY_BACKOFF_SECONDS must be a comma-separated list of positive integers"
+            )
+        values.append(value)
+
+    if any(current < previous for previous, current in zip(values, values[1:])):
+        raise ValueError("NOTIFICATION_RETRY_BACKOFF_SECONDS must be monotonic non-decreasing")
+
+    return tuple(values)
+
+
+def _derive_notification_retry_policy_version(
+    *,
+    max_attempts: int,
+    backoff_seconds: tuple[int, ...],
+    jitter_factor: float,
+    explicit_version: str | None,
+) -> str:
+    if explicit_version is not None:
+        normalized = explicit_version.strip()
+        if not normalized:
+            raise ValueError("NOTIFICATION_RETRY_POLICY_VERSION must be non-empty when provided")
+        return normalized
+
+    fingerprint_input = f"max={max_attempts}|backoff={','.join(str(value) for value in backoff_seconds)}|jitter={jitter_factor:.6f}"
+    digest = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()[:12]
+    return f"notif-retry-v1-{digest}"
+
+
+def _parse_notification_retry_policy() -> NotificationRetryPolicySettings:
+    max_attempts = _parse_positive_int(
+        raw=os.getenv("NOTIFICATION_DELIVERY_MAX_ATTEMPTS"),
+        default=DEFAULT_NOTIFICATION_DELIVERY_MAX_ATTEMPTS,
+        env_name="NOTIFICATION_DELIVERY_MAX_ATTEMPTS",
+    )
+    backoff_seconds = _parse_backoff_seconds(raw=os.getenv("NOTIFICATION_RETRY_BACKOFF_SECONDS"))
+    jitter_factor = _parse_probability_threshold(
+        raw=os.getenv("NOTIFICATION_RETRY_JITTER_FACTOR"),
+        default=DEFAULT_NOTIFICATION_RETRY_JITTER_FACTOR,
+        env_name="NOTIFICATION_RETRY_JITTER_FACTOR",
+    )
+    version = _derive_notification_retry_policy_version(
+        max_attempts=max_attempts,
+        backoff_seconds=backoff_seconds,
+        jitter_factor=jitter_factor,
+        explicit_version=os.getenv("NOTIFICATION_RETRY_POLICY_VERSION"),
+    )
+
+    return NotificationRetryPolicySettings(
+        max_attempts=max_attempts,
+        backoff_seconds=backoff_seconds,
+        jitter_factor=jitter_factor,
+        version=version,
+    )
 
 
 def _parse_runtime_env(raw: str | None) -> RuntimeEnvironment:
@@ -139,4 +239,5 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
         supported_city_ids=_parse_supported_city_ids(os.getenv("SUPPORTED_CITY_IDS")),
         manual_review_confidence_threshold=manual_review_confidence_threshold,
         warn_confidence_threshold=warn_confidence_threshold,
+        notification_retry_policy=_parse_notification_retry_policy(),
     )

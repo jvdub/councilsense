@@ -11,6 +11,7 @@ from councilsense.app.notification_contracts import (
     build_notification_dedupe_key,
     produce_notification_event_payload,
 )
+from councilsense.app.settings import get_settings
 
 
 NotificationSubscriptionStatus = Literal[
@@ -80,6 +81,7 @@ def enqueue_publish_notifications_to_outbox(
     run_id: str | None = None,
     metric_emitter: NotificationMetricEmitter | None = None,
 ) -> NotificationEnqueueResult:
+    retry_policy = get_settings(service_name="api").notification_retry_policy
     timestamp = enqueued_at or datetime.now(UTC)
     eligible_targets = select_eligible_subscription_targets(
         city_id=city_id,
@@ -107,6 +109,7 @@ def enqueue_publish_notifications_to_outbox(
                 subscription_id=target.subscription_id,
             )
             payload["run_id"] = normalized_run_id
+            payload["retry_policy_version"] = retry_policy.version
 
             cursor = connection.execute(
                 """
@@ -118,9 +121,10 @@ def enqueue_publish_notifications_to_outbox(
                     notification_type,
                     dedupe_key,
                     payload_json,
+                    max_attempts,
                     subscription_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(dedupe_key) DO NOTHING
                 """,
                 (
@@ -131,6 +135,7 @@ def enqueue_publish_notifications_to_outbox(
                     notification_type,
                     dedupe_key,
                     json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    retry_policy.max_attempts,
                     target.subscription_id,
                 ),
             )

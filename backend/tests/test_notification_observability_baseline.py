@@ -171,7 +171,11 @@ def test_notification_delivery_emits_retry_terminal_latency_and_contract_logs(ca
             connection=connection,
             sender=_sender,
             metric_emitter=_metric_emitter,
-            config=NotificationDeliveryWorkerConfig(claim_batch_size=1, retry_backoff_seconds=(60, 60)),
+            config=NotificationDeliveryWorkerConfig(
+                claim_batch_size=1,
+                retry_backoff_seconds=(60, 60),
+                retry_policy_version="policy-obsv-v1",
+            ),
             now_provider=_DeterministicNow(
                 [
                     datetime(2026, 2, 28, 12, 5, tzinfo=UTC),
@@ -222,6 +226,7 @@ def test_notification_delivery_emits_retry_terminal_latency_and_contract_logs(ca
             assert required_keys.issubset(set(event.keys()))
             assert event["stage"] == "notify_deliver"
             assert event["run_id"] == "run-20260228-02"
+            assert event["retry_policy_version"] == "policy-obsv-v1"
             assert event["error_code"] == "provider_timeout"
             assert event["error_summary"] == "provider timed out due to transient overload"
 

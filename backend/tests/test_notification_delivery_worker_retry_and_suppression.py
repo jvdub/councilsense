@@ -446,6 +446,7 @@ def test_terminal_transition_to_dlq_is_idempotent_for_repeated_calls() -> None:
             failure_classification="transient",
             error_code="provider_timeout",
             provider_response_summary="provider timed out",
+            effective_max_attempts=2,
         )
         worker._record_terminal_failure(
             record=record,
@@ -455,6 +456,7 @@ def test_terminal_transition_to_dlq_is_idempotent_for_repeated_calls() -> None:
             failure_classification="transient",
             error_code="provider_timeout",
             provider_response_summary="provider timed out",
+            effective_max_attempts=2,
         )
 
         attempt_count = connection.execute(
@@ -564,6 +566,7 @@ def test_dlq_records_are_queryable_by_city_source_run_and_message_identifiers() 
             failure_classification="transient",
             error_code="provider_timeout",
             provider_response_summary="provider timed out",
+            effective_max_attempts=2,
         )
 
         matched = connection.execute(
@@ -583,5 +586,68 @@ def test_dlq_records_are_queryable_by_city_source_run_and_message_identifiers() 
             ),
         ).fetchall()
         assert matched == [("outbox-dlq-query",)]
+    finally:
+        connection.close()
+
+
+def test_delivery_worker_uses_configured_max_attempts_for_exhaustion() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        _base_seed(connection, meeting_id="meeting-delivery-configured-exhaustion")
+        _insert_outbox_row(
+            connection,
+            outbox_id="outbox-configured-exhaustion",
+            user_id="user-configured-exhaustion",
+            meeting_id="meeting-delivery-configured-exhaustion",
+            city_id=PILOT_CITY_ID,
+            subscription_id="sub-configured-exhaustion",
+            max_attempts=5,
+        )
+
+        now = _DeterministicNow(
+            [
+                datetime(2026, 2, 27, 16, 0, tzinfo=UTC),
+                datetime(2026, 2, 27, 16, 0, tzinfo=UTC),
+                datetime(2026, 2, 27, 16, 1, tzinfo=UTC),
+                datetime(2026, 2, 27, 16, 1, tzinfo=UTC),
+            ]
+        )
+
+        def _always_transient_fail(_: object) -> None:
+            raise RetryableDeliveryError(
+                error_code="provider_timeout",
+                provider_response_summary="provider timed out",
+            )
+
+        worker = NotificationDeliveryWorker(
+            connection=connection,
+            sender=_always_transient_fail,
+            config=NotificationDeliveryWorkerConfig(
+                claim_batch_size=1,
+                max_attempts=2,
+                retry_backoff_seconds=(60, 60, 60),
+                retry_policy_version="policy-max-2",
+            ),
+            now_provider=now,
+        )
+
+        first = worker.run_once()
+        second = worker.run_once()
+        third = worker.run_once()
+
+        assert first.retried_count == 1
+        assert second.failed_count == 1
+        assert third.claimed_count == 0
+
+        outbox_row = connection.execute(
+            """
+            SELECT status, attempt_count, max_attempts
+            FROM notification_outbox
+            WHERE id = ?
+            """,
+            ("outbox-configured-exhaustion",),
+        ).fetchone()
+        assert outbox_row == ("dlq", 2, 2)
     finally:
         connection.close()
