@@ -22,6 +22,34 @@ const notificationRequestPermissionMock = vi.fn();
 
 let notificationPermissionState: NotificationPermission = "default";
 
+type PushServerStatus = "active" | "invalid" | "expired" | "suppressed";
+
+function createServerSubscription({
+  id,
+  endpoint = "https://example.test/push/sub-1",
+  status = "active",
+  failureReason = null,
+}: {
+  id: string;
+  endpoint?: string;
+  status?: PushServerStatus;
+  failureReason?: string | null;
+}) {
+  return {
+    id,
+    endpoint,
+    keys: {
+      p256dh: "p256dh-key",
+      auth: "auth-key",
+    },
+    status,
+    failure_reason: failureReason,
+    last_seen_at: "2026-02-27T12:00:00Z",
+    created_at: "2026-02-27T12:00:00Z",
+    updated_at: "2026-02-27T12:00:00Z",
+  };
+}
+
 function createBrowserPushSubscription(endpoint = "https://example.test/push/sub-1") {
   return {
     endpoint,
@@ -224,6 +252,51 @@ describe("SettingsPreferencesForm", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
+  it("persists saved settings across session reload", async () => {
+    const user = userEvent.setup();
+    const persistedProfile = {
+      email: "user@example.com",
+      home_city_id: "portland-or",
+      notifications_enabled: false,
+      notifications_paused_until: "2026-03-01T00:00:00.000Z",
+    };
+
+    vi.mocked(patchProfile).mockResolvedValue(persistedProfile);
+
+    const { unmount } = render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa", "portland-or"]}
+        initialProfile={{
+          email: "user@example.com",
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("Home city"), "portland-or");
+    await user.click(screen.getByLabelText("Enable notifications"));
+    await user.click(screen.getByRole("button", { name: "Pause for 24 hours" }));
+
+    expect(await screen.findByText("Notifications paused until: 2026-03-01T00:00:00.000Z")).toBeInTheDocument();
+
+    unmount();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa", "portland-or"]}
+        initialProfile={persistedProfile}
+      />,
+    );
+
+    expect(screen.getByLabelText("Home city")).toHaveValue("portland-or");
+    expect(screen.getByLabelText("Enable notifications")).not.toBeChecked();
+    expect(screen.getByText("Notifications paused until: 2026-03-01T00:00:00.000Z")).toBeInTheDocument();
+  });
+
   it("shows validation error when backend rejects payload", async () => {
     const user = userEvent.setup();
     vi.mocked(patchProfile).mockRejectedValue(
@@ -380,21 +453,7 @@ describe("SettingsPreferencesForm", () => {
     const user = userEvent.setup();
 
     vi.mocked(listPushSubscriptions).mockResolvedValue({
-      items: [
-        {
-          id: "psub-server-1",
-          endpoint: "https://example.test/push/sub-1",
-          keys: {
-            p256dh: "p256dh-key",
-            auth: "auth-key",
-          },
-          status: "active",
-          failure_reason: null,
-          last_seen_at: "2026-02-27T12:00:00Z",
-          created_at: "2026-02-27T12:00:00Z",
-          updated_at: "2026-02-27T12:00:00Z",
-        },
-      ],
+      items: [createServerSubscription({ id: "psub-server-1" })],
     });
 
     setPushSupportedBrowser({
@@ -430,19 +489,11 @@ describe("SettingsPreferencesForm", () => {
 
     vi.mocked(listPushSubscriptions).mockResolvedValue({
       items: [
-        {
+        createServerSubscription({
           id: "psub-server-invalid",
-          endpoint: "https://example.test/push/sub-1",
-          keys: {
-            p256dh: "p256dh-key",
-            auth: "auth-key",
-          },
           status: "invalid",
-          failure_reason: "provider_rejected",
-          last_seen_at: "2026-02-27T12:00:00Z",
-          created_at: "2026-02-27T12:00:00Z",
-          updated_at: "2026-02-27T12:00:00Z",
-        },
+          failureReason: "provider_rejected",
+        }),
       ],
     });
 
@@ -476,21 +527,15 @@ describe("SettingsPreferencesForm", () => {
   });
 
   it("maps expired backend state to recover action", async () => {
+    const user = userEvent.setup();
+
     vi.mocked(listPushSubscriptions).mockResolvedValue({
       items: [
-        {
+        createServerSubscription({
           id: "psub-server-expired",
-          endpoint: "https://example.test/push/sub-1",
-          keys: {
-            p256dh: "p256dh-key",
-            auth: "auth-key",
-          },
           status: "expired",
-          failure_reason: "endpoint_expired",
-          last_seen_at: "2026-02-27T12:00:00Z",
-          created_at: "2026-02-27T12:00:00Z",
-          updated_at: "2026-02-27T12:00:00Z",
-        },
+          failureReason: "endpoint_expired",
+        }),
       ],
     });
 
@@ -513,7 +558,10 @@ describe("SettingsPreferencesForm", () => {
     );
 
     expect(await screen.findByText("Server subscription state: expired")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Recover push subscription" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Recover push subscription" }));
+
+    expect(createOrRefreshPushSubscription).toHaveBeenCalled();
+    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
   });
 
   it("maps suppressed backend state to reactivate action", async () => {
@@ -521,19 +569,11 @@ describe("SettingsPreferencesForm", () => {
 
     vi.mocked(listPushSubscriptions).mockResolvedValue({
       items: [
-        {
+        createServerSubscription({
           id: "psub-server-suppressed",
-          endpoint: "https://example.test/push/sub-1",
-          keys: {
-            p256dh: "p256dh-key",
-            auth: "auth-key",
-          },
           status: "suppressed",
-          failure_reason: "hard_failure_guardrail",
-          last_seen_at: "2026-02-27T12:00:00Z",
-          created_at: "2026-02-27T12:00:00Z",
-          updated_at: "2026-02-27T12:00:00Z",
-        },
+          failureReason: "hard_failure_guardrail",
+        }),
       ],
     });
 
