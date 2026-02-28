@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+import base64
+from datetime import UTC, datetime, timedelta
+import hashlib
+import hmac
+import json
+from typing import Any, cast
+
+from fastapi.testclient import TestClient
+
+from councilsense.app.main import create_app
+from councilsense.db import PILOT_CITY_ID
+
+
+def _b64url(data: dict) -> str:
+    raw = json.dumps(data, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("utf-8")
+
+
+def _issue_token(user_id: str, *, secret: str, expires_in_seconds: int) -> str:
+    header = _b64url({"alg": "HS256", "typ": "JWT"})
+    exp = int((datetime.now(tz=UTC) + timedelta(seconds=expires_in_seconds)).timestamp())
+    payload = _b64url({"sub": user_id, "exp": exp})
+    signing_input = f"{header}.{payload}"
+    digest = hmac.new(secret.encode("utf-8"), signing_input.encode("utf-8"), hashlib.sha256).digest()
+    signature = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("utf-8")
+    return f"{signing_input}.{signature}"
+
+
+def _client_with_configured_cities(monkeypatch, *, secret: str, supported_city_ids: str) -> TestClient:
+    monkeypatch.setenv("AUTH_SESSION_SECRET", secret)
+    monkeypatch.setenv("SUPPORTED_CITY_IDS", supported_city_ids)
+    return TestClient(create_app())
+
+
+def _insert_meeting(
+    client: TestClient,
+    *,
+    meeting_id: str,
+    meeting_uid: str,
+    title: str,
+    created_at: str,
+) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT INTO meetings (id, city_id, meeting_uid, title, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (meeting_id, PILOT_CITY_ID, meeting_uid, title, created_at, created_at),
+    )
+
+
+def _insert_publication(
+    client: TestClient,
+    *,
+    publication_id: str,
+    meeting_id: str,
+    publication_status: str,
+    confidence_label: str,
+    published_at: str,
+) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT INTO summary_publications (
+            id,
+            meeting_id,
+            processing_run_id,
+            publish_stage_outcome_id,
+            version_no,
+            publication_status,
+            confidence_label,
+            summary_text,
+            key_decisions_json,
+            key_actions_json,
+            notable_topics_json,
+            published_at,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            publication_id,
+            meeting_id,
+            None,
+            None,
+            1,
+            publication_status,
+            confidence_label,
+            "Summary",
+            "[]",
+            "[]",
+            "[]",
+            published_at,
+            published_at,
+        ),
+    )
+
+
+def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(monkeypatch) -> None:
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids=f"{PILOT_CITY_ID},other-city",
+    )
+    token = _issue_token("user-list", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    set_city_response = client.patch("/v1/me", headers=headers, json={"home_city_id": PILOT_CITY_ID})
+    assert set_city_response.status_code == 200
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-c",
+        meeting_uid="uid-c",
+        title="Meeting C",
+        created_at="2026-02-20 12:00:00",
+    )
+    _insert_meeting(
+        client,
+        meeting_id="meeting-b",
+        meeting_uid="uid-b",
+        title="Meeting B",
+        created_at="2026-02-20 12:00:00",
+    )
+    _insert_meeting(
+        client,
+        meeting_id="meeting-a",
+        meeting_uid="uid-a",
+        title="Meeting A",
+        created_at="2026-02-19 08:00:00",
+    )
+
+    _insert_publication(
+        client,
+        publication_id="pub-c-v1",
+        meeting_id="meeting-c",
+        publication_status="limited_confidence",
+        confidence_label="limited_confidence",
+        published_at="2026-02-20 13:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-b-v1",
+        meeting_id="meeting-b",
+        publication_status="processed",
+        confidence_label="high",
+        published_at="2026-02-20 12:30:00",
+    )
+
+    first_page = client.get(f"/v1/cities/{PILOT_CITY_ID}/meetings", headers=headers, params={"limit": 2})
+
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["limit"] == 2
+    assert [item["id"] for item in first_payload["items"]] == ["meeting-c", "meeting-b"]
+    assert first_payload["items"][0]["status"] == "limited_confidence"
+    assert first_payload["items"][0]["confidence_label"] == "limited_confidence"
+    assert first_payload["next_cursor"] is not None
+
+    second_page = client.get(
+        f"/v1/cities/{PILOT_CITY_ID}/meetings",
+        headers=headers,
+        params={"limit": 2, "cursor": first_payload["next_cursor"]},
+    )
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert [item["id"] for item in second_payload["items"]] == ["meeting-a"]
+    assert second_payload["next_cursor"] is None
+
+    filtered = client.get(
+        f"/v1/cities/{PILOT_CITY_ID}/meetings",
+        headers=headers,
+        params={"status": "processed", "limit": 5},
+    )
+    assert filtered.status_code == 200
+    assert [item["id"] for item in filtered.json()["items"]] == ["meeting-b"]
+
+
+def test_city_meetings_list_rejects_city_scope_bypass(monkeypatch) -> None:
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids=f"{PILOT_CITY_ID},other-city",
+    )
+    token = _issue_token("user-scope", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    set_city_response = client.patch("/v1/me", headers=headers, json={"home_city_id": PILOT_CITY_ID})
+    assert set_city_response.status_code == 200
+
+    response = client.get("/v1/cities/other-city/meetings", headers=headers)
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "error": {
+            "code": "forbidden",
+            "message": "City access denied",
+            "details": {"city_id": "other-city"},
+        }
+    }
