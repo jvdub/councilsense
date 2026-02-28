@@ -4,14 +4,23 @@ import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError, patchProfile, ProfileResponse } from "../../lib/api/profile";
+import {
+  createOrRefreshPushSubscription,
+  deletePushSubscription,
+  listPushSubscriptions,
+  type PushSubscriptionServerStatus,
+} from "../../lib/api/pushSubscriptions";
+import {
+  mapPushCapabilityState,
+  mapPushRecoveryAction,
+  type BrowserPermissionState,
+} from "../../lib/push/subscriptionState";
 
 type SettingsPreferencesFormProps = {
   authToken: string;
   supportedCityIds: string[];
   initialProfile: ProfileResponse;
 };
-
-type BrowserPermissionState = "granted" | "denied" | "default";
 
 function getPauseTimestamp(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
@@ -47,6 +56,8 @@ export function SettingsPreferencesForm({
   const [isPushSupported, setIsPushSupported] = useState(false);
   const [pushPermission, setPushPermission] = useState<BrowserPermissionState | null>(null);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
+  const [pushSubscriptionId, setPushSubscriptionId] = useState<string | null>(null);
+  const [pushServerStatus, setPushServerStatus] = useState<PushSubscriptionServerStatus | null>(null);
   const [isPushSubmitting, setIsPushSubmitting] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [pushErrorMessage, setPushErrorMessage] = useState<string | null>(null);
@@ -72,11 +83,70 @@ export function SettingsPreferencesForm({
     setPushPermission(Notification.permission);
 
     void (async () => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      const existingSubscription = await registration?.pushManager.getSubscription();
-      setIsPushSubscribed(Boolean(existingSubscription));
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const existingSubscription = await registration?.pushManager.getSubscription();
+        const endpoint = existingSubscription?.endpoint ?? null;
+        setIsPushSubscribed(Boolean(existingSubscription));
+
+        const backendSubscriptions = await listPushSubscriptions(authToken);
+        const matchingSubscription = endpoint
+          ? backendSubscriptions.items.find((item) => item.endpoint === endpoint) ?? null
+          : null;
+
+        if (matchingSubscription) {
+          setPushSubscriptionId(matchingSubscription.id);
+          setPushServerStatus(matchingSubscription.status);
+          return;
+        }
+
+        setPushSubscriptionId(null);
+        setPushServerStatus(null);
+      } catch {
+        setPushSubscriptionId(null);
+        setPushServerStatus(null);
+      }
     })();
-  }, []);
+  }, [authToken]);
+
+  const pushCapabilityState = mapPushCapabilityState(isPushSupported, pushPermission);
+  const pushRecoveryAction = mapPushRecoveryAction(pushServerStatus);
+
+  async function syncBackendSubscription(endpoint: string): Promise<void> {
+    const subscriptions = await listPushSubscriptions(authToken);
+    const matchingSubscription = subscriptions.items.find((item) => item.endpoint === endpoint) ?? null;
+
+    if (matchingSubscription) {
+      setPushSubscriptionId(matchingSubscription.id);
+      setPushServerStatus(matchingSubscription.status);
+      return;
+    }
+
+    setPushSubscriptionId(null);
+    setPushServerStatus(null);
+  }
+
+  async function upsertSubscriptionForDevice(subscription: PushSubscription): Promise<void> {
+    const serialized = subscription.toJSON();
+    const p256dh = serialized.keys?.p256dh;
+    const auth = serialized.keys?.auth;
+
+    if (!p256dh || !auth) {
+      throw new Error("Push subscription keys missing");
+    }
+
+    const response = await createOrRefreshPushSubscription(authToken, {
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh,
+        auth,
+      },
+      user_agent: navigator.userAgent,
+    });
+
+    setPushSubscriptionId(response.id);
+    setPushServerStatus(response.status);
+  }
 
   async function applyUpdate(nextPausedUntil: string | null = notificationsPausedUntil) {
     if (!homeCityId) {
@@ -125,7 +195,7 @@ export function SettingsPreferencesForm({
   }
 
   async function onSubscribePush() {
-    if (!isPushSupported || pushPermission === "denied") {
+    if (pushCapabilityState === "unsupported" || pushCapabilityState === "permission_denied") {
       return;
     }
 
@@ -151,22 +221,22 @@ export function SettingsPreferencesForm({
       }
 
       const existingSubscription = await registration.pushManager.getSubscription();
-      if (existingSubscription) {
-        setIsPushSubscribed(true);
-        setPushMessage("Push is already enabled on this device.");
-        return;
+      let subscription = existingSubscription;
+
+      if (!subscription) {
+        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        if (!vapidPublicKey) {
+          setPushErrorMessage("Push is not configured for this environment.");
+          return;
+        }
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeBase64Url(vapidPublicKey),
+        });
       }
 
-      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidPublicKey) {
-        setPushErrorMessage("Push is not configured for this environment.");
-        return;
-      }
-
-      await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: decodeBase64Url(vapidPublicKey),
-      });
+      await upsertSubscriptionForDevice(subscription);
 
       setIsPushSubscribed(true);
       setPushMessage("Push enabled on this device.");
@@ -189,17 +259,54 @@ export function SettingsPreferencesForm({
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       const existingSubscription = await registration?.pushManager.getSubscription();
+      const endpoint = existingSubscription?.endpoint ?? null;
 
       if (existingSubscription) {
         await existingSubscription.unsubscribe();
       }
 
+      if (pushSubscriptionId) {
+        await deletePushSubscription(authToken, pushSubscriptionId);
+      } else if (endpoint) {
+        const subscriptions = await listPushSubscriptions(authToken);
+        const matchingSubscription = subscriptions.items.find((item) => item.endpoint === endpoint) ?? null;
+
+        if (matchingSubscription) {
+          await deletePushSubscription(authToken, matchingSubscription.id);
+        }
+      }
+
       setIsPushSubscribed(false);
+      setPushSubscriptionId(null);
+      setPushServerStatus(null);
       setPushMessage("Push disabled on this device.");
     } catch {
       setPushErrorMessage("Unable to disable push on this device. Try again.");
     } finally {
       setIsPushSubmitting(false);
+    }
+  }
+
+  async function onRecoverPush() {
+    if (!pushRecoveryAction) {
+      return;
+    }
+
+    if (pushRecoveryAction === "reactivate") {
+      await onUnsubscribePush();
+    }
+
+    await onSubscribePush();
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const existingSubscription = await registration?.pushManager.getSubscription();
+      if (existingSubscription) {
+        await syncBackendSubscription(existingSubscription.endpoint);
+      }
+      setPushMessage("Push recovery completed on this device.");
+    } catch {
+      setPushErrorMessage("Unable to refresh push recovery state. Try again.");
     }
   }
 
@@ -257,19 +364,26 @@ export function SettingsPreferencesForm({
 
       <section aria-label="Push notifications">
         <h2>Push notifications</h2>
-        {!isPushSupported ? (
+        {pushCapabilityState === "unsupported" ? (
           <p>Push is not supported in this browser. You can still manage notification preferences above.</p>
         ) : (
           <>
             <p>Permission: {pushPermission ?? "default"}</p>
             <p>Device subscription: {isPushSubscribed ? "Enabled" : "Not enabled"}</p>
-            {pushPermission === "denied" ? (
+            <p>Server subscription state: {pushServerStatus ?? "none"}</p>
+            {pushCapabilityState === "permission_denied" ? (
               <p>Push is blocked by browser permission. Enable notifications in browser settings, then retry.</p>
+            ) : null}
+            {pushRecoveryAction === "resubscribe" ? (
+              <p>This subscription is no longer deliverable. Recover it to continue push alerts.</p>
+            ) : null}
+            {pushRecoveryAction === "reactivate" ? (
+              <p>This subscription is currently suppressed. Reactivate push to resume deliveries.</p>
             ) : null}
             <button
               type="button"
               onClick={onSubscribePush}
-              disabled={isPushSubmitting || isPushSubscribed || pushPermission === "denied"}
+              disabled={isPushSubmitting || isPushSubscribed || pushCapabilityState === "permission_denied"}
             >
               {isPushSubmitting ? "Updating push..." : "Enable push on this device"}
             </button>
@@ -280,6 +394,15 @@ export function SettingsPreferencesForm({
             >
               Disable push on this device
             </button>
+            {pushRecoveryAction ? (
+              <button
+                type="button"
+                onClick={onRecoverPush}
+                disabled={isPushSubmitting || pushCapabilityState !== "subscribable"}
+              >
+                {pushRecoveryAction === "reactivate" ? "Reactivate push" : "Recover push subscription"}
+              </button>
+            ) : null}
           </>
         )}
       </section>

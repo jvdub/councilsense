@@ -4,6 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, patchProfile } from "../../lib/api/profile";
+import {
+  createOrRefreshPushSubscription,
+  deletePushSubscription,
+  listPushSubscriptions,
+} from "../../lib/api/pushSubscriptions";
 import { SettingsPreferencesForm } from "./SettingsPreferencesForm";
 
 const refreshMock = vi.fn();
@@ -16,6 +21,20 @@ const pushSubscriptionUnsubscribeMock = vi.fn();
 const notificationRequestPermissionMock = vi.fn();
 
 let notificationPermissionState: NotificationPermission = "default";
+
+function createBrowserPushSubscription(endpoint = "https://example.test/push/sub-1") {
+  return {
+    endpoint,
+    toJSON: () => ({
+      endpoint,
+      keys: {
+        p256dh: "p256dh-key",
+        auth: "auth-key",
+      },
+    }),
+    unsubscribe: pushSubscriptionUnsubscribeMock,
+  };
+}
 
 function setPushUnsupportedBrowser() {
   Object.defineProperty(window, "PushManager", {
@@ -39,13 +58,13 @@ function setPushSupportedBrowser({
   existingSubscription = null,
 }: {
   permission?: NotificationPermission;
-  existingSubscription?: { unsubscribe: () => Promise<boolean> } | null;
+  existingSubscription?: ReturnType<typeof createBrowserPushSubscription> | null;
 } = {}) {
   notificationPermissionState = permission;
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BEl6MU5fM2VxQk9hYkhWVE5TV0xqU0FLeXhyY0JvUmVubEx3aUNYQnY2Q1M";
 
   pushManagerGetSubscriptionMock.mockResolvedValue(existingSubscription);
-  pushManagerSubscribeMock.mockResolvedValue({ endpoint: "https://example.test/push/sub-1" });
+  pushManagerSubscribeMock.mockResolvedValue(createBrowserPushSubscription());
   serviceWorkerGetRegistrationMock.mockResolvedValue({
     pushManager: {
       getSubscription: pushManagerGetSubscriptionMock,
@@ -102,6 +121,16 @@ vi.mock("../../lib/api/profile", async (importOriginal) => {
   };
 });
 
+vi.mock("../../lib/api/pushSubscriptions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api/pushSubscriptions")>();
+  return {
+    ...actual,
+    listPushSubscriptions: vi.fn(),
+    createOrRefreshPushSubscription: vi.fn(),
+    deletePushSubscription: vi.fn(),
+  };
+});
+
 describe("SettingsPreferencesForm", () => {
   afterEach(() => {
     cleanup();
@@ -113,6 +142,13 @@ describe("SettingsPreferencesForm", () => {
     delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     setPushSupportedBrowser();
     pushSubscriptionUnsubscribeMock.mockResolvedValue(true);
+    vi.mocked(listPushSubscriptions).mockResolvedValue({ items: [] });
+    vi.mocked(createOrRefreshPushSubscription).mockResolvedValue({
+      id: "psub-1",
+      status: "active",
+      failure_reason: null,
+    });
+    vi.mocked(deletePushSubscription).mockResolvedValue(undefined);
   });
 
   it("renders persisted profile values", () => {
@@ -326,7 +362,16 @@ describe("SettingsPreferencesForm", () => {
     expect(notificationRequestPermissionMock).toHaveBeenCalledTimes(1);
     expect(serviceWorkerRegisterMock).toHaveBeenCalledWith("/sw.js");
     expect(pushManagerSubscribeMock).toHaveBeenCalledTimes(1);
+    expect(createOrRefreshPushSubscription).toHaveBeenCalledWith("token-abc", {
+      endpoint: "https://example.test/push/sub-1",
+      keys: {
+        p256dh: "p256dh-key",
+        auth: "auth-key",
+      },
+      user_agent: navigator.userAgent,
+    });
     expect(await screen.findByText("Device subscription: Enabled")).toBeInTheDocument();
+    expect(await screen.findByText("Server subscription state: active")).toBeInTheDocument();
     expect(await screen.findByText("Push enabled on this device.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Disable push on this device" })).toBeEnabled();
   });
@@ -334,11 +379,27 @@ describe("SettingsPreferencesForm", () => {
   it("unsubscribes push when already subscribed", async () => {
     const user = userEvent.setup();
 
+    vi.mocked(listPushSubscriptions).mockResolvedValue({
+      items: [
+        {
+          id: "psub-server-1",
+          endpoint: "https://example.test/push/sub-1",
+          keys: {
+            p256dh: "p256dh-key",
+            auth: "auth-key",
+          },
+          status: "active",
+          failure_reason: null,
+          last_seen_at: "2026-02-27T12:00:00Z",
+          created_at: "2026-02-27T12:00:00Z",
+          updated_at: "2026-02-27T12:00:00Z",
+        },
+      ],
+    });
+
     setPushSupportedBrowser({
       permission: "granted",
-      existingSubscription: {
-        unsubscribe: pushSubscriptionUnsubscribeMock,
-      },
+      existingSubscription: createBrowserPushSubscription(),
     });
 
     render(
@@ -358,7 +419,151 @@ describe("SettingsPreferencesForm", () => {
     await user.click(screen.getByRole("button", { name: "Disable push on this device" }));
 
     expect(pushSubscriptionUnsubscribeMock).toHaveBeenCalledTimes(1);
+    expect(deletePushSubscription).toHaveBeenCalledWith("token-abc", "psub-server-1");
     expect(await screen.findByText("Device subscription: Not enabled")).toBeInTheDocument();
+    expect(await screen.findByText("Server subscription state: none")).toBeInTheDocument();
     expect(await screen.findByText("Push disabled on this device.")).toBeInTheDocument();
+  });
+
+  it("maps invalid backend state to recover action", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(listPushSubscriptions).mockResolvedValue({
+      items: [
+        {
+          id: "psub-server-invalid",
+          endpoint: "https://example.test/push/sub-1",
+          keys: {
+            p256dh: "p256dh-key",
+            auth: "auth-key",
+          },
+          status: "invalid",
+          failure_reason: "provider_rejected",
+          last_seen_at: "2026-02-27T12:00:00Z",
+          created_at: "2026-02-27T12:00:00Z",
+          updated_at: "2026-02-27T12:00:00Z",
+        },
+      ],
+    });
+
+    setPushSupportedBrowser({
+      permission: "granted",
+      existingSubscription: createBrowserPushSubscription(),
+    });
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("Server subscription state: invalid")).toBeInTheDocument();
+    expect(
+      await screen.findByText("This subscription is no longer deliverable. Recover it to continue push alerts."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Recover push subscription" }));
+
+    expect(createOrRefreshPushSubscription).toHaveBeenCalled();
+    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
+  });
+
+  it("maps expired backend state to recover action", async () => {
+    vi.mocked(listPushSubscriptions).mockResolvedValue({
+      items: [
+        {
+          id: "psub-server-expired",
+          endpoint: "https://example.test/push/sub-1",
+          keys: {
+            p256dh: "p256dh-key",
+            auth: "auth-key",
+          },
+          status: "expired",
+          failure_reason: "endpoint_expired",
+          last_seen_at: "2026-02-27T12:00:00Z",
+          created_at: "2026-02-27T12:00:00Z",
+          updated_at: "2026-02-27T12:00:00Z",
+        },
+      ],
+    });
+
+    setPushSupportedBrowser({
+      permission: "granted",
+      existingSubscription: createBrowserPushSubscription(),
+    });
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("Server subscription state: expired")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recover push subscription" })).toBeInTheDocument();
+  });
+
+  it("maps suppressed backend state to reactivate action", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(listPushSubscriptions).mockResolvedValue({
+      items: [
+        {
+          id: "psub-server-suppressed",
+          endpoint: "https://example.test/push/sub-1",
+          keys: {
+            p256dh: "p256dh-key",
+            auth: "auth-key",
+          },
+          status: "suppressed",
+          failure_reason: "hard_failure_guardrail",
+          last_seen_at: "2026-02-27T12:00:00Z",
+          created_at: "2026-02-27T12:00:00Z",
+          updated_at: "2026-02-27T12:00:00Z",
+        },
+      ],
+    });
+
+    setPushSupportedBrowser({
+      permission: "granted",
+      existingSubscription: createBrowserPushSubscription(),
+    });
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("Server subscription state: suppressed")).toBeInTheDocument();
+    expect(
+      await screen.findByText("This subscription is currently suppressed. Reactivate push to resume deliveries."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reactivate push" }));
+
+    expect(deletePushSubscription).toHaveBeenCalledWith("token-abc", "psub-server-suppressed");
+    expect(createOrRefreshPushSubscription).toHaveBeenCalled();
+    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
   });
 });
