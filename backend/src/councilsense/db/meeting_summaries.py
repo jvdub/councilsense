@@ -256,3 +256,27 @@ class MeetingSummaryRepository:
             )
             for row in rows
         )
+
+    def list_claims_for_publication(self, *, publication_id: str) -> tuple[PublicationClaimRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                id,
+                publication_id,
+                claim_order,
+                claim_text
+            FROM publication_claims
+            WHERE publication_id = ?
+            ORDER BY claim_order ASC
+            """,
+            (publication_id,),
+        ).fetchall()
+        return tuple(
+            PublicationClaimRecord(
+                id=str(row[0]),
+                publication_id=str(row[1]),
+                claim_order=int(row[2]),
+                claim_text=str(row[3]),
+            )
+            for row in rows
+        )
