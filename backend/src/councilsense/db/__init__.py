@@ -6,6 +6,10 @@ from councilsense.db.city_registry import (
     EnabledCityConfig,
 	SourceHealthRepository,
 )
+from councilsense.db.confidence_calibration import (
+	ConfidenceCalibrationPolicyRecord,
+	ConfidenceCalibrationPolicyRepository,
+)
 from councilsense.db.meetings import (
 	InvalidMeetingListCursorError,
 	MeetingListCursor,
@@ -70,6 +74,8 @@ __all__ = [
 	"CityConfig",
 	"CityRegistryRepository",
 	"CitySourceConfig",
+	"ConfidenceCalibrationPolicyRecord",
+	"ConfidenceCalibrationPolicyRepository",
 	"ConfiguredCitySelectionService",
 	"EnabledCityConfig",
 	"SourceHealthRepository",

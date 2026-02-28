@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -22,6 +23,7 @@ from councilsense.app.summarization import (
     persist_summarization_output,
 )
 from councilsense.db import (
+    ConfidenceCalibrationPolicyRepository,
     MeetingSummaryRepository,
     PILOT_CITY_ID,
     ProcessingRunRepository,
@@ -462,6 +464,7 @@ def test_publish_quality_gate_routes_weak_evidence_to_limited_confidence(
 
     assert result.publication.publication_status == "limited_confidence"
     assert result.publication.confidence_label == "limited_confidence"
+    assert result.publication.calibration_policy_version == "st015-calibration-policy-v1-default"
     assert "claim_evidence_gap_present" in result.quality_gate.reason_codes
     assert "evidence_coverage_below_threshold" in result.quality_gate.reason_codes
 
@@ -527,6 +530,100 @@ def test_publish_quality_gate_routes_sufficient_evidence_to_processed(
     assert result.publication.publication_status == "processed"
     assert result.publication.confidence_label == "medium"
     assert result.quality_gate.reason_codes == ("quality_gate_pass",)
+
+
+def test_publish_quality_gate_enforces_active_calibration_policy_and_propagates_version(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-contract-7", uid="meeting-contract-uid-7")
+
+    run_repository = ProcessingRunRepository(connection)
+    run = run_repository.create_pending_run(
+        run_id="run-contract-7",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T16:00:00Z",
+    )
+    publish_outcome = run_repository.upsert_stage_outcome(
+        outcome_id="outcome-contract-publish-7",
+        run_id=run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-contract-7",
+        stage_name="publish",
+        status="processed",
+        metadata_json='{"source":"summarizer"}',
+        started_at="2026-02-27T16:00:01Z",
+        finished_at="2026-02-27T16:00:11Z",
+    )
+
+    policy_repo = ConfidenceCalibrationPolicyRepository(connection)
+    policy_repo.upsert_policy(
+        version="st015-calibration-policy-v2-confidence",
+        min_claim_count=1,
+        min_total_evidence_pointers=1,
+        min_evidence_coverage_rate=1.0,
+        max_evidence_gap_claims=0,
+        min_confidence_score=0.9,
+        source_audit_run_id=None,
+        reviewer_outcome_counts={"policy_adjustment_recommended": 2},
+        notes="Tighten confidence gate after reviewer outcomes.",
+        activate=True,
+        activated_at="2026-02-27T16:05:00Z",
+    )
+
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "Council approved transportation package updates.",
+            "key_decisions": ["Approved package updates"],
+            "key_actions": ["Staff to publish revised timeline"],
+            "notable_topics": ["Transportation"],
+            "claims": [
+                {
+                    "claim_text": "Council approved package updates.",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-transport-7",
+                            "section_ref": "minutes.section.7",
+                            "excerpt": "Motion passed to approve package updates.",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-contract-7",
+        meeting_id="meeting-contract-7",
+        processing_run_id=run.id,
+        publish_stage_outcome_id=publish_outcome.id,
+        version_no=1,
+        base_confidence_label="high",
+        output=output,
+        published_at="2026-02-27T16:00:30Z",
+        confidence_score=0.75,
+    )
+
+    assert result.publication.publication_status == "limited_confidence"
+    assert result.publication.confidence_label == "limited_confidence"
+    assert result.publication.calibration_policy_version == "st015-calibration-policy-v2-confidence"
+    assert result.quality_gate.calibration_policy_version == "st015-calibration-policy-v2-confidence"
+    assert "confidence_below_policy_threshold" in result.quality_gate.reason_codes
+
+    metadata_row = connection.execute(
+        """
+        SELECT metadata_json
+        FROM processing_stage_outcomes
+        WHERE id = ?
+        """,
+        (publish_outcome.id,),
+    ).fetchone()
+    assert metadata_row is not None
+    metadata = json.loads(str(metadata_row[0]))
+    assert metadata["calibration_policy_version"] == "st015-calibration-policy-v2-confidence"
+    assert metadata["calibration_min_confidence_score"] == 0.9
 
 
 def test_published_claim_evidence_is_retrievable_in_reader_shape(

@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION = "st015-calibration-policy-v1-default"
+
+
 PublicationStatus = Literal["processed", "limited_confidence"]
 ConfidenceLabel = Literal["high", "medium", "low", "limited_confidence"]
 
@@ -18,6 +21,7 @@ class SummaryPublicationRecord:
     version_no: int
     publication_status: PublicationStatus
     confidence_label: ConfidenceLabel
+    calibration_policy_version: str
     summary_text: str
     key_decisions_json: str
     key_actions_json: str
@@ -67,6 +71,7 @@ class MeetingSummaryRepository:
         key_actions_json: str,
         notable_topics_json: str,
         published_at: str | None,
+        calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
     ) -> SummaryPublicationRecord:
         with self._connection:
             return self.create_publication_in_transaction(
@@ -77,6 +82,7 @@ class MeetingSummaryRepository:
                 version_no=version_no,
                 publication_status=publication_status,
                 confidence_label=confidence_label,
+                calibration_policy_version=calibration_policy_version,
                 summary_text=summary_text,
                 key_decisions_json=key_decisions_json,
                 key_actions_json=key_actions_json,
@@ -99,6 +105,7 @@ class MeetingSummaryRepository:
         key_actions_json: str,
         notable_topics_json: str,
         published_at: str | None,
+        calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
     ) -> SummaryPublicationRecord:
         self._connection.execute(
             """
@@ -110,13 +117,14 @@ class MeetingSummaryRepository:
                 version_no,
                 publication_status,
                 confidence_label,
+                calibration_policy_version,
                 summary_text,
                 key_decisions_json,
                 key_actions_json,
                 notable_topics_json,
                 published_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
             """,
             (
                 publication_id,
@@ -126,6 +134,7 @@ class MeetingSummaryRepository:
                 version_no,
                 publication_status,
                 confidence_label,
+                calibration_policy_version,
                 summary_text,
                 key_decisions_json,
                 key_actions_json,
@@ -144,6 +153,7 @@ class MeetingSummaryRepository:
                 version_no,
                 publication_status,
                 confidence_label,
+                calibration_policy_version,
                 summary_text,
                 key_decisions_json,
                 key_actions_json,
@@ -163,11 +173,12 @@ class MeetingSummaryRepository:
             version_no=int(row[4]),
             publication_status=str(row[5]),
             confidence_label=str(row[6]),
-            summary_text=str(row[7]),
-            key_decisions_json=str(row[8]),
-            key_actions_json=str(row[9]),
-            notable_topics_json=str(row[10]),
-            published_at=str(row[11]),
+            calibration_policy_version=str(row[7]),
+            summary_text=str(row[8]),
+            key_decisions_json=str(row[9]),
+            key_actions_json=str(row[10]),
+            notable_topics_json=str(row[11]),
+            published_at=str(row[12]),
         )
 
     def add_claim(

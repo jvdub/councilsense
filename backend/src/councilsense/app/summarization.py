@@ -9,7 +9,14 @@ from councilsense.app.notification_fanout import (
     NotificationSubscriptionTarget,
     enqueue_publish_notifications_to_outbox,
 )
-from councilsense.db import ConfidenceLabel, MeetingSummaryRepository, PublicationStatus, SummaryPublicationRecord
+from councilsense.db import (
+    ConfidenceCalibrationPolicyRepository,
+    ConfidenceLabel,
+    MeetingSummaryRepository,
+    PublicationStatus,
+    SummaryPublicationRecord,
+)
+from councilsense.db.meeting_summaries import DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION
 
 
 SUMMARIZATION_CONTRACT_VERSION = "st-005-v1"
@@ -249,17 +256,21 @@ class QualityGateConfig:
     min_total_evidence_pointers: int = 1
     min_evidence_coverage_rate: float = 0.75
     max_evidence_gap_claims: int = 0
+    min_confidence_score: float | None = None
 
 
 @dataclass(frozen=True)
 class QualityGateDecision:
     publication_status: PublicationStatus
     confidence_label: ConfidenceLabel
+    calibration_policy_version: str
     reason_codes: tuple[str, ...]
     claim_count: int
     claims_with_evidence: int
     total_evidence_pointers: int
     evidence_coverage_rate: float
+    confidence_score: float | None
+    min_confidence_score: float | None
 
 
 @dataclass(frozen=True)
@@ -274,6 +285,8 @@ def evaluate_quality_gate(
     output: SummarizationOutput,
     base_confidence_label: ConfidenceLabel = "high",
     config: QualityGateConfig | None = None,
+    confidence_score: float | None = None,
+    calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
 ) -> QualityGateDecision:
     gate_config = config or QualityGateConfig()
 
@@ -296,26 +309,37 @@ def evaluate_quality_gate(
     evidence_gap_claims = sum(1 for claim in output.claims if claim.evidence_gap)
     if evidence_gap_claims > gate_config.max_evidence_gap_claims:
         reason_codes.append("claim_evidence_gap_present")
+    if gate_config.min_confidence_score is not None:
+        if confidence_score is None:
+            reason_codes.append("confidence_signal_missing_for_policy")
+        elif confidence_score < gate_config.min_confidence_score:
+            reason_codes.append("confidence_below_policy_threshold")
 
     if reason_codes:
         return QualityGateDecision(
             publication_status="limited_confidence",
             confidence_label="limited_confidence",
+            calibration_policy_version=calibration_policy_version,
             reason_codes=tuple(reason_codes),
             claim_count=claim_count,
             claims_with_evidence=claims_with_evidence,
             total_evidence_pointers=total_evidence_pointers,
             evidence_coverage_rate=evidence_coverage_rate,
+            confidence_score=confidence_score,
+            min_confidence_score=gate_config.min_confidence_score,
         )
 
     return QualityGateDecision(
         publication_status="processed",
         confidence_label=base_confidence_label,
+        calibration_policy_version=calibration_policy_version,
         reason_codes=("quality_gate_pass",),
         claim_count=claim_count,
         claims_with_evidence=claims_with_evidence,
         total_evidence_pointers=total_evidence_pointers,
         evidence_coverage_rate=evidence_coverage_rate,
+        confidence_score=confidence_score,
+        min_confidence_score=gate_config.min_confidence_score,
     )
 
 
@@ -397,6 +421,7 @@ def persist_summarization_output(
     confidence_label: ConfidenceLabel,
     output: SummarizationOutput,
     published_at: str | None,
+    calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
 ) -> SummaryPublicationRecord:
     with repository.connection:
         publication = repository.create_publication_in_transaction(
@@ -407,6 +432,7 @@ def persist_summarization_output(
             version_no=version_no,
             publication_status=publication_status,
             confidence_label=confidence_label,
+            calibration_policy_version=calibration_policy_version,
             summary_text=output.summary,
             key_decisions_json=_encode_json_array(output.key_decisions),
             key_actions_json=_encode_json_array(output.key_actions),
@@ -435,12 +461,21 @@ def publish_summarization_output(
     published_at: str | None,
     city_id: str | None = None,
     quality_gate_config: QualityGateConfig | None = None,
+    confidence_score: float | None = None,
+    calibration_policy_version: str | None = None,
     notification_targets: Sequence[NotificationSubscriptionTarget] = (),
 ) -> PublishedSummarizationResult:
+    active_policy_config, active_policy_version = _resolve_calibration_policy(
+        repository=repository,
+        quality_gate_config=quality_gate_config,
+        calibration_policy_version=calibration_policy_version,
+    )
     quality_gate = evaluate_quality_gate(
         output=output,
         base_confidence_label=base_confidence_label,
-        config=quality_gate_config,
+        config=active_policy_config,
+        confidence_score=confidence_score,
+        calibration_policy_version=active_policy_version,
     )
     with repository.connection:
         publication = repository.create_publication_in_transaction(
@@ -451,6 +486,7 @@ def publish_summarization_output(
             version_no=version_no,
             publication_status=quality_gate.publication_status,
             confidence_label=quality_gate.confidence_label,
+            calibration_policy_version=quality_gate.calibration_policy_version,
             summary_text=output.summary,
             key_decisions_json=_encode_json_array(output.key_decisions),
             key_actions_json=_encode_json_array(output.key_actions),
@@ -463,6 +499,12 @@ def publish_summarization_output(
             claims=output.claims,
             in_transaction=True,
         )
+        if publish_stage_outcome_id is not None:
+            _annotate_publish_stage_outcome_metadata(
+                repository=repository,
+                publish_stage_outcome_id=publish_stage_outcome_id,
+                quality_gate=quality_gate,
+            )
         notification_enqueue = (
             enqueue_publish_notifications_to_outbox(
                 connection=repository.connection,
@@ -479,4 +521,75 @@ def publish_summarization_output(
         publication=publication,
         quality_gate=quality_gate,
         notification_enqueue=notification_enqueue,
+    )
+
+
+def _resolve_calibration_policy(
+    *,
+    repository: MeetingSummaryRepository,
+    quality_gate_config: QualityGateConfig | None,
+    calibration_policy_version: str | None,
+) -> tuple[QualityGateConfig, str]:
+    if quality_gate_config is not None:
+        version = calibration_policy_version or DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION
+        return quality_gate_config, version
+
+    policy = ConfidenceCalibrationPolicyRepository(repository.connection).get_active_policy()
+    return (
+        QualityGateConfig(
+            min_claim_count=policy.min_claim_count,
+            min_total_evidence_pointers=policy.min_total_evidence_pointers,
+            min_evidence_coverage_rate=policy.min_evidence_coverage_rate,
+            max_evidence_gap_claims=policy.max_evidence_gap_claims,
+            min_confidence_score=policy.min_confidence_score,
+        ),
+        policy.version,
+    )
+
+
+def _annotate_publish_stage_outcome_metadata(
+    *,
+    repository: MeetingSummaryRepository,
+    publish_stage_outcome_id: str,
+    quality_gate: QualityGateDecision,
+) -> None:
+    existing_row = repository.connection.execute(
+        """
+        SELECT metadata_json
+        FROM processing_stage_outcomes
+        WHERE id = ?
+        """,
+        (publish_stage_outcome_id,),
+    ).fetchone()
+    if existing_row is None:
+        return
+
+    metadata: dict[str, object]
+    metadata_json = existing_row[0]
+    if metadata_json is None:
+        metadata = {}
+    else:
+        try:
+            parsed = json.loads(str(metadata_json))
+        except json.JSONDecodeError:
+            parsed = {}
+        metadata = parsed if isinstance(parsed, dict) else {}
+
+    metadata["calibration_policy_version"] = quality_gate.calibration_policy_version
+    metadata["calibration_min_confidence_score"] = quality_gate.min_confidence_score
+    metadata["calibration_confidence_score"] = quality_gate.confidence_score
+    metadata["quality_gate_reason_codes"] = list(quality_gate.reason_codes)
+
+    repository.connection.execute(
+        """
+        UPDATE processing_stage_outcomes
+        SET
+            metadata_json = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            json.dumps(metadata, separators=(",", ":"), sort_keys=True),
+            publish_stage_outcome_id,
+        ),
     )
