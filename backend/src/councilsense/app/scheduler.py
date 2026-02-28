@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Lock
 from typing import Protocol
 from uuid import uuid4
 
+from councilsense.app.ecr_audit_job import EcrAuditRunResult, WeeklyEcrAuditJob
 from councilsense.db import CityRegistryRepository, ConfiguredCitySelectionService, ProcessingRunRepository
 
 
@@ -104,3 +106,12 @@ def run_scheduler_cycle(
         overlap_guard=overlap_guard,
     )
     return scheduler.enqueue_enabled_city_scans(cycle_id=cycle_id)
+
+
+def run_weekly_ecr_audit_cycle(
+    *,
+    connection: sqlite3.Connection,
+    scheduler_triggered_at_utc: datetime | None = None,
+) -> EcrAuditRunResult:
+    job = WeeklyEcrAuditJob(connection=connection)
+    return job.run_scheduled_weekly_audit(scheduler_triggered_at_utc=scheduler_triggered_at_utc)

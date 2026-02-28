@@ -50,6 +50,7 @@ class WeeklyAuditSampleResult:
     window_end_utc: datetime
     seed: str
     sample_size_requested: int
+    eligible_frame_count: int
     sample_size_actual: int
     selected: tuple[WeeklyAuditSampleSelection, ...]
     malformed_exclusions: tuple[MalformedSampleRecord, ...]
@@ -111,6 +112,7 @@ def select_weekly_audit_sample(
             window_end_utc=window_end_utc,
             seed=seed,
             sample_size_requested=sample_size,
+            eligible_frame_count=0,
             sample_size_actual=0,
             selected=(),
             malformed_exclusions=tuple(malformed),
@@ -181,6 +183,7 @@ def select_weekly_audit_sample(
         window_end_utc=window_end_utc,
         seed=seed,
         sample_size_requested=sample_size,
+        eligible_frame_count=len(eligible_sorted),
         sample_size_actual=len(selected),
         selected=selected_output,
         malformed_exclusions=tuple(malformed),
