@@ -1,0 +1,34 @@
+name: ST-012 Parity Contract Checks
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - docs/runbooks/st-012-*.md
+      - scripts/local_runtime_smoke.sh
+      - scripts/deploy_aws_staging_baseline.sh
+      - .github/workflows/st012-parity-contract-checks.yml
+      - .github/workflows/deploy-aws-staging-baseline.yml
+  workflow_dispatch:
+
+jobs:
+  parity-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend test dependencies
+        run: python -m pip install --upgrade pip pytest && python -m pip install -e backend
+
+      - name: Run ST-012 parity validations
+        run: |
+          pytest backend/tests/test_environment_contract_startup_validation.py \
+            backend/tests/test_aws_baseline_wiring.py \
+            backend/tests/test_st012_local_runtime_compose_smoke_flow.py \
+            backend/tests/test_st012_parity_ci_and_deployment_docs.py

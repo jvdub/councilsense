@@ -1,6 +1,15 @@
 # ST-012 Behavior Parity Checklist
 
-Use this checklist to validate the ST-012 parity architecture contract across local and AWS runtime paths.
+Use this checklist during release readiness to validate the ST-012 parity architecture contract across local and AWS runtime paths.
+
+## Release record
+
+- Release/tag:
+- Date (UTC):
+- Operator:
+- Local evidence links:
+- AWS staging evidence links:
+- Notes:
 
 ## Core mapping coverage
 
@@ -20,6 +29,12 @@ Use this checklist to validate the ST-012 parity architecture contract across lo
 - [ ] Retry behavior is bounded and configured through environment knobs only.
 - [ ] Duplicate processing from at-least-once delivery does not violate logical idempotency.
 - [ ] Visibility/eligibility behavior is adapter-specific but semantically equivalent (ready-only consumption).
+
+## Reliability parity
+
+- [ ] Local smoke (`scripts/local_runtime_smoke.sh`) passes without manual data repair.
+- [ ] AWS staging post-deploy smoke checks pass (`docs/runbooks/st-012-aws-baseline-staging-validation.md`).
+- [ ] Queue + DLQ baseline is present and writable/readable in both deployment paths.
 
 ## Startup dependency parity
 
@@ -42,8 +57,16 @@ Use this checklist to validate the ST-012 parity architecture contract across lo
 - [ ] Stage/outcome labels stay within closed enums for local and cloud.
 - [ ] Notification enqueue/delivery metric names match canonical contract.
 
+## Known acceptable environment differences
+
+- [ ] Queue transport differs (local adapter vs SQS) with the same payload schema and idempotent worker behavior.
+- [ ] Storage implementation differs (local baseline vs S3) with the same artifact contract.
+- [ ] Secret source differs (`env` vs `aws-secretsmanager`) with the same required key contract.
+- [ ] Any additional deviation is documented with a compensating control before release.
+
 ## Review sign-off
 
 - [ ] Platform owner reviewed local↔AWS mapping and acceptable differences.
 - [ ] Backend owner reviewed idempotency/retry/visibility parity constraints.
 - [ ] Any deviation has a documented compensating control before release.
+- [ ] Observability owner validated telemetry parity for logs + metrics in both paths.
