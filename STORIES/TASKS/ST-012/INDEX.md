@@ -8,7 +8,7 @@
 - [x] [TASK-ST-012-01](TASK-ST-012-01-parity-architecture-contract.md) — Parity Architecture Contract
 - [x] [TASK-ST-012-02](TASK-ST-012-02-environment-contract-and-startup-validation.md) — Environment Contract and Startup Validation
 - [x] [TASK-ST-012-03](TASK-ST-012-03-local-runtime-compose-and-smoke-flow.md) — Local Runtime Compose and Smoke Flow
-- [ ] [TASK-ST-012-04](TASK-ST-012-04-aws-baseline-wiring.md) — AWS Baseline Wiring
+- [x] [TASK-ST-012-04](TASK-ST-012-04-aws-baseline-wiring.md) — AWS Baseline Wiring
 - [ ] [TASK-ST-012-05](TASK-ST-012-05-parity-checklist-ci-and-deployment-docs.md) — Parity Checklist, CI, and Deployment Docs
 
 ## Dependency Chain

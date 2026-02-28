@@ -1,0 +1,46 @@
+name: Deploy AWS Staging Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: CloudFormation stack name
+        required: false
+        default: councilsense-staging-baseline
+      environment_name:
+        description: Deployment environment name
+        required: false
+        default: staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy baseline stack
+        env:
+          STACK_NAME: ${{ github.event.inputs.stack_name }}
+          ENVIRONMENT_NAME: ${{ github.event.inputs.environment_name }}
+          IMAGE_IDENTIFIER_API: ${{ vars.IMAGE_IDENTIFIER_API }}
+          IMAGE_IDENTIFIER_WORKER: ${{ vars.IMAGE_IDENTIFIER_WORKER }}
+          VPC_CONNECTOR_SUBNETS: ${{ vars.VPC_CONNECTOR_SUBNETS }}
+          VPC_CONNECTOR_SECURITY_GROUPS: ${{ vars.VPC_CONNECTOR_SECURITY_GROUPS }}
+          DATABASE_SUBNETS: ${{ vars.DATABASE_SUBNETS }}
+          DATABASE_SECURITY_GROUPS: ${{ vars.DATABASE_SECURITY_GROUPS }}
+          RDS_MASTER_USERNAME: ${{ vars.RDS_MASTER_USERNAME }}
+          RDS_MASTER_USER_PASSWORD: ${{ secrets.RDS_MASTER_USER_PASSWORD }}
+          SUPPORTED_CITY_IDS: ${{ vars.SUPPORTED_CITY_IDS }}
+          TELEMETRY_OTLP_ENDPOINT: ${{ vars.TELEMETRY_OTLP_ENDPOINT }}
+        run: bash ./scripts/deploy_aws_staging_baseline.sh

@@ -1,0 +1,390 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "CouncilSense ST-012 baseline AWS runtime wiring for staging.",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "Default": "staging",
+      "AllowedPattern": "[a-z0-9-]+",
+      "Description": "Deployment environment name."
+    },
+    "ImageIdentifierApi": {
+      "Type": "String",
+      "Description": "Container image URI for API App Runner service."
+    },
+    "ImageIdentifierWorker": {
+      "Type": "String",
+      "Description": "Container image URI for worker App Runner service."
+    },
+    "VpcConnectorSubnets": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Private subnet IDs for App Runner VPC connector."
+    },
+    "VpcConnectorSecurityGroups": {
+      "Type": "List<AWS::EC2::SecurityGroup::Id>",
+      "Description": "Security group IDs for App Runner VPC connector."
+    },
+    "DatabaseSubnets": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Private subnet IDs for RDS subnet group."
+    },
+    "DatabaseSecurityGroups": {
+      "Type": "List<AWS::EC2::SecurityGroup::Id>",
+      "Description": "Security group IDs allowing DB access from App Runner connector."
+    },
+    "RdsMasterUsername": {
+      "Type": "String",
+      "Default": "councilsense",
+      "MinLength": 1,
+      "Description": "Master username for baseline RDS instance."
+    },
+    "RdsMasterUserPassword": {
+      "Type": "String",
+      "NoEcho": true,
+      "MinLength": 16,
+      "Description": "Master password for baseline RDS instance."
+    },
+    "CloudWatchLogRetentionDays": {
+      "Type": "Number",
+      "Default": 14,
+      "AllowedValues": [7, 14, 30, 60, 90],
+      "Description": "CloudWatch log retention for App Runner log groups."
+    },
+    "ApiCpu": {
+      "Type": "String",
+      "Default": "0.5 vCPU",
+      "AllowedValues": ["0.25 vCPU", "0.5 vCPU", "1 vCPU", "2 vCPU"],
+      "Description": "CPU for API App Runner instance."
+    },
+    "ApiMemory": {
+      "Type": "String",
+      "Default": "1 GB",
+      "AllowedValues": ["0.5 GB", "1 GB", "2 GB", "3 GB", "4 GB"],
+      "Description": "Memory for API App Runner instance."
+    },
+    "WorkerCpu": {
+      "Type": "String",
+      "Default": "0.5 vCPU",
+      "AllowedValues": ["0.25 vCPU", "0.5 vCPU", "1 vCPU", "2 vCPU"],
+      "Description": "CPU for worker App Runner instance."
+    },
+    "WorkerMemory": {
+      "Type": "String",
+      "Default": "1 GB",
+      "AllowedValues": ["0.5 GB", "1 GB", "2 GB", "3 GB", "4 GB"],
+      "Description": "Memory for worker App Runner instance."
+    },
+    "TelemetryOtlpEndpoint": {
+      "Type": "String",
+      "Default": "https://otlp.staging.internal:4318",
+      "Description": "OTLP endpoint for ST-011 telemetry export."
+    },
+    "SupportedCityIds": {
+      "Type": "String",
+      "Default": "seattle-wa",
+      "Description": "Comma-separated supported city IDs."
+    }
+  },
+  "Resources": {
+    "BaselineArtifactsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "ExpireNoncurrentVersions",
+              "Status": "Enabled",
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineDeadLetterQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": {"Fn::Sub": "councilsense-${EnvironmentName}-dlq"},
+        "MessageRetentionPeriod": 1209600,
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": {"Fn::Sub": "councilsense-${EnvironmentName}-events"},
+        "VisibilityTimeout": 90,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {"Fn::GetAtt": ["BaselineDeadLetterQueue", "Arn"]},
+          "maxReceiveCount": 5
+        },
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineSessionSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": {"Fn::Sub": "councilsense/${EnvironmentName}/auth/session"},
+        "Description": "Auth session secret used by API and worker.",
+        "GenerateSecretString": {
+          "ExcludePunctuation": true,
+          "PasswordLength": 48
+        },
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineDbPasswordSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": {"Fn::Sub": "councilsense/${EnvironmentName}/db/master-password"},
+        "Description": "Mirror of baseline DB password for service-level secret injection.",
+        "SecretString": {"Ref": "RdsMasterUserPassword"},
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineDbSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "CouncilSense baseline DB subnet group",
+        "SubnetIds": {"Ref": "DatabaseSubnets"},
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineDatabase": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": {"Fn::Sub": "councilsense-${EnvironmentName}-db"},
+        "Engine": "postgres",
+        "EngineVersion": "16.3",
+        "DBInstanceClass": "db.t4g.micro",
+        "AllocatedStorage": "20",
+        "PubliclyAccessible": false,
+        "StorageEncrypted": true,
+        "MasterUsername": {"Ref": "RdsMasterUsername"},
+        "MasterUserPassword": {"Ref": "RdsMasterUserPassword"},
+        "DBName": "councilsense",
+        "BackupRetentionPeriod": 7,
+        "DeletionProtection": false,
+        "VPCSecurityGroups": {"Ref": "DatabaseSecurityGroups"},
+        "DBSubnetGroupName": {"Ref": "BaselineDbSubnetGroup"},
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineVpcConnector": {
+      "Type": "AWS::AppRunner::VpcConnector",
+      "Properties": {
+        "VpcConnectorName": {"Fn::Sub": "councilsense-${EnvironmentName}-connector"},
+        "Subnets": {"Ref": "VpcConnectorSubnets"},
+        "SecurityGroups": {"Ref": "VpcConnectorSecurityGroups"},
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineApiLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {"Fn::Sub": "/aws/apprunner/councilsense-${EnvironmentName}-api/application"},
+        "RetentionInDays": {"Ref": "CloudWatchLogRetentionDays"}
+      }
+    },
+    "BaselineWorkerLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {"Fn::Sub": "/aws/apprunner/councilsense-${EnvironmentName}-worker/application"},
+        "RetentionInDays": {"Ref": "CloudWatchLogRetentionDays"}
+      }
+    },
+    "BaselineApiService": {
+      "Type": "AWS::AppRunner::Service",
+      "Properties": {
+        "ServiceName": {"Fn::Sub": "councilsense-${EnvironmentName}-api"},
+        "InstanceConfiguration": {
+          "Cpu": {"Ref": "ApiCpu"},
+          "Memory": {"Ref": "ApiMemory"}
+        },
+        "SourceConfiguration": {
+          "AutoDeploymentsEnabled": false,
+          "ImageRepository": {
+            "ImageIdentifier": {"Ref": "ImageIdentifierApi"},
+            "ImageRepositoryType": "ECR",
+            "ImageConfiguration": {
+              "Port": "8000",
+              "RuntimeEnvironmentVariables": [
+                {"Name": "COUNCILSENSE_RUNTIME_ENV", "Value": "aws"},
+                {"Name": "COUNCILSENSE_SECRET_SOURCE", "Value": "aws-secretsmanager"},
+                {"Name": "COUNCILSENSE_SQLITE_PATH", "Value": "/tmp/councilsense.sqlite3"},
+                {"Name": "SUPPORTED_CITY_IDS", "Value": {"Ref": "SupportedCityIds"}},
+                {"Name": "MANUAL_REVIEW_CONFIDENCE_THRESHOLD", "Value": "0.6"},
+                {"Name": "WARN_CONFIDENCE_THRESHOLD", "Value": "0.8"},
+                {"Name": "COUNCILSENSE_STORAGE_BUCKET", "Value": {"Ref": "BaselineArtifactsBucket"}},
+                {"Name": "COUNCILSENSE_QUEUE_URL", "Value": {"Ref": "BaselineQueue"}},
+                {
+                  "Name": "COUNCILSENSE_DATABASE_ENDPOINT",
+                  "Value": {"Fn::GetAtt": ["BaselineDatabase", "Endpoint.Address"]}
+                },
+                {"Name": "OTEL_EXPORTER_OTLP_ENDPOINT", "Value": {"Ref": "TelemetryOtlpEndpoint"}},
+                {"Name": "OTEL_RESOURCE_ATTRIBUTES", "Value": "service.name=councilsense-api,service.namespace=councilsense,deployment.environment=aws"}
+              ],
+              "RuntimeEnvironmentSecrets": [
+                {"Name": "AUTH_SESSION_SECRET", "Value": {"Ref": "BaselineSessionSecret"}},
+                {"Name": "RDS_MASTER_PASSWORD", "Value": {"Ref": "BaselineDbPasswordSecret"}}
+              ],
+              "StartCommand": "uvicorn councilsense.app.main:app --host 0.0.0.0 --port 8000"
+            }
+          }
+        },
+        "NetworkConfiguration": {
+          "EgressConfiguration": {
+            "EgressType": "VPC",
+            "VpcConnectorArn": {"Fn::GetAtt": ["BaselineVpcConnector", "VpcConnectorArn"]}
+          }
+        },
+        "HealthCheckConfiguration": {
+          "Protocol": "HTTP",
+          "Path": "/healthz",
+          "HealthyThreshold": 1,
+          "UnhealthyThreshold": 5,
+          "Interval": 20,
+          "Timeout": 10
+        },
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "BaselineWorkerService": {
+      "Type": "AWS::AppRunner::Service",
+      "Properties": {
+        "ServiceName": {"Fn::Sub": "councilsense-${EnvironmentName}-worker"},
+        "InstanceConfiguration": {
+          "Cpu": {"Ref": "WorkerCpu"},
+          "Memory": {"Ref": "WorkerMemory"}
+        },
+        "SourceConfiguration": {
+          "AutoDeploymentsEnabled": false,
+          "ImageRepository": {
+            "ImageIdentifier": {"Ref": "ImageIdentifierWorker"},
+            "ImageRepositoryType": "ECR",
+            "ImageConfiguration": {
+              "RuntimeEnvironmentVariables": [
+                {"Name": "COUNCILSENSE_RUNTIME_ENV", "Value": "aws"},
+                {"Name": "COUNCILSENSE_SECRET_SOURCE", "Value": "aws-secretsmanager"},
+                {"Name": "COUNCILSENSE_SQLITE_PATH", "Value": "/tmp/councilsense.sqlite3"},
+                {"Name": "SUPPORTED_CITY_IDS", "Value": {"Ref": "SupportedCityIds"}},
+                {"Name": "MANUAL_REVIEW_CONFIDENCE_THRESHOLD", "Value": "0.6"},
+                {"Name": "WARN_CONFIDENCE_THRESHOLD", "Value": "0.8"},
+                {"Name": "COUNCILSENSE_STORAGE_BUCKET", "Value": {"Ref": "BaselineArtifactsBucket"}},
+                {"Name": "COUNCILSENSE_QUEUE_URL", "Value": {"Ref": "BaselineQueue"}},
+                {
+                  "Name": "COUNCILSENSE_DATABASE_ENDPOINT",
+                  "Value": {"Fn::GetAtt": ["BaselineDatabase", "Endpoint.Address"]}
+                },
+                {"Name": "OTEL_EXPORTER_OTLP_ENDPOINT", "Value": {"Ref": "TelemetryOtlpEndpoint"}},
+                {"Name": "OTEL_RESOURCE_ATTRIBUTES", "Value": "service.name=councilsense-worker,service.namespace=councilsense,deployment.environment=aws"}
+              ],
+              "RuntimeEnvironmentSecrets": [
+                {"Name": "AUTH_SESSION_SECRET", "Value": {"Ref": "BaselineSessionSecret"}},
+                {"Name": "RDS_MASTER_PASSWORD", "Value": {"Ref": "BaselineDbPasswordSecret"}}
+              ],
+              "StartCommand": "python -m councilsense.app.notification_delivery_worker"
+            }
+          }
+        },
+        "NetworkConfiguration": {
+          "EgressConfiguration": {
+            "EgressType": "VPC",
+            "VpcConnectorArn": {"Fn::GetAtt": ["BaselineVpcConnector", "VpcConnectorArn"]}
+          }
+        },
+        "Tags": [
+          {"Key": "app", "Value": "councilsense"},
+          {"Key": "environment", "Value": {"Ref": "EnvironmentName"}}
+        ]
+      }
+    },
+    "FrontendHostingStub": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": {"Fn::Sub": "/councilsense/${EnvironmentName}/web/amplify_app_id"},
+        "Type": "String",
+        "Value": "replace-with-amplify-app-id",
+        "Description": "Amplify Hosting app id for the web runtime."
+      }
+    }
+  },
+  "Outputs": {
+    "ArtifactsBucketName": {
+      "Description": "S3 bucket for baseline storage artifacts.",
+      "Value": {"Ref": "BaselineArtifactsBucket"}
+    },
+    "QueueUrl": {
+      "Description": "Primary queue URL for notification/pipeline events.",
+      "Value": {"Ref": "BaselineQueue"}
+    },
+    "QueueArn": {
+      "Description": "Primary queue ARN for IAM bindings.",
+      "Value": {"Fn::GetAtt": ["BaselineQueue", "Arn"]}
+    },
+    "DeadLetterQueueUrl": {
+      "Description": "Dead-letter queue URL for terminal failures.",
+      "Value": {"Ref": "BaselineDeadLetterQueue"}
+    },
+    "DatabaseEndpoint": {
+      "Description": "RDS endpoint address.",
+      "Value": {"Fn::GetAtt": ["BaselineDatabase", "Endpoint.Address"]}
+    },
+    "ApiServiceUrl": {
+      "Description": "API service URL.",
+      "Value": {"Fn::GetAtt": ["BaselineApiService", "ServiceUrl"]}
+    },
+    "WorkerServiceArn": {
+      "Description": "Worker service ARN.",
+      "Value": {"Fn::GetAtt": ["BaselineWorkerService", "ServiceArn"]}
+    },
+    "SessionSecretArn": {
+      "Description": "Auth session secret ARN.",
+      "Value": {"Ref": "BaselineSessionSecret"}
+    }
+  }
+}
