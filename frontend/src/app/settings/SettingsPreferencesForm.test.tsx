@@ -8,6 +8,86 @@ import { SettingsPreferencesForm } from "./SettingsPreferencesForm";
 
 const refreshMock = vi.fn();
 
+const serviceWorkerRegisterMock = vi.fn();
+const serviceWorkerGetRegistrationMock = vi.fn();
+const pushManagerGetSubscriptionMock = vi.fn();
+const pushManagerSubscribeMock = vi.fn();
+const pushSubscriptionUnsubscribeMock = vi.fn();
+const notificationRequestPermissionMock = vi.fn();
+
+let notificationPermissionState: NotificationPermission = "default";
+
+function setPushUnsupportedBrowser() {
+  Object.defineProperty(window, "PushManager", {
+    configurable: true,
+    value: undefined,
+  });
+
+  Object.defineProperty(window, "Notification", {
+    configurable: true,
+    value: undefined,
+  });
+
+  Object.defineProperty(navigator, "serviceWorker", {
+    configurable: true,
+    value: undefined,
+  });
+}
+
+function setPushSupportedBrowser({
+  permission = "default",
+  existingSubscription = null,
+}: {
+  permission?: NotificationPermission;
+  existingSubscription?: { unsubscribe: () => Promise<boolean> } | null;
+} = {}) {
+  notificationPermissionState = permission;
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BEl6MU5fM2VxQk9hYkhWVE5TV0xqU0FLeXhyY0JvUmVubEx3aUNYQnY2Q1M";
+
+  pushManagerGetSubscriptionMock.mockResolvedValue(existingSubscription);
+  pushManagerSubscribeMock.mockResolvedValue({ endpoint: "https://example.test/push/sub-1" });
+  serviceWorkerGetRegistrationMock.mockResolvedValue({
+    pushManager: {
+      getSubscription: pushManagerGetSubscriptionMock,
+      subscribe: pushManagerSubscribeMock,
+    },
+  });
+  serviceWorkerRegisterMock.mockResolvedValue({
+    pushManager: {
+      getSubscription: pushManagerGetSubscriptionMock,
+      subscribe: pushManagerSubscribeMock,
+    },
+  });
+
+  Object.defineProperty(window, "PushManager", {
+    configurable: true,
+    value: function PushManager() {
+      return undefined;
+    },
+  });
+
+  Object.defineProperty(window, "Notification", {
+    configurable: true,
+    value: {
+      get permission() {
+        return notificationPermissionState;
+      },
+      requestPermission: notificationRequestPermissionMock.mockImplementation(async () => {
+        notificationPermissionState = "granted";
+        return "granted";
+      }),
+    },
+  });
+
+  Object.defineProperty(navigator, "serviceWorker", {
+    configurable: true,
+    value: {
+      register: serviceWorkerRegisterMock,
+      getRegistration: serviceWorkerGetRegistrationMock,
+    },
+  });
+}
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     refresh: refreshMock,
@@ -30,6 +110,9 @@ describe("SettingsPreferencesForm", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    setPushSupportedBrowser();
+    pushSubscriptionUnsubscribeMock.mockResolvedValue(true);
   });
 
   it("renders persisted profile values", () => {
@@ -177,5 +260,105 @@ describe("SettingsPreferencesForm", () => {
       notifications_paused_until: null,
     });
     expect(await screen.findByText("Notifications paused until: Not paused")).toBeInTheDocument();
+  });
+
+  it("shows unsupported-browser push messaging", () => {
+    setPushUnsupportedBrowser();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Push is not supported in this browser. You can still manage notification preferences above."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows denied-permission guidance", () => {
+    setPushSupportedBrowser({ permission: "denied" });
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Push is blocked by browser permission. Enable notifications in browser settings, then retry."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enable push on this device" })).toBeDisabled();
+  });
+
+  it("subscribes push on explicit user action", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Enable push on this device" }));
+
+    expect(notificationRequestPermissionMock).toHaveBeenCalledTimes(1);
+    expect(serviceWorkerRegisterMock).toHaveBeenCalledWith("/sw.js");
+    expect(pushManagerSubscribeMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Device subscription: Enabled")).toBeInTheDocument();
+    expect(await screen.findByText("Push enabled on this device.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disable push on this device" })).toBeEnabled();
+  });
+
+  it("unsubscribes push when already subscribed", async () => {
+    const user = userEvent.setup();
+
+    setPushSupportedBrowser({
+      permission: "granted",
+      existingSubscription: {
+        unsubscribe: pushSubscriptionUnsubscribeMock,
+      },
+    });
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("Device subscription: Enabled")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Disable push on this device" }));
+
+    expect(pushSubscriptionUnsubscribeMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Device subscription: Not enabled")).toBeInTheDocument();
+    expect(await screen.findByText("Push disabled on this device.")).toBeInTheDocument();
   });
 });
