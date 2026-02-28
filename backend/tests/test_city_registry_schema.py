@@ -30,6 +30,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0008_processing_run_provenance.sql" in before.pending
     assert "0009_manual_review_needed_status.sql" in before.pending
     assert "0010_notification_outbox_and_attempt_schema.sql" in before.pending
+    assert "0011_governance_request_data_model.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -43,6 +44,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0008_processing_run_provenance.sql",
         "0009_manual_review_needed_status.sql",
         "0010_notification_outbox_and_attempt_schema.sql",
+        "0011_governance_request_data_model.sql",
     )
 
     after_first_apply = get_migration_status(connection)

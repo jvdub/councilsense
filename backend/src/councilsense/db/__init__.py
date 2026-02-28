@@ -43,6 +43,19 @@ from councilsense.db.notifications import (
 	NotificationOutboxRecord,
 	NotificationOutboxStatus,
 )
+from councilsense.db.governance import (
+	GOVERNANCE_DELETION_REQUEST_STATUS_MODEL,
+	GOVERNANCE_EXPORT_REQUEST_STATUS_MODEL,
+	GovernanceAuditEventRecord,
+	GovernanceDeletionMode,
+	GovernanceDeletionRequestRecord,
+	GovernanceDeletionRequestStatus,
+	GovernanceExportRequestRecord,
+	GovernanceExportRequestStatus,
+	GovernanceRequestStatusHistoryRecord,
+	GovernanceRequestStatusModel,
+	GovernanceRetentionPolicyRecord,
+)
 from councilsense.db.migrations import apply_migrations, get_migration_status
 from councilsense.db.seed import PILOT_CITY_ID, PILOT_CITY_SOURCE_ID, seed_city_registry
 
@@ -69,6 +82,17 @@ __all__ = [
 	"NotificationDeliveryAttemptRecord",
 	"NotificationOutboxRecord",
 	"NotificationOutboxStatus",
+	"GOVERNANCE_DELETION_REQUEST_STATUS_MODEL",
+	"GOVERNANCE_EXPORT_REQUEST_STATUS_MODEL",
+	"GovernanceAuditEventRecord",
+	"GovernanceDeletionMode",
+	"GovernanceDeletionRequestRecord",
+	"GovernanceDeletionRequestStatus",
+	"GovernanceExportRequestRecord",
+	"GovernanceExportRequestStatus",
+	"GovernanceRequestStatusHistoryRecord",
+	"GovernanceRequestStatusModel",
+	"GovernanceRetentionPolicyRecord",
 	"ProcessingLifecycleService",
 	"OperatorManualReviewRunRecord",
 	"OperatorSourceRecord",
