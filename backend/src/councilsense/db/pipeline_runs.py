@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from hashlib import sha256
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,6 +16,8 @@ class ProcessingRunRecord:
     city_id: str
     cycle_id: str
     status: RunLifecycleStatus
+    parser_version: str
+    source_version: str
     started_at: str | None
     finished_at: str | None
 
@@ -36,13 +40,23 @@ class ProcessingRunRepository:
         self._connection = connection
 
     def create_pending_run(self, *, run_id: str, city_id: str, cycle_id: str) -> ProcessingRunRecord:
+        parser_version, source_version = self._derive_run_provenance(city_id=city_id)
+
         with self._connection:
             self._connection.execute(
                 """
-                INSERT INTO processing_runs (id, city_id, cycle_id, status, started_at)
-                VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP)
+                INSERT INTO processing_runs (
+                    id,
+                    city_id,
+                    cycle_id,
+                    status,
+                    parser_version,
+                    source_version,
+                    started_at
+                )
+                VALUES (?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP)
                 """,
-                (run_id, city_id, cycle_id),
+                (run_id, city_id, cycle_id, parser_version, source_version),
             )
 
         return self.get_run(run_id=run_id)
@@ -69,7 +83,7 @@ class ProcessingRunRepository:
     def get_run(self, *, run_id: str) -> ProcessingRunRecord:
         row = self._connection.execute(
             """
-            SELECT id, city_id, cycle_id, status, started_at, finished_at
+            SELECT id, city_id, cycle_id, status, parser_version, source_version, started_at, finished_at
             FROM processing_runs
             WHERE id = ?
             """,
@@ -83,9 +97,42 @@ class ProcessingRunRepository:
             city_id=str(row[1]),
             cycle_id=str(row[2]),
             status=str(row[3]),
-            started_at=str(row[4]) if row[4] is not None else None,
-            finished_at=str(row[5]) if row[5] is not None else None,
+            parser_version=str(row[4]),
+            source_version=str(row[5]),
+            started_at=str(row[6]) if row[6] is not None else None,
+            finished_at=str(row[7]) if row[7] is not None else None,
         )
+
+    def _derive_run_provenance(self, *, city_id: str) -> tuple[str, str]:
+        rows = self._connection.execute(
+            """
+            SELECT id, source_type, source_url, parser_name, parser_version
+            FROM city_sources
+            WHERE city_id = ?
+              AND enabled = 1
+            ORDER BY source_type ASC, id ASC
+            """,
+            (city_id,),
+        ).fetchall()
+
+        if not rows:
+            return ("unknown", "unknown")
+
+        parser_version = "|".join(f"{str(row[3]).strip()}@{str(row[4]).strip()}" for row in rows)
+        source_descriptor = [
+            {
+                "id": str(row[0]),
+                "parser_name": str(row[3]),
+                "parser_version": str(row[4]),
+                "source_type": str(row[1]),
+                "source_url": str(row[2]),
+            }
+            for row in rows
+        ]
+        source_fingerprint = sha256(
+            json.dumps(source_descriptor, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:12]
+        return (parser_version, f"sources-sha256:{source_fingerprint}")
 
     def upsert_stage_outcome(
         self,

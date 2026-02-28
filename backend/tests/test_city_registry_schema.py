@@ -26,6 +26,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0005_summary_publish_append_only_guards.sql" in before.pending
     assert "0006_meeting_reader_query_indexes.sql" in before.pending
     assert "0007_source_health_failure_context.sql" in before.pending
+    assert "0008_processing_run_provenance.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -36,6 +37,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0005_summary_publish_append_only_guards.sql",
         "0006_meeting_reader_query_indexes.sql",
         "0007_source_health_failure_context.sql",
+        "0008_processing_run_provenance.sql",
     )
 
     after_first_apply = get_migration_status(connection)

@@ -108,6 +108,33 @@ def test_scheduler_enqueue_to_completion_and_failure_persists_lifecycle_records(
             2,
         ),
     )
+    connection.execute(
+        """
+        INSERT INTO city_sources (
+            id,
+            city_id,
+            source_type,
+            source_url,
+            enabled,
+            parser_name,
+            parser_version,
+            health_status,
+            failure_streak
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "source-second-minutes-primary",
+            "city-second",
+            "minutes",
+            "https://second-city.ut/minutes",
+            1,
+            "second-minutes-parser",
+            "v2",
+            "unknown",
+            0,
+        ),
+    )
 
     queue = InMemoryCityScanQueueProducer()
     enqueued_city_ids = run_scheduler_cycle(
@@ -151,6 +178,10 @@ def test_scheduler_enqueue_to_completion_and_failure_persists_lifecycle_records(
 
     assert processed_run.status == "processed"
     assert failed_run.status == "failed"
+    assert processed_run.parser_version == "civicplus-minutes-html@v1"
+    assert failed_run.parser_version == "second-minutes-parser@v2"
+    assert processed_run.source_version.startswith("sources-sha256:")
+    assert failed_run.source_version.startswith("sources-sha256:")
     assert processed_run.finished_at is not None
     assert failed_run.finished_at is not None
 
