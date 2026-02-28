@@ -1,0 +1,97 @@
+{
+  "required_log_keys": [
+    "city_id",
+    "meeting_id",
+    "run_id",
+    "dedupe_key",
+    "stage",
+    "outcome"
+  ],
+  "stages": [
+    "ingest",
+    "extract",
+    "summarize",
+    "publish",
+    "notify_enqueue",
+    "notify_deliver"
+  ],
+  "outcomes": [
+    "success",
+    "failure",
+    "retry",
+    "suppressed",
+    "invalid_subscription",
+    "expired_subscription",
+    "duplicate"
+  ],
+  "metrics": [
+    {
+      "name": "councilsense_pipeline_stage_events_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_pipeline_stage_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_enqueue_events_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_delivery_events_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_delivery_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "labels": ["stage", "outcome"]
+    }
+  ],
+  "example_events": [
+    {
+      "event_name": "pipeline_stage_completed",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-2026-02-27-001",
+      "run_id": "run-20260227-001",
+      "dedupe_key": "pipeline:run-20260227-001:meeting-2026-02-27-001",
+      "stage": "summarize",
+      "outcome": "success"
+    },
+    {
+      "event_name": "pipeline_stage_failed",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-2026-02-27-001",
+      "run_id": "run-20260227-001",
+      "dedupe_key": "pipeline:run-20260227-001:meeting-2026-02-27-001",
+      "stage": "extract",
+      "outcome": "failure"
+    },
+    {
+      "event_name": "notification_enqueue_result",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-2026-02-27-001",
+      "run_id": "run-20260227-001",
+      "dedupe_key": "notif-dedupe-v1:26f6aee97ae3f4bd8f8b7d7be54f6f4f8f2f1385c3ae74ab0a6e54b4b4027cd4",
+      "stage": "notify_enqueue",
+      "outcome": "duplicate"
+    },
+    {
+      "event_name": "notification_delivery_attempt",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-2026-02-27-001",
+      "run_id": "run-20260227-001",
+      "dedupe_key": "notif-dedupe-v1:26f6aee97ae3f4bd8f8b7d7be54f6f4f8f2f1385c3ae74ab0a6e54b4b4027cd4",
+      "stage": "notify_deliver",
+      "outcome": "expired_subscription"
+    }
+  ]
+}

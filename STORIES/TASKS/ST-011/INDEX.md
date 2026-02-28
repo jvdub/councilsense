@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-011-01](TASK-ST-011-01-observability-contract.md) — Observability Contract
+- [x] [TASK-ST-011-01](TASK-ST-011-01-observability-contract.md) — Observability Contract
 - [ ] [TASK-ST-011-02](TASK-ST-011-02-pipeline-structured-logs.md) — Pipeline Structured Logs
 - [ ] [TASK-ST-011-03](TASK-ST-011-03-notification-metrics-and-logs.md) — Notification Metrics and Logs
 - [ ] [TASK-ST-011-04](TASK-ST-011-04-baseline-dashboards.md) — Baseline Dashboards
