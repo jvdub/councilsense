@@ -110,6 +110,16 @@ Last updated: 2026-02-27
 | TASK-ST-009-04 | ✅ Done | 90b49c2 |
 | TASK-ST-009-05 | ✅ Done | 1d9c0b4 |
 
+### ST-011 — Observability Baseline for Pipeline + Notifications
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-011-01 | ✅ Done | cf0bb45 |
+| TASK-ST-011-02 | ✅ Done | 180e139 |
+| TASK-ST-011-03 | ✅ Done | c5dac92 |
+| TASK-ST-011-04 | ✅ Done | 89a01b5 |
+| TASK-ST-011-05 | ✅ Done | 3d9b2ba |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -118,6 +128,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Start ST-011 (`TASK-ST-011-01` → `TASK-ST-011-05`)
-2. Then run ST-012 (`TASK-ST-012-01` → `TASK-ST-012-05`)
-3. Then run ST-013 (`TASK-ST-013-01` → `TASK-ST-013-05`)
+1. Run ST-012 and ST-013 in parallel
+2. Then run ST-014 and ST-015 in parallel
+3. Finish with ST-016
