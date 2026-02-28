@@ -7,6 +7,8 @@ from hashlib import sha256
 from dataclasses import dataclass
 from typing import Literal
 
+from councilsense.app.parser_drift_policy import ParserDriftComparisonInput, evaluate_parser_drift
+
 
 RunLifecycleStatus = Literal[
     "pending",
@@ -45,7 +47,43 @@ class StageOutcomeRecord:
     finished_at: str | None
 
 
+@dataclass(frozen=True)
+class ProcessingRunSourceRecord:
+    id: str
+    run_id: str
+    city_id: str
+    source_id: str
+    source_type: str
+    source_url: str
+    parser_name: str
+    parser_version: str
+    recorded_at: str | None
+
+
+@dataclass(frozen=True)
+class ParserDriftEventRecord:
+    id: str
+    event_schema_version: str
+    city_id: str
+    source_id: str
+    source_type: str
+    source_url: str
+    parser_name: str
+    baseline_parser_name: str
+    baseline_parser_version: str
+    current_parser_name: str
+    current_parser_version: str
+    baseline_run_id: str
+    run_id: str
+    baseline_source_version: str
+    current_source_version: str
+    delta_context_json: str
+    detected_at: str | None
+
+
 class ProcessingRunRepository:
+    _DRIFT_EVENT_SCHEMA_VERSION = "st016.parser_drift_event.v1"
+
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
@@ -67,6 +105,13 @@ class ProcessingRunRepository:
                 VALUES (?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (run_id, city_id, cycle_id, parser_version, source_version),
+            )
+            current_source_snapshots = self._snapshot_run_sources(run_id=run_id, city_id=city_id)
+            self._emit_parser_drift_events(
+                run_id=run_id,
+                city_id=city_id,
+                source_version=source_version,
+                current_source_snapshots=current_source_snapshots,
             )
 
         return self.get_run(run_id=run_id)
@@ -262,6 +307,93 @@ class ProcessingRunRepository:
             for row in rows
         )
 
+    def list_parser_drift_events(
+        self,
+        *,
+        city_id: str | None = None,
+        source_id: str | None = None,
+        parser_version: str | None = None,
+        detected_from: str | None = None,
+        detected_to: str | None = None,
+        limit: int = 200,
+    ) -> tuple[ParserDriftEventRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+
+        clauses: list[str] = []
+        params: list[object] = []
+
+        if city_id is not None:
+            clauses.append("city_id = ?")
+            params.append(city_id)
+        if source_id is not None:
+            clauses.append("source_id = ?")
+            params.append(source_id)
+        if parser_version is not None:
+            clauses.append("(baseline_parser_version = ? OR current_parser_version = ?)")
+            params.extend((parser_version, parser_version))
+        if detected_from is not None:
+            clauses.append("detected_at >= ?")
+            params.append(detected_from)
+        if detected_to is not None:
+            clauses.append("detected_at <= ?")
+            params.append(detected_to)
+
+        where_sql = ""
+        if clauses:
+            where_sql = f"WHERE {' AND '.join(clauses)}"
+
+        params.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT
+                id,
+                event_schema_version,
+                city_id,
+                source_id,
+                source_type,
+                source_url,
+                parser_name,
+                baseline_parser_name,
+                baseline_parser_version,
+                current_parser_name,
+                current_parser_version,
+                baseline_run_id,
+                run_id,
+                baseline_source_version,
+                current_source_version,
+                delta_context_json,
+                detected_at
+            FROM parser_drift_events
+            {where_sql}
+            ORDER BY detected_at DESC, id DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        return tuple(
+            ParserDriftEventRecord(
+                id=str(row[0]),
+                event_schema_version=str(row[1]),
+                city_id=str(row[2]),
+                source_id=str(row[3]),
+                source_type=str(row[4]),
+                source_url=str(row[5]),
+                parser_name=str(row[6]),
+                baseline_parser_name=str(row[7]),
+                baseline_parser_version=str(row[8]),
+                current_parser_name=str(row[9]),
+                current_parser_version=str(row[10]),
+                baseline_run_id=str(row[11]),
+                run_id=str(row[12]),
+                baseline_source_version=str(row[13]),
+                current_source_version=str(row[14]),
+                delta_context_json=str(row[15]),
+                detected_at=str(row[16]) if row[16] is not None else None,
+            )
+            for row in rows
+        )
+
     def get_latest_run_confidence_score(self, *, run_id: str) -> float | None:
         rows = self._connection.execute(
             """
@@ -306,6 +438,218 @@ class ProcessingRunRepository:
                     return numeric_score
 
         return None
+
+    def _snapshot_run_sources(self, *, run_id: str, city_id: str) -> tuple[ProcessingRunSourceRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, source_type, source_url, parser_name, parser_version
+            FROM city_sources
+            WHERE city_id = ?
+              AND enabled = 1
+            ORDER BY source_type ASC, id ASC
+            """,
+            (city_id,),
+        ).fetchall()
+
+        snapshots: list[ProcessingRunSourceRecord] = []
+        for row in rows:
+            source_id = str(row[0])
+            source_type = str(row[1])
+            source_url = str(row[2])
+            parser_name = str(row[3])
+            parser_version = str(row[4])
+            snapshot_id = f"prs-{sha256(f'{run_id}:{source_id}'.encode('utf-8')).hexdigest()[:16]}"
+
+            self._connection.execute(
+                """
+                INSERT INTO processing_run_sources (
+                    id,
+                    run_id,
+                    city_id,
+                    source_id,
+                    source_type,
+                    source_url,
+                    parser_name,
+                    parser_version
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (run_id, source_id)
+                DO UPDATE SET
+                    source_type = excluded.source_type,
+                    source_url = excluded.source_url,
+                    parser_name = excluded.parser_name,
+                    parser_version = excluded.parser_version,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    snapshot_id,
+                    run_id,
+                    city_id,
+                    source_id,
+                    source_type,
+                    source_url,
+                    parser_name,
+                    parser_version,
+                ),
+            )
+
+            snapshot_row = self._connection.execute(
+                """
+                SELECT id, run_id, city_id, source_id, source_type, source_url, parser_name, parser_version, recorded_at
+                FROM processing_run_sources
+                WHERE run_id = ?
+                  AND source_id = ?
+                """,
+                (run_id, source_id),
+            ).fetchone()
+            assert snapshot_row is not None
+            snapshots.append(
+                ProcessingRunSourceRecord(
+                    id=str(snapshot_row[0]),
+                    run_id=str(snapshot_row[1]),
+                    city_id=str(snapshot_row[2]),
+                    source_id=str(snapshot_row[3]),
+                    source_type=str(snapshot_row[4]),
+                    source_url=str(snapshot_row[5]),
+                    parser_name=str(snapshot_row[6]),
+                    parser_version=str(snapshot_row[7]),
+                    recorded_at=str(snapshot_row[8]) if snapshot_row[8] is not None else None,
+                )
+            )
+
+        return tuple(snapshots)
+
+    def _emit_parser_drift_events(
+        self,
+        *,
+        run_id: str,
+        city_id: str,
+        source_version: str,
+        current_source_snapshots: tuple[ProcessingRunSourceRecord, ...],
+    ) -> None:
+        for current in current_source_snapshots:
+            baseline_row = self._connection.execute(
+                """
+                SELECT
+                    prs.run_id,
+                    prs.source_type,
+                    prs.source_url,
+                    prs.parser_name,
+                    prs.parser_version,
+                    pr.source_version
+                FROM processing_run_sources prs
+                JOIN processing_runs pr ON pr.id = prs.run_id
+                WHERE prs.city_id = ?
+                  AND prs.source_id = ?
+                  AND prs.run_id <> ?
+                                ORDER BY pr.cycle_id DESC, COALESCE(pr.started_at, pr.created_at) DESC, prs.recorded_at DESC, prs.id DESC
+                LIMIT 1
+                """,
+                (city_id, current.source_id, run_id),
+            ).fetchone()
+            if baseline_row is None:
+                continue
+
+            baseline_run_id = str(baseline_row[0])
+            baseline_source_type = str(baseline_row[1])
+            baseline_source_url = str(baseline_row[2])
+            baseline_parser_name = str(baseline_row[3])
+            baseline_parser_version = str(baseline_row[4])
+            baseline_source_version = str(baseline_row[5])
+
+            if (
+                baseline_parser_name == current.parser_name
+                and baseline_parser_version == current.parser_version
+            ):
+                continue
+
+            changed_fields = evaluate_parser_drift(
+                ParserDriftComparisonInput(
+                    baseline_parser_name=baseline_parser_name,
+                    baseline_parser_version=baseline_parser_version,
+                    current_parser_name=current.parser_name,
+                    current_parser_version=current.parser_version,
+                )
+            )
+            if changed_fields is None:
+                continue
+
+            delta_context = {
+                "changed_fields": list(changed_fields),
+                "baseline": {
+                    "run_id": baseline_run_id,
+                    "source_type": baseline_source_type,
+                    "source_url": baseline_source_url,
+                    "parser_name": baseline_parser_name,
+                    "parser_version": baseline_parser_version,
+                    "source_version": baseline_source_version,
+                },
+                "current": {
+                    "run_id": run_id,
+                    "source_type": current.source_type,
+                    "source_url": current.source_url,
+                    "parser_name": current.parser_name,
+                    "parser_version": current.parser_version,
+                    "source_version": source_version,
+                },
+            }
+            drift_event_id = f"pde-{sha256(f'{run_id}:{current.source_id}'.encode('utf-8')).hexdigest()[:16]}"
+
+            self._connection.execute(
+                """
+                INSERT INTO parser_drift_events (
+                    id,
+                    event_schema_version,
+                    city_id,
+                    source_id,
+                    source_type,
+                    source_url,
+                    parser_name,
+                    baseline_parser_name,
+                    baseline_parser_version,
+                    current_parser_name,
+                    current_parser_version,
+                    baseline_run_id,
+                    run_id,
+                    baseline_source_version,
+                    current_source_version,
+                    delta_context_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (run_id, source_id)
+                DO UPDATE SET
+                    source_type = excluded.source_type,
+                    source_url = excluded.source_url,
+                    parser_name = excluded.parser_name,
+                    baseline_parser_name = excluded.baseline_parser_name,
+                    baseline_parser_version = excluded.baseline_parser_version,
+                    current_parser_name = excluded.current_parser_name,
+                    current_parser_version = excluded.current_parser_version,
+                    baseline_run_id = excluded.baseline_run_id,
+                    baseline_source_version = excluded.baseline_source_version,
+                    current_source_version = excluded.current_source_version,
+                    delta_context_json = excluded.delta_context_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    drift_event_id,
+                    self._DRIFT_EVENT_SCHEMA_VERSION,
+                    city_id,
+                    current.source_id,
+                    current.source_type,
+                    current.source_url,
+                    current.parser_name,
+                    baseline_parser_name,
+                    baseline_parser_version,
+                    current.parser_name,
+                    current.parser_version,
+                    baseline_run_id,
+                    run_id,
+                    baseline_source_version,
+                    source_version,
+                    json.dumps(delta_context, sort_keys=True, separators=(",", ":")),
+                ),
+            )
 
 
 class ProcessingLifecycleService:

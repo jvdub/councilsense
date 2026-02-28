@@ -7,7 +7,7 @@
 
 - [x] [TASK-ST-016-01](TASK-ST-016-01-alert-threshold-and-ownership-discovery.md) — Alert Threshold Baseline and Ownership Discovery
 - [x] [TASK-ST-016-02](TASK-ST-016-02-ingestion-latency-notification-alert-rules.md) — Alert Rules for Ingestion Failures, Latency, and Notification Errors
-- [ ] [TASK-ST-016-03](TASK-ST-016-03-parser-version-and-drift-event-model.md) — Parser Version Tracking and Drift Event Model
+- [x] [TASK-ST-016-03](TASK-ST-016-03-parser-version-and-drift-event-model.md) — Parser Version Tracking and Drift Event Model
 - [ ] [TASK-ST-016-04](TASK-ST-016-04-source-freshness-regression-alerting.md) — Source Freshness Regression Alerting
 - [ ] [TASK-ST-016-05](TASK-ST-016-05-synthetic-alert-validation-dashboard-and-runbook-linkage.md) — Synthetic Alert Validation, Dashboard Visibility, and Runbook Linkage
 

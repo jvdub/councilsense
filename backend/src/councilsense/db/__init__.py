@@ -30,6 +30,8 @@ from councilsense.db.meeting_summaries import (
 	SummaryPublicationRecord,
 )
 from councilsense.db.pipeline_runs import (
+	ParserDriftEventRecord,
+	ProcessingRunSourceRecord,
 	ProcessingLifecycleService,
 	ProcessingRunRecord,
 	ProcessingRunRepository,
@@ -112,10 +114,12 @@ __all__ = [
 	"GovernanceRequestStatusModel",
 	"GovernanceRetentionPolicyRecord",
 	"ProcessingLifecycleService",
+	"ParserDriftEventRecord",
 	"OperatorManualReviewRunRecord",
 	"OperatorSourceRecord",
 	"OperatorViewRepository",
 	"ProcessingRunRecord",
+	"ProcessingRunSourceRecord",
 	"ProcessingRunRepository",
 	"PublicationClaimRecord",
 	"PublicationStatus",
