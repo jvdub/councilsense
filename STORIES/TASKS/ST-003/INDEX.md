@@ -9,7 +9,7 @@
 - [x] [TASK-ST-003-02](TASK-ST-003-02-pilot-city-source-seed.md) — Seed pilot city and initial source configuration
 - [x] [TASK-ST-003-03](TASK-ST-003-03-registry-service-layer.md) — Implement configured city/source selection service
 - [x] [TASK-ST-003-04](TASK-ST-003-04-meeting-city-linkage-enforcement.md) — Enforce mandatory city linkage in meeting writes
-- [ ] [TASK-ST-003-05](TASK-ST-003-05-city-registry-eligibility-tests.md) — Add city registry and eligibility test coverage
+- [x] [TASK-ST-003-05](TASK-ST-003-05-city-registry-eligibility-tests.md) — Add city registry and eligibility test coverage
 
 ## Dependency Chain
 

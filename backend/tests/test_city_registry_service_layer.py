@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from councilsense.api.profile import InMemoryUserProfileRepository, UnsupportedCityError, UserProfileService
 from councilsense.db import (
     ConfiguredCitySelectionService,
     CityRegistryRepository,
@@ -171,3 +172,39 @@ def test_disabled_city_and_source_are_excluded_consistently(connection: sqlite3.
     assert service.list_enabled_city_ids() == (PILOT_CITY_ID,)
     assert service.list_enabled_sources_for_city(PILOT_CITY_ID) == ()
     assert service.list_enabled_sources_for_city("city-disabled") == ()
+
+
+def test_registry_enabled_city_ids_drive_profile_city_validation(connection: sqlite3.Connection) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+
+    connection.execute(
+        """
+        INSERT INTO cities (id, slug, name, state_code, timezone, enabled, priority_tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "city-disabled",
+            "disabled-city-ut",
+            "Disabled City",
+            "UT",
+            "America/Denver",
+            0,
+            99,
+        ),
+    )
+
+    configured_city_ids = _service(connection).list_enabled_city_ids()
+    profile_service = UserProfileService(
+        repository=InMemoryUserProfileRepository(),
+        supported_city_ids=configured_city_ids,
+    )
+
+    updated = profile_service.patch_profile("user-1", home_city_id=PILOT_CITY_ID)
+    assert updated.home_city_id == PILOT_CITY_ID
+
+    with pytest.raises(UnsupportedCityError):
+        profile_service.patch_profile("user-1", home_city_id="city-disabled")
+
+    with pytest.raises(UnsupportedCityError):
+        profile_service.patch_profile("user-1", home_city_id="city-missing")
