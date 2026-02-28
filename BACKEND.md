@@ -139,17 +139,22 @@ backend/
 - `PATCH /me` (home city, notifications enabled, pause-until)
 - `DELETE /me` (starts async anonymize/delete workflow)
 
-## 4.3 Push subscriptions
+## 4.3 Governance self-service
+- `POST /me/exports` (create export request)
+- `GET /me/exports/{request_id}` (request status)
+- `GET /me/exports/{request_id}/artifact` (download export artifact when completed)
+
+## 4.4 Push subscriptions
 - `POST /me/push-subscriptions`
 - `GET /me/push-subscriptions`
 - `DELETE /me/push-subscriptions/{subscription_id}`
 
-## 4.4 Reader
+## 4.5 Reader
 - `GET /cities/{city_id}/meetings?cursor=&limit=&status=`
 - `GET /meetings/{meeting_id}`
 - `GET /meetings/{meeting_id}/evidence`
 
-## 4.5 Internal ops (role-restricted)
+## 4.6 Internal ops (role-restricted)
 - `POST /internal/cities/{city_id}/scan`
 - `POST /internal/meetings/{meeting_id}/rerun`
 - `GET /internal/runs/{processing_run_id}`

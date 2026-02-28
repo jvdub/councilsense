@@ -1,4 +1,5 @@
 import sqlite3
+import os
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,8 +11,10 @@ from councilsense.api.profile import (
     UserBootstrapService,
     UserProfileService,
 )
+from councilsense.api.routes.governance_exports import router as governance_exports_router
 from councilsense.api.routes.meetings import router as meetings_router
 from councilsense.api.routes.me import router as me_router
+from councilsense.app.governance_exports import GovernanceExportProcessor, GovernanceExportService
 from councilsense.db import MeetingReadRepository, apply_migrations, seed_city_registry
 from councilsense.app.settings import get_settings
 
@@ -19,7 +22,8 @@ from councilsense.app.settings import get_settings
 def create_app() -> FastAPI:
     app = FastAPI(title="CouncilSense API")
     settings = get_settings()
-    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    db_path = os.getenv("COUNCILSENSE_SQLITE_PATH", ":memory:")
+    connection = sqlite3.connect(db_path, check_same_thread=False)
     connection.execute("PRAGMA foreign_keys = ON")
     apply_migrations(connection)
     seed_city_registry(connection)
@@ -35,6 +39,11 @@ def create_app() -> FastAPI:
     )
     app.state.db_connection = connection
     app.state.meeting_read_repository = MeetingReadRepository(connection)
+    app.state.governance_export_service = GovernanceExportService(connection=connection)
+    app.state.governance_export_processor = GovernanceExportProcessor(
+        connection=connection,
+        profile_service=app.state.profile_service,
+    )
 
     @app.exception_handler(UnauthorizedError)
     async def _handle_unauthorized(_, __):
@@ -56,6 +65,7 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthMiddleware, settings=settings)
     app.include_router(me_router)
     app.include_router(meetings_router)
+    app.include_router(governance_exports_router)
     return app
 
 
