@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-005-01](TASK-ST-005-01.md) — Summary/Evidence Persistence Schema
+- [x] [TASK-ST-005-01](TASK-ST-005-01.md) — Summary/Evidence Persistence Schema
 - [ ] [TASK-ST-005-02](TASK-ST-005-02.md) — Summarization Output Contract
 - [ ] [TASK-ST-005-03](TASK-ST-005-03.md) — Claim Evidence Attachment
 - [ ] [TASK-ST-005-04](TASK-ST-005-04.md) — Quality Gate and Append-Only Publish Path
