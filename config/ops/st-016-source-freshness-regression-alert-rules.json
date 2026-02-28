@@ -25,16 +25,8 @@
       "source_url",
       "parser_drift_event_id"
     ],
-    "correlation_fields": [
-      "run_id",
-      "source_id",
-      "parser_drift_event_id"
-    ],
-    "required_for_escalation": [
-      "city_id",
-      "source_id",
-      "run_id"
-    ]
+    "correlation_fields": ["run_id", "source_id", "parser_drift_event_id"],
+    "required_for_escalation": ["city_id", "source_id", "run_id"]
   },
   "suppression": {
     "window_label": "planned_maintenance_window",

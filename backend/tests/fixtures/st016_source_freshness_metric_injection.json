@@ -4,9 +4,7 @@
       "name": "warning-threshold-breach",
       "alert_class": "source_freshness",
       "observed_value": 30,
-      "expected_alert_ids": [
-        "source-freshness-regression-warning"
-      ]
+      "expected_alert_ids": ["source-freshness-regression-warning"]
     },
     {
       "name": "critical-threshold-breach",

@@ -12,8 +12,8 @@ Last updated: 2026-02-28
 
 ### ST-001 — Managed Auth + Home City Onboarding
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-001-01 | ✅ Done | d2203d4 |
 | TASK-ST-001-02 | ✅ Done | 523b8aa |
 | TASK-ST-001-03 | ✅ Done | 2de60ed |
@@ -22,8 +22,8 @@ Last updated: 2026-02-28
 
 ### ST-002 — Profile Preferences + Self-Service Controls
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-002-01 | ✅ Done | dfa3c0f |
 | TASK-ST-002-02 | ✅ Done | a9e3f92 |
 | TASK-ST-002-03 | ✅ Done | e682e80 |
@@ -32,8 +32,8 @@ Last updated: 2026-02-28
 
 ### ST-003 — City Registry + Source Configuration
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-003-01 | ✅ Done | e959ae5 |
 | TASK-ST-003-02 | ✅ Done | 53d6b3d |
 | TASK-ST-003-03 | ✅ Done | 753a7cd |
@@ -42,8 +42,8 @@ Last updated: 2026-02-28
 
 ### ST-004 — Scheduled Ingestion + Processing Orchestration
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-004-01 | ✅ Done | c3abd64 |
 | TASK-ST-004-02 | ✅ Done | 1c154a6 |
 | TASK-ST-004-03 | ✅ Done | c335d7b |
@@ -52,8 +52,8 @@ Last updated: 2026-02-28
 
 ### ST-005 — Evidence-Grounded Summarization + Quality Gate
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-005-01 | ✅ Done | 5d8ef77 |
 | TASK-ST-005-02 | ✅ Done | 9d5376c |
 | TASK-ST-005-03 | ✅ Done | b596eae |
@@ -62,8 +62,8 @@ Last updated: 2026-02-28
 
 ### ST-006 — Meeting Reader API (City List + Detail)
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-006-01 | ✅ Done | 1901861 |
 | TASK-ST-006-02 | ✅ Done | 5fe9751 |
 | TASK-ST-006-03 | ✅ Done | 52fadf4 |
@@ -72,8 +72,8 @@ Last updated: 2026-02-28
 
 ### ST-010 — Source Health + Manual Review Baseline
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-010-01 | ✅ Done | 6684067 |
 | TASK-ST-010-02 | ✅ Done | 1b9c271 |
 | TASK-ST-010-03 | ✅ Done | 6047484 |
@@ -82,8 +82,8 @@ Last updated: 2026-02-28
 
 ### ST-007 — Frontend Meetings List + Detail Experience
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-007-01 | ✅ Done | b0291cd |
 | TASK-ST-007-02 | ✅ Done | 0565875 |
 | TASK-ST-007-03 | ✅ Done | dbd5549 |
@@ -92,8 +92,8 @@ Last updated: 2026-02-28
 
 ### ST-008 — Notification Preferences + Push Subscriptions UI
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-008-01 | ✅ Done | c8dc398 |
 | TASK-ST-008-02 | ✅ Done | be7a984 |
 | TASK-ST-008-03 | ✅ Done | f5567ea |
@@ -102,8 +102,8 @@ Last updated: 2026-02-28
 
 ### ST-009 — Idempotent Notification Fan-Out + Delivery
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-009-01 | ✅ Done | 3df49bc |
 | TASK-ST-009-02 | ✅ Done | c786ba8 |
 | TASK-ST-009-03 | ✅ Done | b1a3ae3 |
@@ -112,8 +112,8 @@ Last updated: 2026-02-28
 
 ### ST-011 — Observability Baseline for Pipeline + Notifications
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-011-01 | ✅ Done | cf0bb45 |
 | TASK-ST-011-02 | ✅ Done | 180e139 |
 | TASK-ST-011-03 | ✅ Done | c5dac92 |
@@ -122,8 +122,8 @@ Last updated: 2026-02-28
 
 ### ST-012 — Local-First + AWS Portable Runtime
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-012-01 | ✅ Done | bb640fb |
 | TASK-ST-012-02 | ✅ Done | 93869d6 |
 | TASK-ST-012-03 | ✅ Done | bad1ea1 |
@@ -132,8 +132,8 @@ Last updated: 2026-02-28
 
 ### ST-013 — Governance, Retention, Export, Deletion
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-013-01 | ✅ Done | d97ce9e |
 | TASK-ST-013-02 | ✅ Done | 1e5a3dc |
 | TASK-ST-013-03 | ✅ Done | af07d9c |
@@ -142,8 +142,8 @@ Last updated: 2026-02-28
 
 ### ST-014 — Notification DLQ and Replay Hardening
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-014-01 | ✅ Done | e8421de |
 | TASK-ST-014-02 | ✅ Done | f091f2d |
 | TASK-ST-014-03 | ✅ Done | c8aed27 |
@@ -152,8 +152,8 @@ Last updated: 2026-02-28
 
 ### ST-015 — Quality Operations and ECR Audits
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-015-01 | ✅ Done | 4266e45 |
 | TASK-ST-015-02 | ✅ Done | c34680a |
 | TASK-ST-015-03 | ✅ Done | 672f32d |
@@ -162,8 +162,8 @@ Last updated: 2026-02-28
 
 ### ST-016 — Alert Thresholds and Parser Drift Monitoring
 
-| Task | Status | Commit |
-| --- | --- | --- |
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
 | TASK-ST-016-01 | ✅ Done | 0a4f628 |
 | TASK-ST-016-02 | ✅ Done | f559ba3 |
 | TASK-ST-016-03 | ✅ Done | b3379f5 |

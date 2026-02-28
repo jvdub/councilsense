@@ -24,7 +24,13 @@
         "query_id": "st016_parser_drift_events_weekly",
         "kind": "sql",
         "dataset": "parser_drift_events",
-        "columns": ["iso_week", "city_id", "source_id", "current_parser_version", "detected_at"],
+        "columns": [
+          "iso_week",
+          "city_id",
+          "source_id",
+          "current_parser_version",
+          "detected_at"
+        ],
         "sql": "SELECT strftime('%Y-%W', detected_at) AS iso_week, city_id, source_id, current_parser_version, detected_at FROM parser_drift_events ORDER BY detected_at DESC LIMIT 200"
       }
     },
@@ -60,7 +66,12 @@
         "query_id": "st016_owner_context_and_runbook_linkage",
         "kind": "audit_evidence_links",
         "dataset": "st016_alert_linkage",
-        "columns": ["signal_class", "primary_owner_role", "secondary_owner_role", "runbook_path"],
+        "columns": [
+          "signal_class",
+          "primary_owner_role",
+          "secondary_owner_role",
+          "runbook_path"
+        ],
         "rows": [
           {
             "signal_class": "ingestion_failures",
