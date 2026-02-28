@@ -7,7 +7,7 @@
 
 - [x] [TASK-ST-006-01](TASK-ST-006-01.md) — Reader Query Index and Contract Prep
 - [x] [TASK-ST-006-02](TASK-ST-006-02.md) — City-Scoped Meetings List Endpoint
-- [ ] [TASK-ST-006-03](TASK-ST-006-03.md) — Meeting Detail Endpoint with Evidence Payload
+- [x] [TASK-ST-006-03](TASK-ST-006-03.md) — Meeting Detail Endpoint with Evidence Payload
 - [ ] [TASK-ST-006-04](TASK-ST-006-04.md) — Home-City Scoping Enforcement
 - [ ] [TASK-ST-006-05](TASK-ST-006-05.md) — Reader API Contract and Pagination Test Coverage
 

@@ -31,6 +31,40 @@ class CityMeetingsListResponse(BaseModel):
     limit: int
 
 
+class MeetingEvidencePointerResponse(BaseModel):
+    id: str
+    artifact_id: str
+    section_ref: str | None
+    char_start: int | None
+    char_end: int | None
+    excerpt: str
+
+
+class MeetingClaimResponse(BaseModel):
+    id: str
+    claim_order: int
+    claim_text: str
+    evidence: list[MeetingEvidencePointerResponse]
+
+
+class MeetingDetailResponse(BaseModel):
+    id: str
+    city_id: str
+    meeting_uid: str
+    title: str
+    created_at: str
+    updated_at: str
+    status: str | None
+    confidence_label: str | None
+    publication_id: str | None
+    published_at: str | None
+    summary: str | None
+    key_decisions: list[str]
+    key_actions: list[str]
+    notable_topics: list[str]
+    claims: list[MeetingClaimResponse]
+
+
 def get_profile_service(request: Request) -> UserProfileService:
     return request.app.state.profile_service
 
@@ -100,4 +134,60 @@ def get_city_meetings(
         ],
         next_cursor=page.next_cursor.to_token() if page.next_cursor is not None else None,
         limit=limit,
+    )
+
+
+@router.get("/meetings/{meeting_id}")
+def get_meeting_detail(
+    meeting_id: str,
+    _: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    repository: Annotated[MeetingReadRepository, Depends(get_meeting_read_repository)],
+) -> MeetingDetailResponse:
+    detail = repository.get_meeting_detail(meeting_id=meeting_id)
+    if detail is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "not_found",
+                    "message": "Meeting not found",
+                    "details": {"meeting_id": meeting_id},
+                }
+            },
+        )
+
+    return MeetingDetailResponse(
+        id=detail.id,
+        city_id=detail.city_id,
+        meeting_uid=detail.meeting_uid,
+        title=detail.title,
+        created_at=detail.created_at,
+        updated_at=detail.updated_at,
+        status=detail.publication_status,
+        confidence_label=detail.confidence_label,
+        publication_id=detail.publication_id,
+        published_at=detail.published_at,
+        summary=detail.summary_text,
+        key_decisions=list(detail.key_decisions),
+        key_actions=list(detail.key_actions),
+        notable_topics=list(detail.notable_topics),
+        claims=[
+            MeetingClaimResponse(
+                id=claim.id,
+                claim_order=claim.claim_order,
+                claim_text=claim.claim_text,
+                evidence=[
+                    MeetingEvidencePointerResponse(
+                        id=evidence.id,
+                        artifact_id=evidence.artifact_id,
+                        section_ref=evidence.section_ref,
+                        char_start=evidence.char_start,
+                        char_end=evidence.char_end,
+                        excerpt=evidence.excerpt,
+                    )
+                    for evidence in claim.evidence
+                ],
+            )
+            for claim in detail.claims
+        ],
     )

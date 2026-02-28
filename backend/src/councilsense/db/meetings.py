@@ -6,6 +6,43 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class MeetingDetailEvidencePointer:
+    id: str
+    artifact_id: str
+    section_ref: str | None
+    char_start: int | None
+    char_end: int | None
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class MeetingDetailClaim:
+    id: str
+    claim_order: int
+    claim_text: str
+    evidence: tuple[MeetingDetailEvidencePointer, ...]
+
+
+@dataclass(frozen=True)
+class MeetingDetail:
+    id: str
+    city_id: str
+    meeting_uid: str
+    title: str
+    created_at: str
+    updated_at: str
+    publication_id: str | None
+    publication_status: str | None
+    confidence_label: str | None
+    summary_text: str | None
+    key_decisions: tuple[str, ...]
+    key_actions: tuple[str, ...]
+    notable_topics: tuple[str, ...]
+    published_at: str | None
+    claims: tuple[MeetingDetailClaim, ...]
+
+
+@dataclass(frozen=True)
 class MeetingRecord:
     id: str
     city_id: str
@@ -244,6 +281,125 @@ class MeetingReadRepository:
             next_cursor = MeetingListCursor(created_at=last_item.created_at, meeting_id=last_item.id)
 
         return MeetingListPage(items=items, next_cursor=next_cursor)
+
+    def get_meeting_detail(self, *, meeting_id: str) -> MeetingDetail | None:
+        meeting_row = self._connection.execute(
+            """
+            SELECT
+                m.id,
+                m.city_id,
+                m.meeting_uid,
+                m.title,
+                m.created_at,
+                m.updated_at,
+                sp.id,
+                sp.publication_status,
+                sp.confidence_label,
+                sp.summary_text,
+                sp.key_decisions_json,
+                sp.key_actions_json,
+                sp.notable_topics_json,
+                sp.published_at
+            FROM meetings m
+            LEFT JOIN summary_publications sp
+              ON sp.id = (
+                SELECT sp2.id
+                FROM summary_publications sp2
+                WHERE sp2.meeting_id = m.id
+                ORDER BY sp2.published_at DESC, sp2.id DESC
+                LIMIT 1
+              )
+            WHERE m.id = ?
+            """,
+            (meeting_id,),
+        ).fetchone()
+
+        if meeting_row is None:
+            return None
+
+        publication_id = str(meeting_row[6]) if meeting_row[6] is not None else None
+        claims: tuple[MeetingDetailClaim, ...] = ()
+        if publication_id is not None:
+            claim_rows = self._connection.execute(
+                """
+                SELECT id, claim_order, claim_text
+                FROM publication_claims
+                WHERE publication_id = ?
+                ORDER BY claim_order ASC
+                """,
+                (publication_id,),
+            ).fetchall()
+
+            claim_items: list[MeetingDetailClaim] = []
+            for claim_row in claim_rows:
+                claim_id = str(claim_row[0])
+                evidence_rows = self._connection.execute(
+                    """
+                    SELECT
+                        id,
+                        artifact_id,
+                        section_ref,
+                        char_start,
+                        char_end,
+                        excerpt
+                    FROM claim_evidence_pointers
+                    WHERE claim_id = ?
+                    ORDER BY id ASC
+                    """,
+                    (claim_id,),
+                ).fetchall()
+                evidence = tuple(
+                    MeetingDetailEvidencePointer(
+                        id=str(evidence_row[0]),
+                        artifact_id=str(evidence_row[1]),
+                        section_ref=str(evidence_row[2]) if evidence_row[2] is not None else None,
+                        char_start=int(evidence_row[3]) if evidence_row[3] is not None else None,
+                        char_end=int(evidence_row[4]) if evidence_row[4] is not None else None,
+                        excerpt=str(evidence_row[5]),
+                    )
+                    for evidence_row in evidence_rows
+                )
+                claim_items.append(
+                    MeetingDetailClaim(
+                        id=claim_id,
+                        claim_order=int(claim_row[1]),
+                        claim_text=str(claim_row[2]),
+                        evidence=evidence,
+                    )
+                )
+            claims = tuple(claim_items)
+
+        return MeetingDetail(
+            id=str(meeting_row[0]),
+            city_id=str(meeting_row[1]),
+            meeting_uid=str(meeting_row[2]),
+            title=str(meeting_row[3]),
+            created_at=str(meeting_row[4]),
+            updated_at=str(meeting_row[5]),
+            publication_id=publication_id,
+            publication_status=str(meeting_row[7]) if meeting_row[7] is not None else None,
+            confidence_label=str(meeting_row[8]) if meeting_row[8] is not None else None,
+            summary_text=str(meeting_row[9]) if meeting_row[9] is not None else None,
+            key_decisions=self._parse_string_list(meeting_row[10]),
+            key_actions=self._parse_string_list(meeting_row[11]),
+            notable_topics=self._parse_string_list(meeting_row[12]),
+            published_at=str(meeting_row[13]) if meeting_row[13] is not None else None,
+            claims=claims,
+        )
+
+    def _parse_string_list(self, value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+
+        try:
+            parsed = json.loads(str(value))
+        except json.JSONDecodeError:
+            return ()
+
+        if not isinstance(parsed, list):
+            return ()
+
+        return tuple(str(item) for item in parsed if isinstance(item, str))
 
     def explain_city_meetings_query_plan(
         self,
