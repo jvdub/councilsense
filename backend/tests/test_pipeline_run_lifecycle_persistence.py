@@ -196,3 +196,91 @@ def test_scheduler_enqueue_to_completion_and_failure_persists_lifecycle_records(
 
     assert [outcome.status for outcome in processed_outcomes] == ["processed"]
     assert [outcome.status for outcome in failed_outcomes] == ["failed"]
+
+
+def test_mark_completed_from_confidence_policy_routes_manual_review_and_processed(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+
+    repository = ProcessingRunRepository(connection)
+    service = ProcessingLifecycleService(repository)
+
+    below_threshold_run = repository.create_pending_run(
+        run_id="run-confidence-below",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T06:10:00Z",
+    )
+    repository.upsert_stage_outcome(
+        outcome_id="outcome-confidence-below",
+        run_id=below_threshold_run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-confidence-below",
+        stage_name="summarize",
+        status="processed",
+        metadata_json='{"confidence_score":0.59}',
+        started_at="2026-02-27T06:10:01Z",
+        finished_at="2026-02-27T06:10:11Z",
+    )
+
+    at_threshold_run = repository.create_pending_run(
+        run_id="run-confidence-at",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T06:20:00Z",
+    )
+    repository.upsert_stage_outcome(
+        outcome_id="outcome-confidence-at",
+        run_id=at_threshold_run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-confidence-at",
+        stage_name="publish",
+        status="processed",
+        metadata_json='{"confidence_score":0.60}',
+        started_at="2026-02-27T06:20:01Z",
+        finished_at="2026-02-27T06:20:11Z",
+    )
+
+    above_threshold_run = repository.create_pending_run(
+        run_id="run-confidence-above",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T06:30:00Z",
+    )
+    repository.upsert_stage_outcome(
+        outcome_id="outcome-confidence-above",
+        run_id=above_threshold_run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-confidence-above",
+        stage_name="publish",
+        status="processed",
+        metadata_json='{"confidence_score":0.81}',
+        started_at="2026-02-27T06:30:01Z",
+        finished_at="2026-02-27T06:30:11Z",
+    )
+
+    missing_score_run = repository.create_pending_run(
+        run_id="run-confidence-missing",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T06:40:00Z",
+    )
+    repository.upsert_stage_outcome(
+        outcome_id="outcome-confidence-missing",
+        run_id=missing_score_run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-confidence-missing",
+        stage_name="summarize",
+        status="processed",
+        metadata_json='{"notes":"no confidence"}',
+        started_at="2026-02-27T06:40:01Z",
+        finished_at="2026-02-27T06:40:11Z",
+    )
+
+    below_threshold_result = service.mark_completed_from_confidence_policy(run_id=below_threshold_run.id)
+    at_threshold_result = service.mark_completed_from_confidence_policy(run_id=at_threshold_run.id)
+    above_threshold_result = service.mark_completed_from_confidence_policy(run_id=above_threshold_run.id)
+    missing_score_result = service.mark_completed_from_confidence_policy(run_id=missing_score_run.id)
+
+    assert below_threshold_result.status == "manual_review_needed"
+    assert at_threshold_result.status == "processed"
+    assert above_threshold_result.status == "processed"
+    assert missing_score_result.status == "manual_review_needed"

@@ -210,6 +210,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert payload["id"] == "meeting-detail-1"
     assert payload["status"] == "processed"
     assert payload["confidence_label"] == "high"
+    assert payload["reader_low_confidence"] is False
     assert payload["summary"] == "Council approved the annual safety plan."
     assert payload["key_decisions"] == ["Approved annual safety plan"]
     assert payload["key_actions"] == ["Staff to publish implementation memo"]
@@ -265,6 +266,7 @@ def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) 
     payload = response.json()
     assert payload["status"] == "limited_confidence"
     assert payload["confidence_label"] == "limited_confidence"
+    assert payload["reader_low_confidence"] is True
     assert payload["notable_topics"] == ["Procurement"]
     assert payload["claims"] == []
 

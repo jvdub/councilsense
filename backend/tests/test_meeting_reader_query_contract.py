@@ -191,12 +191,12 @@ def test_city_meeting_list_projects_latest_status_and_filters_on_latest_status(
     page = repository.list_city_meetings(city_id=PILOT_CITY_ID, limit=10)
 
     projected = {
-        item.id: (item.publication_status, item.confidence_label)
+        item.id: (item.publication_status, item.confidence_label, item.reader_low_confidence)
         for item in page.items
     }
-    assert projected["meeting-1"] == ("limited_confidence", "limited_confidence")
-    assert projected["meeting-2"] == ("processed", "medium")
-    assert projected["meeting-3"] == (None, None)
+    assert projected["meeting-1"] == ("limited_confidence", "limited_confidence", True)
+    assert projected["meeting-2"] == ("processed", "medium", False)
+    assert projected["meeting-3"] == (None, None, False)
 
     processed_only = repository.list_city_meetings(
         city_id=PILOT_CITY_ID,

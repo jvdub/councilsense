@@ -31,6 +31,7 @@ class MeetingListItemResponse(BaseModel):
     updated_at: str
     status: str | None
     confidence_label: str | None
+    reader_low_confidence: bool
 
 
 class CityMeetingsListResponse(BaseModel):
@@ -64,6 +65,7 @@ class MeetingDetailResponse(BaseModel):
     updated_at: str
     status: str | None
     confidence_label: str | None
+    reader_low_confidence: bool
     publication_id: str | None
     published_at: str | None
     summary: str | None
@@ -145,6 +147,7 @@ def get_city_meetings(
                 updated_at=item.updated_at,
                 status=item.publication_status,
                 confidence_label=item.confidence_label,
+                reader_low_confidence=item.reader_low_confidence,
             )
             for item in page.items
         ],
@@ -180,6 +183,7 @@ def get_meeting_detail(
         updated_at=detail.updated_at,
         status=detail.publication_status,
         confidence_label=detail.confidence_label,
+        reader_low_confidence=detail.reader_low_confidence,
         publication_id=detail.publication_id,
         published_at=detail.published_at,
         summary=detail.summary_text,

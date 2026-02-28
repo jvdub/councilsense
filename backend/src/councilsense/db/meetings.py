@@ -34,6 +34,7 @@ class MeetingDetail:
     publication_id: str | None
     publication_status: str | None
     confidence_label: str | None
+    reader_low_confidence: bool
     summary_text: str | None
     key_decisions: tuple[str, ...]
     key_actions: tuple[str, ...]
@@ -95,6 +96,7 @@ class MeetingListItem:
     updated_at: str
     publication_status: str | None
     confidence_label: str | None
+    reader_low_confidence: bool
 
 
 @dataclass(frozen=True)
@@ -252,7 +254,17 @@ class MeetingReadRepository:
                     WHERE sp.meeting_id = m.id
                     ORDER BY sp.published_at DESC, sp.id DESC
                     LIMIT 1
-                ) AS confidence_label
+                ) AS confidence_label,
+                CASE
+                    WHEN (
+                        SELECT sp.confidence_label
+                        FROM summary_publications sp
+                        WHERE sp.meeting_id = m.id
+                        ORDER BY sp.published_at DESC, sp.id DESC
+                        LIMIT 1
+                    ) IN ('low', 'limited_confidence') THEN 1
+                    ELSE 0
+                END AS reader_low_confidence
             FROM meetings m
             WHERE {where_sql}
             ORDER BY m.created_at DESC, m.id DESC
@@ -271,6 +283,7 @@ class MeetingReadRepository:
                 updated_at=str(row[5]),
                 publication_status=str(row[6]) if row[6] is not None else None,
                 confidence_label=str(row[7]) if row[7] is not None else None,
+                reader_low_confidence=bool(row[8]),
             )
             for row in rows
         )
@@ -307,6 +320,10 @@ class MeetingReadRepository:
                 sp.id,
                 sp.publication_status,
                 sp.confidence_label,
+                CASE
+                    WHEN sp.confidence_label IN ('low', 'limited_confidence') THEN 1
+                    ELSE 0
+                END,
                 sp.summary_text,
                 sp.key_decisions_json,
                 sp.key_actions_json,
@@ -391,11 +408,12 @@ class MeetingReadRepository:
             publication_id=publication_id,
             publication_status=str(meeting_row[7]) if meeting_row[7] is not None else None,
             confidence_label=str(meeting_row[8]) if meeting_row[8] is not None else None,
-            summary_text=str(meeting_row[9]) if meeting_row[9] is not None else None,
-            key_decisions=self._parse_string_list(meeting_row[10]),
-            key_actions=self._parse_string_list(meeting_row[11]),
-            notable_topics=self._parse_string_list(meeting_row[12]),
-            published_at=str(meeting_row[13]) if meeting_row[13] is not None else None,
+            reader_low_confidence=bool(meeting_row[9]),
+            summary_text=str(meeting_row[10]) if meeting_row[10] is not None else None,
+            key_decisions=self._parse_string_list(meeting_row[11]),
+            key_actions=self._parse_string_list(meeting_row[12]),
+            notable_topics=self._parse_string_list(meeting_row[13]),
+            published_at=str(meeting_row[14]) if meeting_row[14] is not None else None,
             claims=claims,
         )
 

@@ -158,6 +158,8 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
     assert [item["id"] for item in first_payload["items"]] == ["meeting-c", "meeting-b"]
     assert first_payload["items"][0]["status"] == "limited_confidence"
     assert first_payload["items"][0]["confidence_label"] == "limited_confidence"
+    assert first_payload["items"][0]["reader_low_confidence"] is True
+    assert first_payload["items"][1]["reader_low_confidence"] is False
     assert first_payload["next_cursor"] is not None
 
     second_page = client.get(
@@ -168,6 +170,7 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
     assert second_page.status_code == 200
     second_payload = second_page.json()
     assert [item["id"] for item in second_payload["items"]] == ["meeting-a"]
+    assert second_payload["items"][0]["reader_low_confidence"] is False
     assert second_payload["next_cursor"] is None
 
     filtered = client.get(

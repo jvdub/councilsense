@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RunLifecycleStatus = Literal["pending", "processed", "failed", "limited_confidence"]
+RunLifecycleStatus = Literal[
+    "pending",
+    "processed",
+    "failed",
+    "limited_confidence",
+    "manual_review_needed",
+]
 
 
 @dataclass(frozen=True)
@@ -252,6 +258,51 @@ class ProcessingRunRepository:
             for row in rows
         )
 
+    def get_latest_run_confidence_score(self, *, run_id: str) -> float | None:
+        rows = self._connection.execute(
+            """
+            SELECT metadata_json
+            FROM processing_stage_outcomes
+            WHERE run_id = ?
+              AND metadata_json IS NOT NULL
+            ORDER BY
+                CASE stage_name
+                    WHEN 'publish' THEN 0
+                    WHEN 'summarize' THEN 1
+                    ELSE 2
+                END ASC,
+                COALESCE(finished_at, started_at, created_at) DESC,
+                id DESC
+            """,
+            (run_id,),
+        ).fetchall()
+
+        for row in rows:
+            metadata_json = row[0]
+            if metadata_json is None:
+                continue
+            try:
+                metadata = json.loads(str(metadata_json))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+
+            score = metadata.get("confidence_score")
+            if score is None:
+                score = metadata.get("confidence")
+            if score is None:
+                score = metadata.get("score")
+
+            if isinstance(score, bool):
+                continue
+            if isinstance(score, (int, float)):
+                numeric_score = float(score)
+                if 0.0 <= numeric_score <= 1.0:
+                    return numeric_score
+
+        return None
+
 
 class ProcessingLifecycleService:
     def __init__(self, repository: ProcessingRunRepository) -> None:
@@ -265,3 +316,28 @@ class ProcessingLifecycleService:
 
     def mark_limited_confidence(self, *, run_id: str) -> ProcessingRunRecord:
         return self._repository.mark_run_completed(run_id=run_id, status="limited_confidence")
+
+    def mark_manual_review_needed(self, *, run_id: str) -> ProcessingRunRecord:
+        return self._repository.mark_run_completed(run_id=run_id, status="manual_review_needed")
+
+    def mark_completed_from_confidence_policy(
+        self,
+        *,
+        run_id: str,
+        manual_review_threshold: float = 0.6,
+        warn_threshold: float = 0.8,
+    ) -> ProcessingRunRecord:
+        from councilsense.app.source_health_policy import ConfidencePolicyConfig, evaluate_confidence_policy
+
+        decision = evaluate_confidence_policy(
+            confidence_score=self._repository.get_latest_run_confidence_score(run_id=run_id),
+            config=ConfidencePolicyConfig(
+                manual_review_threshold=manual_review_threshold,
+                warn_threshold=warn_threshold,
+            ),
+        )
+
+        if decision.manual_review_needed:
+            return self.mark_manual_review_needed(run_id=run_id)
+
+        return self.mark_processed(run_id=run_id)
