@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Generator
 
 import pytest
 
@@ -8,7 +9,7 @@ from councilsense.db import apply_migrations, get_migration_status
 
 
 @pytest.fixture
-def connection() -> sqlite3.Connection:
+def connection() -> Generator[sqlite3.Connection, None, None]:
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -28,6 +29,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0007_source_health_failure_context.sql" in before.pending
     assert "0008_processing_run_provenance.sql" in before.pending
     assert "0009_manual_review_needed_status.sql" in before.pending
+    assert "0010_notification_outbox_and_attempt_schema.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -40,6 +42,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0007_source_health_failure_context.sql",
         "0008_processing_run_provenance.sql",
         "0009_manual_review_needed_status.sql",
+        "0010_notification_outbox_and_attempt_schema.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -68,6 +71,8 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "summary_publications",
         "publication_claims",
         "claim_evidence_pointers",
+        "notification_outbox",
+        "notification_delivery_attempts",
         "schema_migrations",
     }.issubset(table_names)
 
@@ -91,6 +96,11 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_claim_evidence_artifact" in index_names
     assert "idx_meetings_city_created_id" in index_names
     assert "idx_summary_publications_meeting_published_id" in index_names
+    assert "idx_notification_outbox_status_next_retry" in index_names
+    assert "idx_notification_outbox_city_meeting" in index_names
+    assert "idx_notification_outbox_user_created" in index_names
+    assert "idx_notification_delivery_attempts_outbox_attempted" in index_names
+    assert "idx_notification_delivery_attempts_outcome_attempted" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:
