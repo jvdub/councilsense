@@ -4,6 +4,11 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from councilsense.app.notification_fanout import (
+    NotificationEnqueueResult,
+    NotificationSubscriptionTarget,
+    enqueue_publish_notifications_to_outbox,
+)
 from councilsense.db import ConfidenceLabel, MeetingSummaryRepository, PublicationStatus, SummaryPublicationRecord
 
 
@@ -261,6 +266,7 @@ class QualityGateDecision:
 class PublishedSummarizationResult:
     publication: SummaryPublicationRecord
     quality_gate: QualityGateDecision
+    notification_enqueue: NotificationEnqueueResult | None = None
 
 
 def evaluate_quality_gate(
@@ -318,6 +324,7 @@ def attach_claim_evidence(
     repository: MeetingSummaryRepository,
     publication_id: str,
     claims: Sequence[SummaryClaim],
+    in_transaction: bool = False,
 ) -> ClaimAttachmentResult:
     created_claim_ids: list[str] = []
     created_pointer_ids: list[str] = []
@@ -326,12 +333,20 @@ def attach_claim_evidence(
     for claim_index, claim in enumerate(claims, start=1):
         claim.validate()
         claim_id = f"{publication_id}:claim:{claim_index}"
-        repository.add_claim(
-            claim_id=claim_id,
-            publication_id=publication_id,
-            claim_order=claim_index,
-            claim_text=claim.claim_text,
-        )
+        if in_transaction:
+            repository.add_claim_in_transaction(
+                claim_id=claim_id,
+                publication_id=publication_id,
+                claim_order=claim_index,
+                claim_text=claim.claim_text,
+            )
+        else:
+            repository.add_claim(
+                claim_id=claim_id,
+                publication_id=publication_id,
+                claim_order=claim_index,
+                claim_text=claim.claim_text,
+            )
         created_claim_ids.append(claim_id)
 
         if claim.evidence_gap:
@@ -341,15 +356,26 @@ def attach_claim_evidence(
         for pointer_index, pointer in enumerate(claim.evidence, start=1):
             pointer.validate()
             pointer_id = f"{claim_id}:evidence:{pointer_index}"
-            repository.add_claim_evidence_pointer(
-                pointer_id=pointer_id,
-                claim_id=claim_id,
-                artifact_id=pointer.artifact_id,
-                section_ref=pointer.section_ref,
-                char_start=pointer.char_start,
-                char_end=pointer.char_end,
-                excerpt=pointer.excerpt,
-            )
+            if in_transaction:
+                repository.add_claim_evidence_pointer_in_transaction(
+                    pointer_id=pointer_id,
+                    claim_id=claim_id,
+                    artifact_id=pointer.artifact_id,
+                    section_ref=pointer.section_ref,
+                    char_start=pointer.char_start,
+                    char_end=pointer.char_end,
+                    excerpt=pointer.excerpt,
+                )
+            else:
+                repository.add_claim_evidence_pointer(
+                    pointer_id=pointer_id,
+                    claim_id=claim_id,
+                    artifact_id=pointer.artifact_id,
+                    section_ref=pointer.section_ref,
+                    char_start=pointer.char_start,
+                    char_end=pointer.char_end,
+                    excerpt=pointer.excerpt,
+                )
             created_pointer_ids.append(pointer_id)
 
     return ClaimAttachmentResult(
@@ -372,26 +398,28 @@ def persist_summarization_output(
     output: SummarizationOutput,
     published_at: str | None,
 ) -> SummaryPublicationRecord:
-    publication = repository.create_publication(
-        publication_id=publication_id,
-        meeting_id=meeting_id,
-        processing_run_id=processing_run_id,
-        publish_stage_outcome_id=publish_stage_outcome_id,
-        version_no=version_no,
-        publication_status=publication_status,
-        confidence_label=confidence_label,
-        summary_text=output.summary,
-        key_decisions_json=_encode_json_array(output.key_decisions),
-        key_actions_json=_encode_json_array(output.key_actions),
-        notable_topics_json=_encode_json_array(output.notable_topics),
-        published_at=published_at,
-    )
-    attach_claim_evidence(
-        repository=repository,
-        publication_id=publication.id,
-        claims=output.claims,
-    )
-    return publication
+    with repository.connection:
+        publication = repository.create_publication_in_transaction(
+            publication_id=publication_id,
+            meeting_id=meeting_id,
+            processing_run_id=processing_run_id,
+            publish_stage_outcome_id=publish_stage_outcome_id,
+            version_no=version_no,
+            publication_status=publication_status,
+            confidence_label=confidence_label,
+            summary_text=output.summary,
+            key_decisions_json=_encode_json_array(output.key_decisions),
+            key_actions_json=_encode_json_array(output.key_actions),
+            notable_topics_json=_encode_json_array(output.notable_topics),
+            published_at=published_at,
+        )
+        attach_claim_evidence(
+            repository=repository,
+            publication_id=publication.id,
+            claims=output.claims,
+            in_transaction=True,
+        )
+        return publication
 
 
 def publish_summarization_output(
@@ -405,23 +433,49 @@ def publish_summarization_output(
     base_confidence_label: ConfidenceLabel,
     output: SummarizationOutput,
     published_at: str | None,
+    city_id: str | None = None,
     quality_gate_config: QualityGateConfig | None = None,
+    notification_targets: Sequence[NotificationSubscriptionTarget] = (),
 ) -> PublishedSummarizationResult:
     quality_gate = evaluate_quality_gate(
         output=output,
         base_confidence_label=base_confidence_label,
         config=quality_gate_config,
     )
-    publication = persist_summarization_output(
-        repository=repository,
-        publication_id=publication_id,
-        meeting_id=meeting_id,
-        processing_run_id=processing_run_id,
-        publish_stage_outcome_id=publish_stage_outcome_id,
-        version_no=version_no,
-        publication_status=quality_gate.publication_status,
-        confidence_label=quality_gate.confidence_label,
-        output=output,
-        published_at=published_at,
+    with repository.connection:
+        publication = repository.create_publication_in_transaction(
+            publication_id=publication_id,
+            meeting_id=meeting_id,
+            processing_run_id=processing_run_id,
+            publish_stage_outcome_id=publish_stage_outcome_id,
+            version_no=version_no,
+            publication_status=quality_gate.publication_status,
+            confidence_label=quality_gate.confidence_label,
+            summary_text=output.summary,
+            key_decisions_json=_encode_json_array(output.key_decisions),
+            key_actions_json=_encode_json_array(output.key_actions),
+            notable_topics_json=_encode_json_array(output.notable_topics),
+            published_at=published_at,
+        )
+        attach_claim_evidence(
+            repository=repository,
+            publication_id=publication.id,
+            claims=output.claims,
+            in_transaction=True,
+        )
+        notification_enqueue = (
+            enqueue_publish_notifications_to_outbox(
+                connection=repository.connection,
+                city_id=city_id,
+                meeting_id=meeting_id,
+                subscription_targets=notification_targets,
+            )
+            if notification_targets and city_id is not None
+            else None
+        )
+
+    return PublishedSummarizationResult(
+        publication=publication,
+        quality_gate=quality_gate,
+        notification_enqueue=notification_enqueue,
     )
-    return PublishedSummarizationResult(publication=publication, quality_gate=quality_gate)

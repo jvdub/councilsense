@@ -10,23 +10,23 @@
 
 ### Required fields
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `contract_version` | `string` | Must equal `st-009-v1`. |
-| `user_id` | `string` | Non-empty user identifier. |
-| `meeting_id` | `string` | Non-empty meeting identifier. |
-| `notification_type` | `string` | Non-empty notification class (example: `meeting_published`). |
-| `dedupe_key` | `string` | Deterministic key derived from `user_id + meeting_id + notification_type`. |
-| `enqueued_at` | `string` (ISO-8601 with timezone) | Event enqueue timestamp. |
-| `delivery_status` | `string` enum | One of: `queued`, `sending`, `sent`, `failed`, `suppressed`, `invalid_subscription`, `expired_subscription`. |
-| `attempt_count` | `integer` | Attempt count, `>= 0`. |
+| Field               | Type                              | Description                                                                                                  |
+| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `contract_version`  | `string`                          | Must equal `st-009-v1`.                                                                                      |
+| `user_id`           | `string`                          | Non-empty user identifier.                                                                                   |
+| `meeting_id`        | `string`                          | Non-empty meeting identifier.                                                                                |
+| `notification_type` | `string`                          | Non-empty notification class (example: `meeting_published`).                                                 |
+| `dedupe_key`        | `string`                          | Deterministic key derived from `user_id + meeting_id + notification_type`.                                   |
+| `enqueued_at`       | `string` (ISO-8601 with timezone) | Event enqueue timestamp.                                                                                     |
+| `delivery_status`   | `string` enum                     | One of: `queued`, `sending`, `sent`, `failed`, `suppressed`, `invalid_subscription`, `expired_subscription`. |
+| `attempt_count`     | `integer`                         | Attempt count, `>= 0`.                                                                                       |
 
 ### Optional fields
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `subscription_id` | `string \| null` | Subscription used for a specific delivery attempt. |
-| `error_code` | `string \| null` | Worker/system error code for failed/suppressed cases. |
+| Field             | Type             | Description                                           |
+| ----------------- | ---------------- | ----------------------------------------------------- |
+| `subscription_id` | `string \| null` | Subscription used for a specific delivery attempt.    |
+| `error_code`      | `string \| null` | Worker/system error code for failed/suppressed cases. |
 
 ## Deterministic Dedupe Key
 
@@ -46,18 +46,25 @@ Properties:
 
 ## Delivery Lifecycle Status Model
 
-| Current | Allowed Next |
-| --- | --- |
-| `queued` | `sending`, `suppressed`, `invalid_subscription`, `expired_subscription` |
-| `sending` | `sent`, `failed`, `suppressed`, `invalid_subscription`, `expired_subscription` |
-| `failed` | `sending`, `suppressed`, `invalid_subscription`, `expired_subscription` |
-| `sent` | terminal |
-| `suppressed` | terminal |
-| `invalid_subscription` | terminal |
-| `expired_subscription` | terminal |
+| Current                | Allowed Next                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `queued`               | `sending`, `suppressed`, `invalid_subscription`, `expired_subscription`        |
+| `sending`              | `sent`, `failed`, `suppressed`, `invalid_subscription`, `expired_subscription` |
+| `failed`               | `sending`, `suppressed`, `invalid_subscription`, `expired_subscription`        |
+| `sent`                 | terminal                                                                       |
+| `suppressed`           | terminal                                                                       |
+| `invalid_subscription` | terminal                                                                       |
+| `expired_subscription` | terminal                                                                       |
 
 Notes:
 
 - `invalid_subscription`: endpoint/token is malformed, revoked, or permanently unusable.
 - `expired_subscription`: endpoint/token expired and requires client re-registration.
 - Both states are terminal for the current dedupe key and prevent repeated sends for the same `(user_id, meeting_id, notification_type)` tuple.
+
+## Publish Enqueue Conflict Behavior (Ops Note)
+
+- Publish fan-out writes outbox rows in the same DB transaction as summary publication persistence.
+- Enqueue uses `ON CONFLICT(dedupe_key) DO NOTHING` for idempotent duplicate triggers.
+- Conflict/no-op inserts are counted as dedupe conflicts and emitted in structured enqueue events.
+- Non-conflict outbox write failures raise and roll back the publish transaction.

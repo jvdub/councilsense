@@ -48,6 +48,10 @@ class MeetingSummaryRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        return self._connection
+
     def create_publication(
         self,
         *,
@@ -65,39 +69,70 @@ class MeetingSummaryRepository:
         published_at: str | None,
     ) -> SummaryPublicationRecord:
         with self._connection:
-            self._connection.execute(
-                """
-                INSERT INTO summary_publications (
-                    id,
-                    meeting_id,
-                    processing_run_id,
-                    publish_stage_outcome_id,
-                    version_no,
-                    publication_status,
-                    confidence_label,
-                    summary_text,
-                    key_decisions_json,
-                    key_actions_json,
-                    notable_topics_json,
-                    published_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
-                """,
-                (
-                    publication_id,
-                    meeting_id,
-                    processing_run_id,
-                    publish_stage_outcome_id,
-                    version_no,
-                    publication_status,
-                    confidence_label,
-                    summary_text,
-                    key_decisions_json,
-                    key_actions_json,
-                    notable_topics_json,
-                    published_at,
-                ),
+            return self.create_publication_in_transaction(
+                publication_id=publication_id,
+                meeting_id=meeting_id,
+                processing_run_id=processing_run_id,
+                publish_stage_outcome_id=publish_stage_outcome_id,
+                version_no=version_no,
+                publication_status=publication_status,
+                confidence_label=confidence_label,
+                summary_text=summary_text,
+                key_decisions_json=key_decisions_json,
+                key_actions_json=key_actions_json,
+                notable_topics_json=notable_topics_json,
+                published_at=published_at,
             )
+
+    def create_publication_in_transaction(
+        self,
+        *,
+        publication_id: str,
+        meeting_id: str,
+        processing_run_id: str | None,
+        publish_stage_outcome_id: str | None,
+        version_no: int,
+        publication_status: PublicationStatus,
+        confidence_label: ConfidenceLabel,
+        summary_text: str,
+        key_decisions_json: str,
+        key_actions_json: str,
+        notable_topics_json: str,
+        published_at: str | None,
+    ) -> SummaryPublicationRecord:
+        self._connection.execute(
+            """
+            INSERT INTO summary_publications (
+                id,
+                meeting_id,
+                processing_run_id,
+                publish_stage_outcome_id,
+                version_no,
+                publication_status,
+                confidence_label,
+                summary_text,
+                key_decisions_json,
+                key_actions_json,
+                notable_topics_json,
+                published_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+            """,
+            (
+                publication_id,
+                meeting_id,
+                processing_run_id,
+                publish_stage_outcome_id,
+                version_no,
+                publication_status,
+                confidence_label,
+                summary_text,
+                key_decisions_json,
+                key_actions_json,
+                notable_topics_json,
+                published_at,
+            ),
+        )
 
         row = self._connection.execute(
             """
@@ -144,18 +179,33 @@ class MeetingSummaryRepository:
         claim_text: str,
     ) -> PublicationClaimRecord:
         with self._connection:
-            self._connection.execute(
-                """
-                INSERT INTO publication_claims (
-                    id,
-                    publication_id,
-                    claim_order,
-                    claim_text
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, publication_id, claim_order, claim_text),
+            return self.add_claim_in_transaction(
+                claim_id=claim_id,
+                publication_id=publication_id,
+                claim_order=claim_order,
+                claim_text=claim_text,
             )
+
+    def add_claim_in_transaction(
+        self,
+        *,
+        claim_id: str,
+        publication_id: str,
+        claim_order: int,
+        claim_text: str,
+    ) -> PublicationClaimRecord:
+        self._connection.execute(
+            """
+            INSERT INTO publication_claims (
+                id,
+                publication_id,
+                claim_order,
+                claim_text
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (claim_id, publication_id, claim_order, claim_text),
+        )
 
         row = self._connection.execute(
             """
@@ -185,21 +235,42 @@ class MeetingSummaryRepository:
         excerpt: str,
     ) -> ClaimEvidencePointerRecord:
         with self._connection:
-            self._connection.execute(
-                """
-                INSERT INTO claim_evidence_pointers (
-                    id,
-                    claim_id,
-                    artifact_id,
-                    section_ref,
-                    char_start,
-                    char_end,
-                    excerpt
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (pointer_id, claim_id, artifact_id, section_ref, char_start, char_end, excerpt),
+            return self.add_claim_evidence_pointer_in_transaction(
+                pointer_id=pointer_id,
+                claim_id=claim_id,
+                artifact_id=artifact_id,
+                section_ref=section_ref,
+                char_start=char_start,
+                char_end=char_end,
+                excerpt=excerpt,
             )
+
+    def add_claim_evidence_pointer_in_transaction(
+        self,
+        *,
+        pointer_id: str,
+        claim_id: str,
+        artifact_id: str,
+        section_ref: str | None,
+        char_start: int | None,
+        char_end: int | None,
+        excerpt: str,
+    ) -> ClaimEvidencePointerRecord:
+        self._connection.execute(
+            """
+            INSERT INTO claim_evidence_pointers (
+                id,
+                claim_id,
+                artifact_id,
+                section_ref,
+                char_start,
+                char_end,
+                excerpt
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (pointer_id, claim_id, artifact_id, section_ref, char_start, char_end, excerpt),
+        )
 
         row = self._connection.execute(
             """
