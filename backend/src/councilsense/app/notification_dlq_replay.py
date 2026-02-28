@@ -204,6 +204,61 @@ class NotificationDlqReplayService:
                 requeue_correlation_id=requeue_correlation_id,
             )
 
+            claim_cursor = self._connection.execute(
+                """
+                UPDATE notification_delivery_dlq
+                SET
+                    replayed_at = ?,
+                    replayed_by = ?,
+                    replay_idempotency_key = ?,
+                    replay_outbox_id = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND replay_outbox_id IS NULL
+                """,
+                (
+                    replayed_at,
+                    actor_user_id,
+                    normalized_key,
+                    replay_outbox_id,
+                    dlq_id,
+                ),
+            )
+            if claim_cursor.rowcount <= 0:
+                existing_replay_row = self._connection.execute(
+                    """
+                    SELECT replay_outbox_id
+                    FROM notification_delivery_dlq
+                    WHERE id = ?
+                    """,
+                    (dlq_id,),
+                ).fetchone()
+                resolved_replay_outbox_id = (
+                    str(existing_replay_row[0])
+                    if existing_replay_row is not None and existing_replay_row[0] is not None
+                    else source_outbox_id
+                )
+                result = self._insert_audit_row(
+                    dlq_id=dlq_id,
+                    source_outbox_id=source_outbox_id,
+                    replay_outbox_id=resolved_replay_outbox_id,
+                    requeue_correlation_id=f"requeue-correlation-{uuid4().hex}",
+                    replay_idempotency_key=normalized_key,
+                    actor_user_id=actor_user_id,
+                    replay_reason=normalized_reason,
+                    outcome="duplicate",
+                    outcome_detail="dlq_item_already_replayed",
+                )
+                self._emit_replay_observability(
+                    result=result,
+                    city_id=city_id,
+                    source_id=source_id,
+                    meeting_id=meeting_id,
+                    run_id=run_id,
+                    notification_type=notification_type,
+                )
+                return result
+
             self._connection.execute(
                 """
                 UPDATE notification_outbox
@@ -225,26 +280,6 @@ class NotificationDlqReplayService:
                     replayed_at,
                     int(source_outbox[5]),
                     source_outbox_id,
-                ),
-            )
-
-            self._connection.execute(
-                """
-                UPDATE notification_delivery_dlq
-                SET
-                    replayed_at = ?,
-                    replayed_by = ?,
-                    replay_idempotency_key = ?,
-                    replay_outbox_id = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    replayed_at,
-                    actor_user_id,
-                    normalized_key,
-                    replay_outbox_id,
-                    dlq_id,
                 ),
             )
 
@@ -385,33 +420,36 @@ class NotificationDlqReplayService:
         outcome: str,
         outcome_detail: str | None,
     ) -> NotificationDlqReplayResult:
-        self._connection.execute(
-            """
-            INSERT INTO notification_dlq_replay_audit (
-                dlq_id,
-                source_outbox_id,
-                replay_outbox_id,
-                requeue_correlation_id,
-                replay_idempotency_key,
-                actor_user_id,
-                replay_reason,
-                outcome,
-                outcome_detail
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO notification_dlq_replay_audit (
+                    dlq_id,
+                    source_outbox_id,
+                    replay_outbox_id,
+                    requeue_correlation_id,
+                    replay_idempotency_key,
+                    actor_user_id,
+                    replay_reason,
+                    outcome,
+                    outcome_detail
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    dlq_id,
+                    source_outbox_id,
+                    replay_outbox_id,
+                    requeue_correlation_id,
+                    replay_idempotency_key,
+                    actor_user_id,
+                    replay_reason,
+                    outcome,
+                    outcome_detail,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                dlq_id,
-                source_outbox_id,
-                replay_outbox_id,
-                requeue_correlation_id,
-                replay_idempotency_key,
-                actor_user_id,
-                replay_reason,
-                outcome,
-                outcome_detail,
-            ),
-        )
+        except sqlite3.IntegrityError:
+            pass
 
         row = self._connection.execute(
             """

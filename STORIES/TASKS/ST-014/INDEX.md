@@ -9,7 +9,7 @@
 - [x] [TASK-ST-014-02](TASK-ST-014-02-retry-policy-configuration-and-exhaustion-rules.md) — Retry Policy Configuration and Exhaustion Rules
 - [x] [TASK-ST-014-03](TASK-ST-014-03-operator-replay-api-and-authorization.md) — Operator Replay API and Authorization
 - [x] [TASK-ST-014-04](TASK-ST-014-04-dlq-replay-observability-and-audit-metrics.md) — DLQ and Replay Observability with Measurable Outputs
-- [ ] [TASK-ST-014-05](TASK-ST-014-05-replay-idempotency-and-duplicate-prevention-tests.md) — Replay Idempotency and Duplicate Prevention Test Gate
+- [x] [TASK-ST-014-05](TASK-ST-014-05-replay-idempotency-and-duplicate-prevention-tests.md) — Replay Idempotency and Duplicate Prevention Test Gate
 
 ## Dependency Chain
 

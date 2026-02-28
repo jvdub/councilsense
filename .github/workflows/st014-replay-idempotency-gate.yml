@@ -1,0 +1,30 @@
+name: ST-014 Replay Idempotency Gate
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - .github/workflows/st014-replay-idempotency-gate.yml
+  workflow_dispatch:
+
+jobs:
+  replay-idempotency-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend test dependencies
+        run: python -m pip install --upgrade pip pytest && python -m pip install -e backend
+
+      - name: Run replay idempotency and duplicate-prevention gate
+        run: |
+          pytest \
+            backend/tests/test_notification_dlq_replay_idempotency_gate.py \
+            backend/tests/test_notification_dlq_replay_api_and_authorization.py::test_replay_idempotency_key_prevents_double_requeue \
+            backend/tests/test_notification_publish_transaction_fanout.py::test_duplicate_publish_trigger_is_idempotent_for_outbox_dedupe
