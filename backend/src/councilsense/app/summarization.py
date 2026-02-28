@@ -469,6 +469,7 @@ def publish_summarization_output(
                 city_id=city_id,
                 meeting_id=meeting_id,
                 subscription_targets=notification_targets,
+                run_id=processing_run_id,
             )
             if notification_targets and city_id is not None
             else None

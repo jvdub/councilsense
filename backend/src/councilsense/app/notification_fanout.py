@@ -5,7 +5,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Sequence
+from typing import Callable, Literal, Sequence
 
 from councilsense.app.notification_contracts import (
     build_notification_dedupe_key,
@@ -22,6 +22,13 @@ NotificationSubscriptionStatus = Literal[
 
 
 logger = logging.getLogger(__name__)
+
+
+NotificationMetricEmitter = Callable[[str, str, str, float], None]
+
+_NOTIFY_ENQUEUE_STAGE = "notify_enqueue"
+_NOTIFY_ENQUEUE_COUNTER = "councilsense_notifications_enqueue_events_total"
+_UNKNOWN_RUN_ID = "run-unknown"
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,8 @@ def enqueue_publish_notifications_to_outbox(
     subscription_targets: Sequence[NotificationSubscriptionTarget],
     notification_type: str = "meeting_published",
     enqueued_at: datetime | None = None,
+    run_id: str | None = None,
+    metric_emitter: NotificationMetricEmitter | None = None,
 ) -> NotificationEnqueueResult:
     timestamp = enqueued_at or datetime.now(UTC)
     eligible_targets = select_eligible_subscription_targets(
@@ -79,6 +88,8 @@ def enqueue_publish_notifications_to_outbox(
 
     enqueued_count = 0
     dedupe_conflict_count = 0
+    normalized_run_id = _normalized_run_id(run_id)
+    current_dedupe_key = "notification-outbox-batch"
 
     try:
         for target in eligible_targets:
@@ -87,6 +98,7 @@ def enqueue_publish_notifications_to_outbox(
                 meeting_id=meeting_id,
                 notification_type=notification_type,
             )
+            current_dedupe_key = dedupe_key
             payload = produce_notification_event_payload(
                 user_id=target.user_id,
                 meeting_id=meeting_id,
@@ -94,6 +106,7 @@ def enqueue_publish_notifications_to_outbox(
                 enqueued_at=timestamp,
                 subscription_id=target.subscription_id,
             )
+            payload["run_id"] = normalized_run_id
 
             cursor = connection.execute(
                 """
@@ -123,9 +136,57 @@ def enqueue_publish_notifications_to_outbox(
             )
             if cursor.rowcount > 0:
                 enqueued_count += 1
+                _emit_metric(
+                    metric_emitter=metric_emitter,
+                    name=_NOTIFY_ENQUEUE_COUNTER,
+                    stage=_NOTIFY_ENQUEUE_STAGE,
+                    outcome="success",
+                )
+                logger.info(
+                    "notification_enqueue_attempt",
+                    extra={
+                        "event": {
+                            "event_name": "notification_enqueue_attempt",
+                            "city_id": city_id,
+                            "meeting_id": meeting_id,
+                            "run_id": normalized_run_id,
+                            "dedupe_key": dedupe_key,
+                            "stage": _NOTIFY_ENQUEUE_STAGE,
+                            "outcome": "success",
+                            "notification_type": notification_type,
+                        }
+                    },
+                )
             else:
                 dedupe_conflict_count += 1
+                _emit_metric(
+                    metric_emitter=metric_emitter,
+                    name=_NOTIFY_ENQUEUE_COUNTER,
+                    stage=_NOTIFY_ENQUEUE_STAGE,
+                    outcome="duplicate",
+                )
+                logger.info(
+                    "notification_enqueue_attempt",
+                    extra={
+                        "event": {
+                            "event_name": "notification_enqueue_attempt",
+                            "city_id": city_id,
+                            "meeting_id": meeting_id,
+                            "run_id": normalized_run_id,
+                            "dedupe_key": dedupe_key,
+                            "stage": _NOTIFY_ENQUEUE_STAGE,
+                            "outcome": "duplicate",
+                            "notification_type": notification_type,
+                        }
+                    },
+                )
     except sqlite3.Error as exc:
+        _emit_metric(
+            metric_emitter=metric_emitter,
+            name=_NOTIFY_ENQUEUE_COUNTER,
+            stage=_NOTIFY_ENQUEUE_STAGE,
+            outcome="failure",
+        )
         logger.error(
             "notification_outbox_enqueue_failed",
             extra={
@@ -133,6 +194,10 @@ def enqueue_publish_notifications_to_outbox(
                     "event_name": "notification_outbox_enqueue_failed",
                     "city_id": city_id,
                     "meeting_id": meeting_id,
+                    "run_id": normalized_run_id,
+                    "dedupe_key": current_dedupe_key,
+                    "stage": _NOTIFY_ENQUEUE_STAGE,
+                    "outcome": "failure",
                     "notification_type": notification_type,
                     "eligible_subscription_count": len(eligible_targets),
                     "error": str(exc),
@@ -156,6 +221,10 @@ def enqueue_publish_notifications_to_outbox(
                 "event_name": "notification_outbox_enqueue_result",
                 "city_id": result.city_id,
                 "meeting_id": result.meeting_id,
+                "run_id": normalized_run_id,
+                "dedupe_key": "notification-outbox-batch",
+                "stage": _NOTIFY_ENQUEUE_STAGE,
+                "outcome": "success" if result.enqueued_count > 0 else "duplicate",
                 "notification_type": result.notification_type,
                 "eligible_subscription_count": result.eligible_subscription_count,
                 "enqueued_count": result.enqueued_count,
@@ -164,3 +233,25 @@ def enqueue_publish_notifications_to_outbox(
         },
     )
     return result
+
+
+def _emit_metric(
+    *,
+    metric_emitter: NotificationMetricEmitter | None,
+    name: str,
+    stage: str,
+    outcome: str,
+    value: float = 1.0,
+) -> None:
+    if metric_emitter is None:
+        return
+    metric_emitter(name, stage, outcome, value)
+
+
+def _normalized_run_id(run_id: str | None) -> str:
+    if run_id is None:
+        return _UNKNOWN_RUN_ID
+    normalized = run_id.strip()
+    if not normalized:
+        return _UNKNOWN_RUN_ID
+    return normalized

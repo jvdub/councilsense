@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -66,6 +67,14 @@ class ExpiredSubscriptionDeliveryError(NotificationDeliveryError):
 
 NotificationSender = Callable[[NotificationOutboxRecord], None]
 SubscriptionSuppressionSink = Callable[[str, Literal["invalid_subscription", "expired_subscription"]], None]
+NotificationMetricEmitter = Callable[[str, str, str, float], None]
+
+_NOTIFY_DELIVER_STAGE = "notify_deliver"
+_NOTIFY_DELIVERY_COUNTER = "councilsense_notifications_delivery_events_total"
+_NOTIFY_DELIVERY_DURATION = "councilsense_notifications_delivery_duration_seconds"
+_UNKNOWN_RUN_ID = "run-unknown"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -98,12 +107,14 @@ class NotificationDeliveryWorker:
         connection: sqlite3.Connection,
         sender: NotificationSender,
         suppression_sink: SubscriptionSuppressionSink | None = None,
+        metric_emitter: NotificationMetricEmitter | None = None,
         config: NotificationDeliveryWorkerConfig | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self._connection = connection
         self._sender = sender
         self._suppression_sink = suppression_sink
+        self._metric_emitter = metric_emitter
         self._config = config or NotificationDeliveryWorkerConfig()
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
 
@@ -236,6 +247,7 @@ class NotificationDeliveryWorker:
                     attempted_at.isoformat(),
                 ),
             )
+            self._emit_delivery_outcome(record=record, outcome="success", observed_at=attempted_at)
             self._connection.execute(
                 """
                 UPDATE notification_outbox
@@ -336,6 +348,7 @@ class NotificationDeliveryWorker:
                 ),
             )
 
+        self._emit_delivery_outcome(record=record, outcome="retry", error=error, observed_at=attempted_at)
         return True
 
     def _record_permanent_failure(
@@ -397,6 +410,8 @@ class NotificationDeliveryWorker:
                     attempted_at.isoformat(),
                 ),
             )
+
+            self._emit_delivery_outcome(record=record, outcome=status, error=error, observed_at=attempted_at)
             self._connection.execute(
                 """
                 UPDATE notification_outbox
@@ -467,6 +482,14 @@ class NotificationDeliveryWorker:
                     None,
                     attempted_at.isoformat(),
                 ),
+            )
+
+            self._emit_delivery_outcome(
+                record=record,
+                outcome="failure",
+                error_code=error_code,
+                error_summary=provider_response_summary,
+                observed_at=attempted_at,
             )
             self._connection.execute(
                 """
@@ -554,5 +577,102 @@ class NotificationDeliveryWorker:
             attempt_count=attempt_count,
             error_code=error_code,
         )
-        validated = NotificationEventMessage.from_payload(next_payload.to_payload())
-        return json.dumps(validated.to_payload(), ensure_ascii=False, separators=(",", ":"))
+        validated_payload = NotificationEventMessage.from_payload(next_payload.to_payload()).to_payload()
+        run_id = _extract_optional_run_id(parsed_raw)
+        if run_id is not None:
+            validated_payload["run_id"] = run_id
+        return json.dumps(validated_payload, ensure_ascii=False, separators=(",", ":"))
+
+    def _emit_delivery_outcome(
+        self,
+        *,
+        record: NotificationOutboxRecord,
+        outcome: Literal["success", "retry", "failure", "invalid_subscription", "expired_subscription"],
+        observed_at: datetime,
+        error: NotificationDeliveryError | None = None,
+        error_code: str | None = None,
+        error_summary: str | None = None,
+    ) -> None:
+        resolved_error_code = error.error_code if error is not None else error_code
+        resolved_error_summary = error.provider_response_summary if error is not None else error_summary
+        run_id = self._extract_run_id(payload_json=record.payload_json)
+        latency_seconds = self._delivery_latency_seconds(payload_json=record.payload_json, observed_at=observed_at)
+
+        self._emit_metric(name=_NOTIFY_DELIVERY_COUNTER, stage=_NOTIFY_DELIVER_STAGE, outcome=outcome, value=1.0)
+        if latency_seconds is not None:
+            self._emit_metric(
+                name=_NOTIFY_DELIVERY_DURATION,
+                stage=_NOTIFY_DELIVER_STAGE,
+                outcome=outcome,
+                value=latency_seconds,
+            )
+
+        logger.info(
+            "notification_delivery_attempt",
+            extra={
+                "event": {
+                    "event_name": "notification_delivery_attempt",
+                    "city_id": record.city_id,
+                    "meeting_id": record.meeting_id,
+                    "run_id": run_id,
+                    "dedupe_key": record.dedupe_key,
+                    "stage": _NOTIFY_DELIVER_STAGE,
+                    "outcome": outcome,
+                    "attempt_count": record.attempt_count + 1,
+                    "error_code": resolved_error_code,
+                    "error_summary": _normalize_error_summary(resolved_error_summary),
+                }
+            },
+        )
+
+    def _emit_metric(self, *, name: str, stage: str, outcome: str, value: float) -> None:
+        if self._metric_emitter is None:
+            return
+        self._metric_emitter(name, stage, outcome, value)
+
+    def _extract_run_id(self, *, payload_json: str) -> str:
+        try:
+            parsed = json.loads(payload_json)
+        except json.JSONDecodeError:
+            return _UNKNOWN_RUN_ID
+
+        if not isinstance(parsed, dict):
+            return _UNKNOWN_RUN_ID
+
+        raw_value = parsed.get("run_id")
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip()
+            if normalized:
+                return normalized
+        return _UNKNOWN_RUN_ID
+
+    def _delivery_latency_seconds(self, *, payload_json: str, observed_at: datetime) -> float | None:
+        try:
+            parsed = json.loads(payload_json)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed, dict):
+            return None
+
+        message = consume_notification_event_payload(parsed)
+        latency_seconds = (observed_at.astimezone(UTC) - message.enqueued_at.astimezone(UTC)).total_seconds()
+        return max(latency_seconds, 0.0)
+
+
+def _normalize_error_summary(raw_summary: str | None) -> str | None:
+    if raw_summary is None:
+        return None
+    summary = " ".join(raw_summary.split())
+    if not summary:
+        return None
+    return summary[:120]
+
+
+def _extract_optional_run_id(payload: dict[str, object]) -> str | None:
+    raw_value = payload.get("run_id")
+    if not isinstance(raw_value, str):
+        return None
+    normalized = raw_value.strip()
+    if not normalized:
+        return None
+    return normalized
