@@ -160,6 +160,16 @@ Last updated: 2026-02-28
 | TASK-ST-015-04 | ✅ Done | 04c32ae |
 | TASK-ST-015-05 | ✅ Done | 624f323 |
 
+### ST-016 — Alert Thresholds and Parser Drift Monitoring
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-016-01 | ✅ Done | 0a4f628 |
+| TASK-ST-016-02 | ✅ Done | f559ba3 |
+| TASK-ST-016-03 | ✅ Done | b3379f5 |
+| TASK-ST-016-04 | ✅ Done | 527f94f |
+| TASK-ST-016-05 | ✅ Done | 4f37f89 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -168,4 +178,4 @@ Last updated: 2026-02-28
 
 ## Next Queue (Dependency-Safe)
 
-1. Finish with ST-016
+- All backlog stories ST-001 through ST-016 are complete.
