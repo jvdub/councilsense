@@ -1,0 +1,119 @@
+{
+  "dashboard_id": "st-011-baseline-ops",
+  "title": "ST-011 Baseline Observability Dashboard",
+  "description": "MVP dashboard for pipeline and notification health with source freshness/failure snapshot.",
+  "default_time_window": "PT6H",
+  "filters": [
+    {
+      "name": "environment",
+      "type": "enum",
+      "default": "local",
+      "values": ["local", "aws"]
+    }
+  ],
+  "panels": [
+    {
+      "panel_id": "pipeline-stage-outcomes",
+      "title": "Pipeline stage outcomes",
+      "type": "timeseries",
+      "query": {
+        "query_id": "pipeline_stage_outcomes_total",
+        "kind": "metric_count",
+        "metric": "councilsense_pipeline_stage_events_total",
+        "group_by": ["stage", "outcome"],
+        "filters": {
+          "stage": ["ingest", "extract", "summarize", "publish"],
+          "outcome": ["success", "failure", "retry"]
+        },
+        "promql": "sum by (stage, outcome) (increase(councilsense_pipeline_stage_events_total{environment=\"$environment\",stage=~\"ingest|extract|summarize|publish\",outcome=~\"success|failure|retry\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "pipeline-stage-duration-p95",
+      "title": "Pipeline stage duration p95",
+      "type": "timeseries",
+      "query": {
+        "query_id": "pipeline_stage_duration_p95",
+        "kind": "metric_histogram",
+        "metric": "councilsense_pipeline_stage_duration_seconds",
+        "group_by": ["stage"],
+        "filters": {
+          "stage": ["ingest", "extract", "summarize", "publish"],
+          "outcome": ["success", "failure", "retry"]
+        },
+        "promql": "histogram_quantile(0.95, sum by (le, stage) (rate(councilsense_pipeline_stage_duration_seconds_bucket{environment=\"$environment\",stage=~\"ingest|extract|summarize|publish\",outcome=~\"success|failure|retry\"}[15m])))"
+      }
+    },
+    {
+      "panel_id": "notification-enqueue-outcomes",
+      "title": "Notification enqueue outcomes",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_enqueue_outcomes_total",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_enqueue_events_total",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_enqueue"],
+          "outcome": ["success", "duplicate", "failure"]
+        },
+        "promql": "sum by (outcome) (increase(councilsense_notifications_enqueue_events_total{environment=\"$environment\",stage=\"notify_enqueue\",outcome=~\"success|duplicate|failure\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "notification-delivery-outcomes",
+      "title": "Notification delivery outcomes",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_delivery_outcomes_total",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_delivery_events_total",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_deliver"],
+          "outcome": ["success", "retry", "failure", "invalid_subscription", "expired_subscription"]
+        },
+        "promql": "sum by (outcome) (increase(councilsense_notifications_delivery_events_total{environment=\"$environment\",stage=\"notify_deliver\",outcome=~\"success|retry|failure|invalid_subscription|expired_subscription\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "notification-delivery-duration-p95",
+      "title": "Notification delivery duration p95",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_delivery_duration_p95",
+        "kind": "metric_histogram",
+        "metric": "councilsense_notifications_delivery_duration_seconds",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_deliver"],
+          "outcome": ["success", "retry", "failure", "invalid_subscription", "expired_subscription"]
+        },
+        "promql": "histogram_quantile(0.95, sum by (le, outcome) (rate(councilsense_notifications_delivery_duration_seconds_bucket{environment=\"$environment\",stage=\"notify_deliver\",outcome=~\"success|retry|failure|invalid_subscription|expired_subscription\"}[15m])))"
+      }
+    },
+    {
+      "panel_id": "source-freshness-and-failure-snapshot",
+      "title": "Source freshness and failure snapshot",
+      "type": "table",
+      "query": {
+        "query_id": "source_freshness_failure_snapshot",
+        "kind": "source_snapshot",
+        "dataset": "city_sources",
+        "columns": [
+          "city_id",
+          "source_id",
+          "health_status",
+          "failure_streak",
+          "last_success_age_hours",
+          "last_failure_reason"
+        ],
+        "filters": {
+          "health_status": ["degraded", "failing"],
+          "freshness_hours_gte": 24
+        },
+        "sql": "SELECT city_id, id AS source_id, health_status, failure_streak, ROUND((julianday('now') - julianday(last_success_at)) * 24, 1) AS last_success_age_hours, last_failure_reason FROM city_sources WHERE enabled = 1 AND (health_status IN ('degraded', 'failing') OR last_success_at IS NULL OR ((julianday('now') - julianday(last_success_at)) * 24) >= 24) ORDER BY health_status DESC, failure_streak DESC, city_id ASC, id ASC"
+      }
+    }
+  ]
+}

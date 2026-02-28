@@ -1,0 +1,94 @@
+{
+  "environment": "local",
+  "metric_samples": [
+    {
+      "metric": "councilsense_pipeline_stage_events_total",
+      "labels": {"stage": "ingest", "outcome": "success", "environment": "local"},
+      "value": 18.0
+    },
+    {
+      "metric": "councilsense_pipeline_stage_events_total",
+      "labels": {"stage": "extract", "outcome": "failure", "environment": "local"},
+      "value": 2.0
+    },
+    {
+      "metric": "councilsense_pipeline_stage_events_total",
+      "labels": {"stage": "summarize", "outcome": "retry", "environment": "local"},
+      "value": 1.0
+    },
+    {
+      "metric": "councilsense_pipeline_stage_duration_seconds",
+      "labels": {"stage": "ingest", "outcome": "success", "environment": "local"},
+      "value": 12.4
+    },
+    {
+      "metric": "councilsense_pipeline_stage_duration_seconds",
+      "labels": {"stage": "extract", "outcome": "failure", "environment": "local"},
+      "value": 35.2
+    },
+    {
+      "metric": "councilsense_notifications_enqueue_events_total",
+      "labels": {"stage": "notify_enqueue", "outcome": "success", "environment": "local"},
+      "value": 9.0
+    },
+    {
+      "metric": "councilsense_notifications_enqueue_events_total",
+      "labels": {"stage": "notify_enqueue", "outcome": "duplicate", "environment": "local"},
+      "value": 3.0
+    },
+    {
+      "metric": "councilsense_notifications_delivery_events_total",
+      "labels": {"stage": "notify_deliver", "outcome": "success", "environment": "local"},
+      "value": 7.0
+    },
+    {
+      "metric": "councilsense_notifications_delivery_events_total",
+      "labels": {"stage": "notify_deliver", "outcome": "retry", "environment": "local"},
+      "value": 1.0
+    },
+    {
+      "metric": "councilsense_notifications_delivery_events_total",
+      "labels": {"stage": "notify_deliver", "outcome": "failure", "environment": "local"},
+      "value": 1.0
+    },
+    {
+      "metric": "councilsense_notifications_delivery_duration_seconds",
+      "labels": {"stage": "notify_deliver", "outcome": "retry", "environment": "local"},
+      "value": 300.0
+    },
+    {
+      "metric": "councilsense_notifications_delivery_duration_seconds",
+      "labels": {"stage": "notify_deliver", "outcome": "failure", "environment": "local"},
+      "value": 360.0
+    }
+  ],
+  "source_snapshot_rows": [
+    {
+      "environment": "local",
+      "city_id": "city-eagle-mountain-ut",
+      "source_id": "source-eagle-mountain-ut-minutes-primary",
+      "health_status": "failing",
+      "failure_streak": 3,
+      "last_success_age_hours": 56.0,
+      "last_failure_reason": "http_500"
+    },
+    {
+      "environment": "local",
+      "city_id": "city-riverton-ut",
+      "source_id": "source-riverton-ut-agenda-primary",
+      "health_status": "degraded",
+      "failure_streak": 1,
+      "last_success_age_hours": 30.0,
+      "last_failure_reason": "parser_timeout"
+    },
+    {
+      "environment": "local",
+      "city_id": "city-pleasant-grove-ut",
+      "source_id": "source-pleasant-grove-ut-minutes-primary",
+      "health_status": "healthy",
+      "failure_streak": 0,
+      "last_success_age_hours": 6.0,
+      "last_failure_reason": null
+    }
+  ]
+}
