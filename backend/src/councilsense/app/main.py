@@ -15,8 +15,10 @@ from councilsense.api.routes.governance_deletions import router as governance_de
 from councilsense.api.routes.governance_exports import router as governance_exports_router
 from councilsense.api.routes.meetings import router as meetings_router
 from councilsense.api.routes.me import router as me_router
+from councilsense.api.routes.notification_replay import router as notification_replay_router
 from councilsense.app.governance_deletions import GovernanceDeletionProcessor, GovernanceDeletionService
 from councilsense.app.governance_exports import GovernanceExportProcessor, GovernanceExportService
+from councilsense.app.notification_dlq_replay import NotificationDlqReplayService
 from councilsense.db import MeetingReadRepository, apply_migrations, seed_city_registry
 from councilsense.app.settings import get_settings
 
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
         repository=repository,
         supported_city_ids=settings.supported_city_ids,
     )
+    app.state.settings = settings
     app.state.db_connection = connection
     app.state.meeting_read_repository = MeetingReadRepository(connection)
     app.state.governance_export_service = GovernanceExportService(connection=connection)
@@ -50,6 +53,10 @@ def create_app() -> FastAPI:
     app.state.governance_deletion_processor = GovernanceDeletionProcessor(
         connection=connection,
         profile_service=app.state.profile_service,
+    )
+    app.state.notification_dlq_replay_service = NotificationDlqReplayService(
+        connection=connection,
+        allow_permanent_invalid_override=settings.notification_replay_allow_permanent_invalid_override,
     )
 
     @app.exception_handler(UnauthorizedError)
@@ -74,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(meetings_router)
     app.include_router(governance_exports_router)
     app.include_router(governance_deletions_router)
+    app.include_router(notification_replay_router)
     return app
 
 

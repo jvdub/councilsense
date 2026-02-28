@@ -42,6 +42,8 @@ class Settings:
     manual_review_confidence_threshold: float
     warn_confidence_threshold: float
     notification_retry_policy: NotificationRetryPolicySettings
+    notification_replay_operator_user_ids: tuple[str, ...]
+    notification_replay_allow_permanent_invalid_override: bool
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -65,6 +67,24 @@ def _parse_supported_city_ids(raw: str | None) -> tuple[str, ...]:
     if not parsed:
         return DEFAULT_SUPPORTED_CITY_IDS
     return parsed
+
+
+def _parse_string_list(raw: str | None) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    return tuple(value.strip() for value in raw.split(",") if value.strip())
+
+
+def _parse_bool(*, raw: str | None, default: bool, env_name: str) -> bool:
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{env_name} must be a boolean (true/false)")
 
 
 def _parse_probability_threshold(*, raw: str | None, default: float, env_name: str) -> float:
@@ -240,4 +260,10 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
         manual_review_confidence_threshold=manual_review_confidence_threshold,
         warn_confidence_threshold=warn_confidence_threshold,
         notification_retry_policy=_parse_notification_retry_policy(),
+        notification_replay_operator_user_ids=_parse_string_list(os.getenv("NOTIFICATION_REPLAY_OPERATOR_USER_IDS")),
+        notification_replay_allow_permanent_invalid_override=_parse_bool(
+            raw=os.getenv("NOTIFICATION_REPLAY_ALLOW_PERMANENT_INVALID_OVERRIDE"),
+            default=False,
+            env_name="NOTIFICATION_REPLAY_ALLOW_PERMANENT_INVALID_OVERRIDE",
+        ),
     )

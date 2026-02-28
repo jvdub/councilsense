@@ -33,6 +33,9 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0011_governance_request_data_model.sql" in before.pending
     assert "0012_governance_export_artifacts.sql" in before.pending
     assert "0013_notification_dlq_schema_and_terminal_state.sql" in before.pending
+    assert "0014_st015_ecr_audit_job_and_report_artifacts.sql" in before.pending
+    assert "0015_st015_reviewer_queue_and_outcome_capture.sql" in before.pending
+    assert "0016_notification_dlq_replay_audit_and_linkage.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -49,6 +52,9 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0011_governance_request_data_model.sql",
         "0012_governance_export_artifacts.sql",
         "0013_notification_dlq_schema_and_terminal_state.sql",
+        "0014_st015_ecr_audit_job_and_report_artifacts.sql",
+        "0015_st015_reviewer_queue_and_outcome_capture.sql",
+        "0016_notification_dlq_replay_audit_and_linkage.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -80,7 +86,10 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "notification_outbox",
         "notification_delivery_attempts",
         "notification_delivery_dlq",
+        "notification_dlq_replay_audit",
         "governance_export_artifacts",
+        "reviewer_queue_items",
+        "reviewer_queue_events",
         "schema_migrations",
     }.issubset(table_names)
 
@@ -113,6 +122,10 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_notification_delivery_dlq_source" in index_names
     assert "idx_notification_delivery_dlq_run" in index_names
     assert "idx_notification_delivery_dlq_message" in index_names
+    assert "idx_notification_delivery_dlq_replay_idempotency" in index_names
+    assert "idx_notification_delivery_dlq_replay_outbox" in index_names
+    assert "idx_notification_dlq_replay_audit_dlq_created" in index_names
+    assert "idx_notification_dlq_replay_audit_source_created" in index_names
     assert "idx_governance_export_artifacts_user_created" in index_names
 
 

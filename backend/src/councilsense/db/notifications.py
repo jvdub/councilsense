@@ -85,5 +85,9 @@ class NotificationDeliveryDlqRecord:
     terminal_attempt_number: int
     terminal_attempted_at: str
     terminal_transitioned_at: str
+    replayed_at: str | None
+    replayed_by: str | None
+    replay_idempotency_key: str | None
+    replay_outbox_id: str | None
     created_at: str
     updated_at: str
