@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Callable, Literal
 
@@ -13,6 +14,9 @@ from councilsense.db import (
 
 
 FailureClassification = Literal["transient", "permanent"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class TransientStageError(RuntimeError):
@@ -90,6 +94,15 @@ class StageExecutionService:
         attempts = 0
         while attempts < self._retry_policy.max_attempts:
             attempts += 1
+            self._log_stage_event(
+                event_name="pipeline_stage_started",
+                stage_name=stage_name,
+                outcome="retry" if attempts > 1 else "success",
+                item=item,
+                attempt=attempts,
+                error_code=None,
+                error_message=None,
+            )
             try:
                 worker(item)
                 self._record_ingest_attempt(
@@ -115,6 +128,15 @@ class StageExecutionService:
                     started_at=None,
                     finished_at=None,
                 )
+                self._log_stage_event(
+                    event_name="pipeline_stage_finished",
+                    stage_name=stage_name,
+                    outcome="success",
+                    item=item,
+                    attempt=attempts,
+                    error_code=None,
+                    error_message=None,
+                )
                 self._lifecycle_service.mark_processed(run_id=item.run_id)
                 return StageExecutionResult(
                     run_id=item.run_id,
@@ -128,6 +150,15 @@ class StageExecutionService:
             except Exception as error:
                 failure_classification = classify_stage_error(error)
                 if failure_classification == "transient" and attempts < self._retry_policy.max_attempts:
+                    self._log_stage_event(
+                        event_name="pipeline_stage_error",
+                        stage_name=stage_name,
+                        outcome="retry",
+                        item=item,
+                        attempt=attempts,
+                        error_code=_error_code_for_exception(error),
+                        error_message=_short_error_message(error),
+                    )
                     continue
 
                 self._record_ingest_attempt(
@@ -153,6 +184,15 @@ class StageExecutionService:
                     ),
                     started_at=None,
                     finished_at=None,
+                )
+                self._log_stage_event(
+                    event_name="pipeline_stage_error",
+                    stage_name=stage_name,
+                    outcome="failure",
+                    item=item,
+                    attempt=attempts,
+                    error_code=_error_code_for_exception(error),
+                    error_message=_short_error_message(error),
                 )
                 self._lifecycle_service.mark_failed(run_id=item.run_id)
                 return StageExecutionResult(
@@ -183,6 +223,34 @@ class StageExecutionService:
             failure_reason=failure_reason,
         )
 
+    def _log_stage_event(
+        self,
+        *,
+        event_name: str,
+        stage_name: str,
+        outcome: str,
+        item: StageWorkItem,
+        attempt: int,
+        error_code: str | None,
+        error_message: str | None,
+    ) -> None:
+        log_stage_name = _pipeline_log_stage_name(stage_name)
+        event: dict[str, object] = {
+            "event_name": event_name,
+            "city_id": item.city_id,
+            "meeting_id": item.meeting_id,
+            "run_id": item.run_id,
+            "dedupe_key": _stage_dedupe_key(stage_name=log_stage_name, item=item),
+            "stage": log_stage_name,
+            "outcome": outcome,
+            "attempt": attempt,
+        }
+        if error_code is not None:
+            event["error_code"] = error_code
+        if error_message is not None:
+            event["error_message"] = error_message
+        logger.info(event_name, extra={"event": event})
+
 
 def _outcome_id(*, stage_name: str, item: StageWorkItem) -> str:
     return f"outcome-{stage_name}-{item.run_id}-{item.meeting_id}"
@@ -206,3 +274,30 @@ def _metadata_json(
         },
         sort_keys=True,
     )
+
+
+def _stage_dedupe_key(*, stage_name: str, item: StageWorkItem) -> str:
+    return f"pipeline:{stage_name}:{item.run_id}:{item.meeting_id}"
+
+
+def _pipeline_log_stage_name(stage_name: str) -> str:
+    if stage_name == "ingest":
+        return "fetch"
+    if stage_name == "extract":
+        return "parse"
+    return stage_name
+
+
+def _error_code_for_exception(error: Exception) -> str:
+    if isinstance(error, TransientStageError):
+        return "transient_stage_error"
+    if isinstance(error, PermanentStageError):
+        return "permanent_stage_error"
+    return "unhandled_stage_error"
+
+
+def _short_error_message(error: Exception, *, max_length: int = 160) -> str:
+    normalized = str(error).strip() or type(error).__name__
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 3]}..."

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from hashlib import sha256
 from dataclasses import dataclass
@@ -14,6 +15,9 @@ RunLifecycleStatus = Literal[
     "limited_confidence",
     "manual_review_needed",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -338,6 +342,24 @@ class ProcessingLifecycleService:
         )
 
         if decision.manual_review_needed:
+            run = self._repository.get_run(run_id=run_id)
+            logger.info(
+                "pipeline_manual_review_needed",
+                extra={
+                    "event": {
+                        "event_name": "pipeline_manual_review_needed",
+                        "city_id": run.city_id,
+                        "meeting_id": "run-scope",
+                        "run_id": run.id,
+                        "dedupe_key": f"pipeline-run:{run.id}:manual-review-needed",
+                        "stage": "publish",
+                        "outcome": "failure",
+                        "run_status": "manual_review_needed",
+                        "reason_code": decision.reason_code,
+                        "confidence_score": decision.confidence_score,
+                    }
+                },
+            )
             return self.mark_manual_review_needed(run_id=run_id)
 
         return self.mark_processed(run_id=run_id)
