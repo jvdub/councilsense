@@ -32,6 +32,11 @@ from councilsense.db.pipeline_runs import (
 	RunLifecycleStatus,
 	StageOutcomeRecord,
 )
+from councilsense.db.operator_view import (
+	OperatorManualReviewRunRecord,
+	OperatorSourceRecord,
+	OperatorViewRepository,
+)
 from councilsense.db.migrations import apply_migrations, get_migration_status
 from councilsense.db.seed import PILOT_CITY_ID, PILOT_CITY_SOURCE_ID, seed_city_registry
 
@@ -55,6 +60,9 @@ __all__ = [
 	"MeetingWriteRepository",
 	"MissingMeetingCityError",
 	"ProcessingLifecycleService",
+	"OperatorManualReviewRunRecord",
+	"OperatorSourceRecord",
+	"OperatorViewRepository",
 	"ProcessingRunRecord",
 	"ProcessingRunRepository",
 	"PublicationClaimRecord",
