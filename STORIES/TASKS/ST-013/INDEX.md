@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-013-01](TASK-ST-013-01-policy-and-sla-discovery.md) — Governance Policy Baseline and SLA Discovery
+- [x] [TASK-ST-013-01](TASK-ST-013-01-policy-and-sla-discovery.md) — Governance Policy Baseline and SLA Discovery
 - [ ] [TASK-ST-013-02](TASK-ST-013-02-governance-request-data-model.md) — Governance Request Data Model and Lifecycle
 - [ ] [TASK-ST-013-03](TASK-ST-013-03-export-workflow-and-artifacts.md) — User Export Workflow and Artifact Generation
 - [ ] [TASK-ST-013-04](TASK-ST-013-04-deletion-anonymization-processing.md) — Deletion and Anonymization Processing Workflow
