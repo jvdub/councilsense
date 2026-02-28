@@ -106,6 +106,10 @@ describe("MeetingsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Meetings" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Budget Committee" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Budget Committee" })).toHaveAttribute(
+      "href",
+      "/meetings/meeting-1",
+    );
     expect(screen.getByText("Status: processed · Confidence: high")).toBeInTheDocument();
     expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
       cursor: undefined,

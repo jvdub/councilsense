@@ -107,7 +107,9 @@ export default async function MeetingsPage({ searchParams }: MeetingsPageProps =
         <ul>
           {listResponse?.items.map((meeting) => (
             <li key={meeting.id}>
-              <h2>{meeting.title}</h2>
+              <h2>
+                <Link href={`/meetings/${meeting.id}`}>{meeting.title}</Link>
+              </h2>
               <p>
                 Status: {meeting.status ?? "unknown"} · Confidence: {meeting.confidence_label ?? "unknown"}
               </p>
