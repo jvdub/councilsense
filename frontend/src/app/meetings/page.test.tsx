@@ -10,6 +10,7 @@ const redirectMock = vi.fn((path: string) => {
 const getAuthTokenFromCookieMock = vi.fn();
 const fetchBootstrapMock = vi.fn();
 const getOnboardingRedirectPathMock = vi.fn();
+const fetchCityMeetingsMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
@@ -28,9 +29,31 @@ vi.mock("../../lib/onboarding/guard", () => ({
     getOnboardingRedirectPathMock(bootstrap, currentPath),
 }));
 
+vi.mock("../../lib/api/meetings", () => ({
+  fetchCityMeetings: (
+    authToken: string,
+    cityId: string,
+    filters?: Record<string, unknown>,
+  ) => fetchCityMeetingsMock(authToken, cityId, filters),
+}));
+
 describe("MeetingsPage", () => {
+  const returningBootstrap = {
+    user_id: "user-returning",
+    home_city_id: "seattle-wa",
+    onboarding_required: false,
+    supported_city_ids: ["seattle-wa", "portland-or"],
+  };
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    redirectMock.mockClear();
+    getAuthTokenFromCookieMock.mockReset();
+    fetchBootstrapMock.mockReset();
+    getOnboardingRedirectPathMock.mockReset();
+    fetchCityMeetingsMock.mockReset();
+    getAuthTokenFromCookieMock.mockResolvedValue("token-abc");
+    fetchBootstrapMock.mockResolvedValue(returningBootstrap);
+    getOnboardingRedirectPathMock.mockReturnValue(null);
   });
 
   it("redirects unauthenticated users to sign-in", async () => {
@@ -57,24 +80,101 @@ describe("MeetingsPage", () => {
       bootstrap,
       "/meetings",
     );
+    expect(fetchCityMeetingsMock).not.toHaveBeenCalled();
   });
 
-  it("renders meetings for returning users with onboarding complete", async () => {
-    const bootstrap = {
-      user_id: "user-returning",
-      home_city_id: "seattle-wa",
-      onboarding_required: false,
-      supported_city_ids: ["seattle-wa", "portland-or"],
-    };
-    getAuthTokenFromCookieMock.mockResolvedValueOnce("token-abc");
-    fetchBootstrapMock.mockResolvedValueOnce(bootstrap);
-    getOnboardingRedirectPathMock.mockReturnValueOnce(null);
+  it("renders meetings list rows with status and confidence metadata", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-1",
+          city_id: "seattle-wa",
+          meeting_uid: "uid-1",
+          title: "Budget Committee",
+          created_at: "2026-02-25 18:00:00",
+          updated_at: "2026-02-25 19:00:00",
+          status: "processed",
+          confidence_label: "high",
+          reader_low_confidence: false,
+        },
+      ],
+      next_cursor: null,
+      limit: 20,
+    });
 
     render(await MeetingsPage());
 
-    expect(
-      screen.getByRole("heading", { name: "Meetings" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Meetings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Budget Committee" })).toBeInTheDocument();
+    expect(screen.getByText("Status: processed · Confidence: high")).toBeInTheDocument();
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
+      cursor: undefined,
+      limit: 20,
+    });
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("renders an empty state when no meetings are returned", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [],
+      next_cursor: null,
+      limit: 20,
+    });
+
+    render(await MeetingsPage());
+
+    expect(screen.getByText("No meetings found for your city yet.")).toBeInTheDocument();
+  });
+
+  it("renders an error state when list fetch fails", async () => {
+    fetchCityMeetingsMock.mockRejectedValueOnce(new Error("Service unavailable"));
+
+    render(await MeetingsPage());
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Unable to load meetings. Service unavailable")).toBeInTheDocument();
+  });
+
+  it("shows pagination links and preserves cursor continuity", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-2",
+          city_id: "seattle-wa",
+          meeting_uid: "uid-2",
+          title: "City Council Session",
+          created_at: "2026-02-24 17:00:00",
+          updated_at: "2026-02-24 18:00:00",
+          status: "limited_confidence",
+          confidence_label: "limited_confidence",
+          reader_low_confidence: true,
+        },
+      ],
+      next_cursor: "cursor-next",
+      limit: 10,
+    });
+
+    render(
+      await MeetingsPage({
+        searchParams: Promise.resolve({
+          cursor: "cursor-current",
+          prev: "cursor-prev",
+          limit: "10",
+        }),
+      }),
+    );
+
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
+      cursor: "cursor-current",
+      limit: 10,
+    });
+    expect(screen.getByRole("link", { name: "Load newer meetings" })).toHaveAttribute(
+      "href",
+      "/meetings?cursor=cursor-prev&limit=10",
+    );
+    expect(screen.getByRole("link", { name: "Load older meetings" })).toHaveAttribute(
+      "href",
+      "/meetings?cursor=cursor-next&prev=cursor-current&limit=10",
+    );
   });
 });
