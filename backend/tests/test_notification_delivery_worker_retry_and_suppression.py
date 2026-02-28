@@ -159,7 +159,7 @@ def test_delivery_worker_retries_transient_failures_until_terminal_failure() -> 
 
         attempt_rows = connection.execute(
             """
-            SELECT attempt_number, outcome, next_retry_at
+            SELECT attempt_number, outcome, error_code, provider_response_summary, next_retry_at
             FROM notification_delivery_attempts
             WHERE outbox_id = ?
             ORDER BY attempt_number ASC
@@ -168,9 +168,11 @@ def test_delivery_worker_retries_transient_failures_until_terminal_failure() -> 
         ).fetchall()
         assert [row[0] for row in attempt_rows] == [1, 2, 3]
         assert [row[1] for row in attempt_rows] == ["retryable_failure", "retryable_failure", "permanent_failure"]
-        assert attempt_rows[0][2] is not None
-        assert attempt_rows[1][2] is not None
-        assert attempt_rows[2][2] is None
+        assert [row[2] for row in attempt_rows] == ["provider_timeout", "provider_timeout", "provider_timeout"]
+        assert [row[3] for row in attempt_rows] == ["provider timed out", "provider timed out", "provider timed out"]
+        assert attempt_rows[0][4] is not None
+        assert attempt_rows[1][4] is not None
+        assert attempt_rows[2][4] is None
     finally:
         connection.close()
 
@@ -204,7 +206,10 @@ def test_delivery_worker_marks_invalid_and_expired_subscriptions_as_suppressed()
         def _suppression_sink(subscription_id: str, reason: str) -> None:
             suppressed.append((subscription_id, reason))
 
+        sender_calls = {"count": 0}
+
         def _provider_sender(row: object) -> None:
+            sender_calls["count"] += 1
             outbox_id = getattr(row, "id")
             if outbox_id == "outbox-invalid":
                 raise InvalidSubscriptionDeliveryError(
@@ -227,6 +232,15 @@ def test_delivery_worker_marks_invalid_and_expired_subscriptions_as_suppressed()
 
         result = worker.run_once()
         assert result.suppressed_count == 2
+        assert sender_calls["count"] == 2
+
+        second_result = worker.run_once()
+        assert second_result.claimed_count == 0
+        assert second_result.sent_count == 0
+        assert second_result.retried_count == 0
+        assert second_result.failed_count == 0
+        assert second_result.suppressed_count == 0
+        assert sender_calls["count"] == 2
 
         status_rows = connection.execute(
             """
@@ -253,6 +267,17 @@ def test_delivery_worker_marks_invalid_and_expired_subscriptions_as_suppressed()
             ("outbox-expired", 1, "expired_subscription", None),
             ("outbox-invalid", 1, "invalid_subscription", None),
         ]
+
+        attempt_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM notification_delivery_attempts
+            WHERE outbox_id IN ('outbox-invalid', 'outbox-expired')
+            """
+        ).fetchone()
+        assert attempt_count is not None
+        assert int(attempt_count[0]) == 2
+
         assert sorted(suppressed) == [
             ("sub-expired", "expired_subscription"),
             ("sub-invalid", "invalid_subscription"),

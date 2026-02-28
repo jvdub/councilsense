@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Generator
+from datetime import UTC, datetime
 
 import pytest
 
 from councilsense.app.notification_fanout import NotificationSubscriptionTarget
+from councilsense.app.notification_delivery_worker import (
+    NotificationDeliveryWorker,
+    NotificationDeliveryWorkerConfig,
+)
 from councilsense.app.summarization import SummarizationOutput, publish_summarization_output
 from councilsense.db import MeetingSummaryRepository, PILOT_CITY_ID, apply_migrations, seed_city_registry
 
@@ -215,3 +220,90 @@ def test_failed_outbox_write_rolls_back_publish_transaction(
     ).fetchone()
     assert outbox_rows is not None
     assert int(outbox_rows[0]) == 0
+
+
+def test_publish_to_delivery_end_to_end_is_idempotent_on_worker_rerun(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-fanout-e2e", city_id=PILOT_CITY_ID)
+
+    output = SummarizationOutput.from_sections(
+        summary="Published summary",
+        key_decisions=["Decision A"],
+        key_actions=["Action A"],
+        notable_topics=["Topic A"],
+    )
+    publish_result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-fanout-e2e",
+        meeting_id="meeting-fanout-e2e",
+        processing_run_id=None,
+        publish_stage_outcome_id=None,
+        version_no=1,
+        base_confidence_label="high",
+        output=output,
+        published_at="2026-02-27T12:10:00+00:00",
+        city_id=PILOT_CITY_ID,
+        notification_targets=(
+            NotificationSubscriptionTarget(
+                user_id="user-e2e",
+                city_id=PILOT_CITY_ID,
+                subscription_id="sub-e2e",
+                status="active",
+            ),
+        ),
+    )
+
+    assert publish_result.notification_enqueue is not None
+    assert publish_result.notification_enqueue.enqueued_count == 1
+    assert publish_result.notification_enqueue.dedupe_conflict_count == 0
+
+    sender_calls = {"count": 0}
+
+    def _sender(_: object) -> None:
+        sender_calls["count"] += 1
+
+    worker = NotificationDeliveryWorker(
+        connection=connection,
+        sender=_sender,
+        config=NotificationDeliveryWorkerConfig(claim_batch_size=1),
+        now_provider=lambda: datetime(2030, 1, 1, 0, 0, tzinfo=UTC),
+    )
+
+    first_run = worker.run_once()
+    second_run = worker.run_once()
+
+    assert first_run.claimed_count == 1
+    assert first_run.sent_count == 1
+    assert second_run.claimed_count == 0
+    assert second_run.sent_count == 0
+    assert sender_calls["count"] == 1
+
+    outbox_row = connection.execute(
+        """
+        SELECT status, attempt_count, sent_at, dedupe_key
+        FROM notification_outbox
+        WHERE meeting_id = ?
+        """,
+        ("meeting-fanout-e2e",),
+    ).fetchone()
+    assert outbox_row is not None
+    assert outbox_row[0] == "sent"
+    assert int(outbox_row[1]) == 1
+    assert outbox_row[2] is not None
+    assert str(outbox_row[3]).startswith("notif-dedupe-v1:")
+
+    attempt_rows = connection.execute(
+        """
+        SELECT attempt_number, outcome
+        FROM notification_delivery_attempts
+        WHERE outbox_id = (
+            SELECT id FROM notification_outbox WHERE meeting_id = ?
+        )
+        ORDER BY attempt_number ASC
+        """,
+        ("meeting-fanout-e2e",),
+    ).fetchall()
+    assert attempt_rows == [(1, "success")]
