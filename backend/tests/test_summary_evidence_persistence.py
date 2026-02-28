@@ -159,3 +159,60 @@ def test_existing_runs_and_stage_outcomes_remain_queryable_after_migration(
     assert len(outcomes) == 1
     assert outcomes[0].status == "processed"
     assert outcomes[0].stage_name == "summarize"
+
+
+def test_published_provenance_records_are_append_only(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-append-only", uid="meeting-uid-append-only")
+
+    repository = MeetingSummaryRepository(connection)
+    publication = repository.create_publication(
+        publication_id="pub-append-only",
+        meeting_id="meeting-append-only",
+        processing_run_id=None,
+        publish_stage_outcome_id=None,
+        version_no=1,
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Original summary",
+        key_decisions_json='["Approve resolution"]',
+        key_actions_json='["Staff to publish memo"]',
+        notable_topics_json='["Housing"]',
+        published_at="2026-02-27T16:00:30Z",
+    )
+    claim = repository.add_claim(
+        claim_id="claim-append-only",
+        publication_id=publication.id,
+        claim_order=1,
+        claim_text="Council approved the housing resolution.",
+    )
+    pointer = repository.add_claim_evidence_pointer(
+        pointer_id="ptr-append-only",
+        claim_id=claim.id,
+        artifact_id="artifact-housing-1",
+        section_ref="minutes.section.6",
+        char_start=100,
+        char_end=160,
+        excerpt="Council voted 6-1 in favor of the housing resolution.",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        connection.execute(
+            "UPDATE summary_publications SET summary_text = ? WHERE id = ?",
+            ("Mutated summary", publication.id),
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        connection.execute(
+            "DELETE FROM publication_claims WHERE id = ?",
+            (claim.id,),
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        connection.execute(
+            "UPDATE claim_evidence_pointers SET excerpt = ? WHERE id = ?",
+            ("Mutated excerpt", pointer.id),
+        )

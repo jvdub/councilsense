@@ -238,6 +238,81 @@ class ClaimAttachmentResult:
     evidence_gap_claims: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class QualityGateConfig:
+    min_claim_count: int = 1
+    min_total_evidence_pointers: int = 1
+    min_evidence_coverage_rate: float = 0.75
+    max_evidence_gap_claims: int = 0
+
+
+@dataclass(frozen=True)
+class QualityGateDecision:
+    publication_status: PublicationStatus
+    confidence_label: ConfidenceLabel
+    reason_codes: tuple[str, ...]
+    claim_count: int
+    claims_with_evidence: int
+    total_evidence_pointers: int
+    evidence_coverage_rate: float
+
+
+@dataclass(frozen=True)
+class PublishedSummarizationResult:
+    publication: SummaryPublicationRecord
+    quality_gate: QualityGateDecision
+
+
+def evaluate_quality_gate(
+    *,
+    output: SummarizationOutput,
+    base_confidence_label: ConfidenceLabel = "high",
+    config: QualityGateConfig | None = None,
+) -> QualityGateDecision:
+    gate_config = config or QualityGateConfig()
+
+    claim_count = len(output.claims)
+    claims_with_evidence = sum(1 for claim in output.claims if not claim.evidence_gap)
+    total_evidence_pointers = sum(len(claim.evidence) for claim in output.claims)
+    evidence_coverage_rate = (
+        claims_with_evidence / claim_count
+        if claim_count > 0
+        else 0.0
+    )
+
+    reason_codes: list[str] = []
+    if claim_count < gate_config.min_claim_count:
+        reason_codes.append("insufficient_claim_count")
+    if total_evidence_pointers < gate_config.min_total_evidence_pointers:
+        reason_codes.append("insufficient_evidence_pointers")
+    if evidence_coverage_rate < gate_config.min_evidence_coverage_rate:
+        reason_codes.append("evidence_coverage_below_threshold")
+    evidence_gap_claims = sum(1 for claim in output.claims if claim.evidence_gap)
+    if evidence_gap_claims > gate_config.max_evidence_gap_claims:
+        reason_codes.append("claim_evidence_gap_present")
+
+    if reason_codes:
+        return QualityGateDecision(
+            publication_status="limited_confidence",
+            confidence_label="limited_confidence",
+            reason_codes=tuple(reason_codes),
+            claim_count=claim_count,
+            claims_with_evidence=claims_with_evidence,
+            total_evidence_pointers=total_evidence_pointers,
+            evidence_coverage_rate=evidence_coverage_rate,
+        )
+
+    return QualityGateDecision(
+        publication_status="processed",
+        confidence_label=base_confidence_label,
+        reason_codes=("quality_gate_pass",),
+        claim_count=claim_count,
+        claims_with_evidence=claims_with_evidence,
+        total_evidence_pointers=total_evidence_pointers,
+        evidence_coverage_rate=evidence_coverage_rate,
+    )
+
+
 def attach_claim_evidence(
     *,
     repository: MeetingSummaryRepository,
@@ -317,3 +392,36 @@ def persist_summarization_output(
         claims=output.claims,
     )
     return publication
+
+
+def publish_summarization_output(
+    *,
+    repository: MeetingSummaryRepository,
+    publication_id: str,
+    meeting_id: str,
+    processing_run_id: str | None,
+    publish_stage_outcome_id: str | None,
+    version_no: int,
+    base_confidence_label: ConfidenceLabel,
+    output: SummarizationOutput,
+    published_at: str | None,
+    quality_gate_config: QualityGateConfig | None = None,
+) -> PublishedSummarizationResult:
+    quality_gate = evaluate_quality_gate(
+        output=output,
+        base_confidence_label=base_confidence_label,
+        config=quality_gate_config,
+    )
+    publication = persist_summarization_output(
+        repository=repository,
+        publication_id=publication_id,
+        meeting_id=meeting_id,
+        processing_run_id=processing_run_id,
+        publish_stage_outcome_id=publish_stage_outcome_id,
+        version_no=version_no,
+        publication_status=quality_gate.publication_status,
+        confidence_label=quality_gate.confidence_label,
+        output=output,
+        published_at=published_at,
+    )
+    return PublishedSummarizationResult(publication=publication, quality_gate=quality_gate)

@@ -15,8 +15,10 @@ from councilsense.app.pipeline_contracts import (
 from councilsense.app.summarization import (
     ClaimEvidenceValidationError,
     EMPTY_SUMMARY_TEXT,
+    QualityGateConfig,
     SummarizationOutput,
     attach_claim_evidence,
+    publish_summarization_output,
     persist_summarization_output,
 )
 from councilsense.db import (
@@ -366,3 +368,113 @@ def test_attach_claim_evidence_marks_gap_when_claim_has_no_evidence(
     assert first_claim_evidence[0].char_end == 503
     assert first_claim_evidence[0].excerpt == "Motion carried unanimously for Resolution 77."
     assert second_claim_evidence == ()
+
+
+def test_publish_quality_gate_routes_weak_evidence_to_limited_confidence(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-contract-4", uid="meeting-contract-uid-4")
+
+    run_repository = ProcessingRunRepository(connection)
+    run = run_repository.create_pending_run(
+        run_id="run-contract-4",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T14:00:00Z",
+    )
+
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "The council discussed zoning updates.",
+            "key_decisions": ["Continue to staff review"],
+            "key_actions": ["Planning department to return with revised draft"],
+            "notable_topics": ["Zoning", "Community feedback"],
+            "claims": [
+                {
+                    "claim_text": "The council requested additional zoning analysis.",
+                    "evidence": [],
+                }
+            ],
+        }
+    )
+
+    result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-contract-4",
+        meeting_id="meeting-contract-4",
+        processing_run_id=run.id,
+        publish_stage_outcome_id=None,
+        version_no=1,
+        base_confidence_label="medium",
+        output=output,
+        published_at="2026-02-27T14:00:30Z",
+    )
+
+    assert result.publication.publication_status == "limited_confidence"
+    assert result.publication.confidence_label == "limited_confidence"
+    assert "claim_evidence_gap_present" in result.quality_gate.reason_codes
+    assert "evidence_coverage_below_threshold" in result.quality_gate.reason_codes
+
+
+def test_publish_quality_gate_routes_sufficient_evidence_to_processed(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-contract-5", uid="meeting-contract-uid-5")
+
+    run_repository = ProcessingRunRepository(connection)
+    run = run_repository.create_pending_run(
+        run_id="run-contract-5",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-02-27T15:00:00Z",
+    )
+
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "Council approved two transportation contracts.",
+            "key_decisions": ["Approved contracts A and B"],
+            "key_actions": ["Procurement to finalize signatures"],
+            "notable_topics": ["Transit", "Budget"],
+            "claims": [
+                {
+                    "claim_text": "Council approved contract A.",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-transport-a",
+                            "section_ref": "minutes.section.3",
+                            "excerpt": "Vote passed to approve contract A.",
+                        }
+                    ],
+                },
+                {
+                    "claim_text": "Council approved contract B.",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-transport-b",
+                            "section_ref": "minutes.section.4",
+                            "excerpt": "Vote passed to approve contract B.",
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+
+    result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-contract-5",
+        meeting_id="meeting-contract-5",
+        processing_run_id=run.id,
+        publish_stage_outcome_id=None,
+        version_no=1,
+        base_confidence_label="medium",
+        output=output,
+        published_at="2026-02-27T15:00:30Z",
+        quality_gate_config=QualityGateConfig(min_evidence_coverage_rate=1.0),
+    )
+
+    assert result.publication.publication_status == "processed"
+    assert result.publication.confidence_label == "medium"
+    assert result.quality_gate.reason_codes == ("quality_gate_pass",)
