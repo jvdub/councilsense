@@ -9,7 +9,7 @@
 - [x] [TASK-ST-004-02](TASK-ST-004-02-stage-queue-contracts.md) — Define pipeline stage queue contracts
 - [x] [TASK-ST-004-03](TASK-ST-004-03-run-lifecycle-persistence.md) — Persist run lifecycle and stage outcomes
 - [x] [TASK-ST-004-04](TASK-ST-004-04-retry-and-failure-isolation.md) — Add retry policy and failure isolation behavior
-- [ ] [TASK-ST-004-05](TASK-ST-004-05-orchestration-integration-tests.md) — Add orchestration integration tests
+- [x] [TASK-ST-004-05](TASK-ST-004-05-orchestration-integration-tests.md) — Add orchestration integration tests
 
 ## Dependency Chain
 
