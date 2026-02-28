@@ -6,7 +6,7 @@
 ## Ordered Checklist
 
 - [x] [TASK-ST-010-01](TASK-ST-010-01-health-and-confidence-policy.md) — Health and Confidence Policy
-- [ ] [TASK-ST-010-02](TASK-ST-010-02-source-health-persistence.md) — Source Health Persistence
+- [x] [TASK-ST-010-02](TASK-ST-010-02-source-health-persistence.md) — Source Health Persistence
 - [ ] [TASK-ST-010-03](TASK-ST-010-03-processing-version-provenance.md) — Processing Version Provenance
 - [ ] [TASK-ST-010-04](TASK-ST-010-04-manual-review-state-and-reader-flag.md) — Manual Review State and Reader Flag
 - [ ] [TASK-ST-010-05](TASK-ST-010-05-operator-view-and-transition-tests.md) — Operator View and Transition Tests

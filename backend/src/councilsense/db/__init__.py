@@ -4,6 +4,7 @@ from councilsense.db.city_registry import (
     CitySourceConfig,
     ConfiguredCitySelectionService,
     EnabledCityConfig,
+	SourceHealthRepository,
 )
 from councilsense.db.meetings import (
 	InvalidMeetingListCursorError,
@@ -40,6 +41,7 @@ __all__ = [
 	"CitySourceConfig",
 	"ConfiguredCitySelectionService",
 	"EnabledCityConfig",
+	"SourceHealthRepository",
 	"ClaimEvidencePointerRecord",
 	"ConfidenceLabel",
 	"InvalidMeetingCityError",

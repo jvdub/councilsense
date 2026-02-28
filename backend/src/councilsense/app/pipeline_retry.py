@@ -4,7 +4,12 @@ import json
 from dataclasses import dataclass
 from typing import Callable, Literal
 
-from councilsense.db import ProcessingLifecycleService, ProcessingRunRepository, RunLifecycleStatus
+from councilsense.db import (
+    ProcessingLifecycleService,
+    ProcessingRunRepository,
+    RunLifecycleStatus,
+    SourceHealthRepository,
+)
 
 
 FailureClassification = Literal["transient", "permanent"]
@@ -58,10 +63,12 @@ class StageExecutionService:
         *,
         repository: ProcessingRunRepository,
         lifecycle_service: ProcessingLifecycleService,
+        source_health_repository: SourceHealthRepository | None = None,
         retry_policy: StageRetryPolicy | None = None,
     ) -> None:
         self._repository = repository
         self._lifecycle_service = lifecycle_service
+        self._source_health_repository = source_health_repository
         self._retry_policy = retry_policy or StageRetryPolicy()
 
     def execute_many(
@@ -85,6 +92,12 @@ class StageExecutionService:
             attempts += 1
             try:
                 worker(item)
+                self._record_ingest_attempt(
+                    stage_name=stage_name,
+                    source_id=item.source_id,
+                    succeeded=True,
+                    failure_reason=None,
+                )
                 self._repository.upsert_stage_outcome(
                     outcome_id=_outcome_id(stage_name=stage_name, item=item),
                     run_id=item.run_id,
@@ -117,6 +130,13 @@ class StageExecutionService:
                 if failure_classification == "transient" and attempts < self._retry_policy.max_attempts:
                     continue
 
+                self._record_ingest_attempt(
+                    stage_name=stage_name,
+                    source_id=item.source_id,
+                    succeeded=False,
+                    failure_reason=f"{type(error).__name__}: {error}",
+                )
+
                 self._repository.upsert_stage_outcome(
                     outcome_id=_outcome_id(stage_name=stage_name, item=item),
                     run_id=item.run_id,
@@ -146,6 +166,22 @@ class StageExecutionService:
                 )
 
         raise RuntimeError("stage execution exceeded retry policy unexpectedly")
+
+    def _record_ingest_attempt(
+        self,
+        *,
+        stage_name: str,
+        source_id: str,
+        succeeded: bool,
+        failure_reason: str | None,
+    ) -> None:
+        if stage_name != "ingest" or self._source_health_repository is None:
+            return
+        self._source_health_repository.record_ingest_attempt(
+            source_id=source_id,
+            succeeded=succeeded,
+            failure_reason=failure_reason,
+        )
 
 
 def _outcome_id(*, stage_name: str, item: StageWorkItem) -> str:
