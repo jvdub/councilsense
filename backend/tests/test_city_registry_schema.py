@@ -39,6 +39,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0017_st015_confidence_calibration_policy_controls.sql" in before.pending
     assert "0018_st015_quality_ops_dashboard_and_target_validation.sql" in before.pending
     assert "0019_st016_parser_version_and_drift_event_model.sql" in before.pending
+    assert "0020_st016_source_freshness_regression_alerting.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -61,6 +62,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0017_st015_confidence_calibration_policy_controls.sql",
         "0018_st015_quality_ops_dashboard_and_target_validation.sql",
         "0019_st016_parser_version_and_drift_event_model.sql",
+        "0020_st016_source_freshness_regression_alerting.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -96,6 +98,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "governance_export_artifacts",
         "processing_run_sources",
         "parser_drift_events",
+        "source_freshness_breach_events",
         "reviewer_queue_items",
         "reviewer_queue_events",
         "confidence_calibration_policies",
@@ -143,6 +146,10 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_parser_drift_events_source_detected" in index_names
     assert "idx_parser_drift_events_current_version_detected" in index_names
     assert "idx_parser_drift_events_baseline_version_detected" in index_names
+    assert "idx_source_freshness_breach_events_city_detected" in index_names
+    assert "idx_source_freshness_breach_events_source_detected" in index_names
+    assert "idx_source_freshness_breach_events_severity_detected" in index_names
+    assert "idx_source_freshness_breach_events_suppressed_detected" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:

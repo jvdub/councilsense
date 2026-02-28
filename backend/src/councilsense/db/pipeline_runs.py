@@ -5,9 +5,16 @@ import logging
 import sqlite3
 from hashlib import sha256
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from math import isinf
 from typing import Literal
 
 from councilsense.app.parser_drift_policy import ParserDriftComparisonInput, evaluate_parser_drift
+from councilsense.app.source_freshness_policy import (
+    SourceFreshnessEvaluationInput,
+    SourceFreshnessPolicyConfig,
+    evaluate_source_freshness,
+)
 
 
 RunLifecycleStatus = Literal[
@@ -81,14 +88,49 @@ class ParserDriftEventRecord:
     detected_at: str | None
 
 
+@dataclass(frozen=True)
+class SourceFreshnessBreachEventRecord:
+    id: str
+    event_schema_version: str
+    city_id: str
+    source_id: str
+    source_type: str
+    source_url: str
+    run_id: str
+    parser_drift_event_id: str | None
+    severity: str
+    threshold_age_hours: float
+    last_success_age_hours: float
+    last_success_at: str | None
+    evaluated_at: str
+    suppressed: bool
+    suppression_reason: str | None
+    maintenance_window_name: str | None
+    maintenance_window_starts_at: str | None
+    maintenance_window_ends_at: str | None
+    triage_payload_json: str
+    detected_at: str | None
+
+
 class ProcessingRunRepository:
     _DRIFT_EVENT_SCHEMA_VERSION = "st016.parser_drift_event.v1"
+    _FRESHNESS_EVENT_SCHEMA_VERSION = "st016.source_freshness_breach_event.v1"
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
-    def create_pending_run(self, *, run_id: str, city_id: str, cycle_id: str) -> ProcessingRunRecord:
+    def create_pending_run(
+        self,
+        *,
+        run_id: str,
+        city_id: str,
+        cycle_id: str,
+        freshness_policy_config: SourceFreshnessPolicyConfig | None = None,
+        freshness_evaluated_at: str | None = None,
+    ) -> ProcessingRunRecord:
         parser_version, source_version = self._derive_run_provenance(city_id=city_id)
+        effective_freshness_policy = freshness_policy_config or SourceFreshnessPolicyConfig()
+        evaluated_at = freshness_evaluated_at or datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
 
         with self._connection:
             self._connection.execute(
@@ -112,6 +154,13 @@ class ProcessingRunRepository:
                 city_id=city_id,
                 source_version=source_version,
                 current_source_snapshots=current_source_snapshots,
+            )
+            self._emit_source_freshness_breach_events(
+                run_id=run_id,
+                city_id=city_id,
+                current_source_snapshots=current_source_snapshots,
+                evaluated_at=evaluated_at,
+                policy_config=effective_freshness_policy,
             )
 
         return self.get_run(run_id=run_id)
@@ -394,6 +443,103 @@ class ProcessingRunRepository:
             for row in rows
         )
 
+    def list_source_freshness_breach_events(
+        self,
+        *,
+        city_id: str | None = None,
+        source_id: str | None = None,
+        severity: str | None = None,
+        suppressed: bool | None = None,
+        detected_from: str | None = None,
+        detected_to: str | None = None,
+        limit: int = 200,
+    ) -> tuple[SourceFreshnessBreachEventRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+
+        clauses: list[str] = []
+        params: list[object] = []
+
+        if city_id is not None:
+            clauses.append("city_id = ?")
+            params.append(city_id)
+        if source_id is not None:
+            clauses.append("source_id = ?")
+            params.append(source_id)
+        if severity is not None:
+            clauses.append("severity = ?")
+            params.append(severity)
+        if suppressed is not None:
+            clauses.append("suppressed = ?")
+            params.append(1 if suppressed else 0)
+        if detected_from is not None:
+            clauses.append("detected_at >= ?")
+            params.append(detected_from)
+        if detected_to is not None:
+            clauses.append("detected_at <= ?")
+            params.append(detected_to)
+
+        where_sql = ""
+        if clauses:
+            where_sql = f"WHERE {' AND '.join(clauses)}"
+
+        params.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT
+                id,
+                event_schema_version,
+                city_id,
+                source_id,
+                source_type,
+                source_url,
+                run_id,
+                parser_drift_event_id,
+                severity,
+                threshold_age_hours,
+                last_success_age_hours,
+                last_success_at,
+                evaluated_at,
+                suppressed,
+                suppression_reason,
+                maintenance_window_name,
+                maintenance_window_starts_at,
+                maintenance_window_ends_at,
+                triage_payload_json,
+                detected_at
+            FROM source_freshness_breach_events
+            {where_sql}
+            ORDER BY detected_at DESC, id DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        return tuple(
+            SourceFreshnessBreachEventRecord(
+                id=str(row[0]),
+                event_schema_version=str(row[1]),
+                city_id=str(row[2]),
+                source_id=str(row[3]),
+                source_type=str(row[4]),
+                source_url=str(row[5]),
+                run_id=str(row[6]),
+                parser_drift_event_id=str(row[7]) if row[7] is not None else None,
+                severity=str(row[8]),
+                threshold_age_hours=float(row[9]),
+                last_success_age_hours=float(row[10]),
+                last_success_at=str(row[11]) if row[11] is not None else None,
+                evaluated_at=str(row[12]),
+                suppressed=bool(int(row[13])),
+                suppression_reason=str(row[14]) if row[14] is not None else None,
+                maintenance_window_name=str(row[15]) if row[15] is not None else None,
+                maintenance_window_starts_at=str(row[16]) if row[16] is not None else None,
+                maintenance_window_ends_at=str(row[17]) if row[17] is not None else None,
+                triage_payload_json=str(row[18]),
+                detected_at=str(row[19]) if row[19] is not None else None,
+            )
+            for row in rows
+        )
+
     def get_latest_run_confidence_score(self, *, run_id: str) -> float | None:
         rows = self._connection.execute(
             """
@@ -648,6 +794,150 @@ class ProcessingRunRepository:
                     baseline_source_version,
                     source_version,
                     json.dumps(delta_context, sort_keys=True, separators=(",", ":")),
+                ),
+            )
+
+    def _emit_source_freshness_breach_events(
+        self,
+        *,
+        run_id: str,
+        city_id: str,
+        current_source_snapshots: tuple[ProcessingRunSourceRecord, ...],
+        evaluated_at: str,
+        policy_config: SourceFreshnessPolicyConfig,
+    ) -> None:
+        for source_snapshot in current_source_snapshots:
+            source_row = self._connection.execute(
+                """
+                SELECT last_success_at
+                FROM city_sources
+                WHERE id = ?
+                """,
+                (source_snapshot.source_id,),
+            ).fetchone()
+            if source_row is None:
+                continue
+
+            last_success_at = str(source_row[0]) if source_row[0] is not None else None
+            decision = evaluate_source_freshness(
+                policy_input=SourceFreshnessEvaluationInput(
+                    city_id=city_id,
+                    source_id=source_snapshot.source_id,
+                    source_type=source_snapshot.source_type,
+                    evaluated_at=evaluated_at,
+                    last_success_at=last_success_at,
+                ),
+                config=policy_config,
+            )
+            if decision is None:
+                continue
+
+            parser_drift_row = self._connection.execute(
+                """
+                SELECT id
+                FROM parser_drift_events
+                WHERE run_id = ?
+                  AND source_id = ?
+                ORDER BY detected_at DESC, id DESC
+                LIMIT 1
+                """,
+                (run_id, source_snapshot.source_id),
+            ).fetchone()
+
+            parser_drift_event_id = str(parser_drift_row[0]) if parser_drift_row is not None else None
+            source_key = f"{city_id}:{source_snapshot.source_id}"
+            event_id = f"sfe-{sha256(f'{run_id}:{source_key}'.encode('utf-8')).hexdigest()[:16]}"
+
+            normalized_age = decision.last_success_age_hours
+            if isinf(normalized_age):
+                normalized_age = 999999.0
+
+            triage_payload = {
+                "alert_class": "source_freshness",
+                "alert_id": f"source-freshness-regression-{decision.severity}",
+                "city_id": city_id,
+                "source_id": source_snapshot.source_id,
+                "run_id": run_id,
+                "meeting_id": "run-scope",
+                "stage": "ingest",
+                "outcome": "freshness_regression",
+                "environment": "local",
+                "observed_value": normalized_age,
+                "threshold_value": decision.threshold_age_hours,
+                "evaluation_window": policy_config.evaluation_window,
+                "triggered_at_utc": evaluated_at,
+                "source_type": source_snapshot.source_type,
+                "source_url": source_snapshot.source_url,
+                "last_success_at": last_success_at,
+                "last_success_age_hours": normalized_age,
+                "suppressed": decision.suppressed,
+                "suppression_reason": decision.suppression_reason,
+                "maintenance_window_name": decision.suppression_window_name,
+                "maintenance_window_starts_at": decision.suppression_window_starts_at,
+                "maintenance_window_ends_at": decision.suppression_window_ends_at,
+                "parser_drift_event_id": parser_drift_event_id,
+            }
+
+            self._connection.execute(
+                """
+                INSERT INTO source_freshness_breach_events (
+                    id,
+                    event_schema_version,
+                    city_id,
+                    source_id,
+                    source_type,
+                    source_url,
+                    run_id,
+                    parser_drift_event_id,
+                    severity,
+                    threshold_age_hours,
+                    last_success_age_hours,
+                    last_success_at,
+                    evaluated_at,
+                    suppressed,
+                    suppression_reason,
+                    maintenance_window_name,
+                    maintenance_window_starts_at,
+                    maintenance_window_ends_at,
+                    triage_payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (run_id, source_id)
+                DO UPDATE SET
+                    parser_drift_event_id = excluded.parser_drift_event_id,
+                    severity = excluded.severity,
+                    threshold_age_hours = excluded.threshold_age_hours,
+                    last_success_age_hours = excluded.last_success_age_hours,
+                    last_success_at = excluded.last_success_at,
+                    evaluated_at = excluded.evaluated_at,
+                    suppressed = excluded.suppressed,
+                    suppression_reason = excluded.suppression_reason,
+                    maintenance_window_name = excluded.maintenance_window_name,
+                    maintenance_window_starts_at = excluded.maintenance_window_starts_at,
+                    maintenance_window_ends_at = excluded.maintenance_window_ends_at,
+                    triage_payload_json = excluded.triage_payload_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    event_id,
+                    self._FRESHNESS_EVENT_SCHEMA_VERSION,
+                    city_id,
+                    source_snapshot.source_id,
+                    source_snapshot.source_type,
+                    source_snapshot.source_url,
+                    run_id,
+                    parser_drift_event_id,
+                    decision.severity,
+                    decision.threshold_age_hours,
+                    normalized_age,
+                    last_success_at,
+                    evaluated_at,
+                    1 if decision.suppressed else 0,
+                    decision.suppression_reason,
+                    decision.suppression_window_name,
+                    decision.suppression_window_starts_at,
+                    decision.suppression_window_ends_at,
+                    json.dumps(triage_payload, sort_keys=True, separators=(",", ":")),
                 ),
             )
 

@@ -36,6 +36,7 @@ from councilsense.db.pipeline_runs import (
 	ProcessingRunRecord,
 	ProcessingRunRepository,
 	RunLifecycleStatus,
+	SourceFreshnessBreachEventRecord,
 	StageOutcomeRecord,
 )
 from councilsense.db.operator_view import (
@@ -126,6 +127,7 @@ __all__ = [
 	"PILOT_CITY_ID",
 	"PILOT_CITY_SOURCE_ID",
 	"RunLifecycleStatus",
+	"SourceFreshnessBreachEventRecord",
 	"StageOutcomeRecord",
 	"SummaryPublicationRecord",
 	"apply_migrations",

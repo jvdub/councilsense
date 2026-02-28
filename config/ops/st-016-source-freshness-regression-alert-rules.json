@@ -1,0 +1,95 @@
+{
+  "ruleset_version": "st-016-source-freshness-regression-alert-rules-v1",
+  "story_task": "TASK-ST-016-04",
+  "baseline_reference": "config/ops/st-016-alert-threshold-baseline.json",
+  "drift_event_schema_reference": "st016.parser_drift_event.v1",
+  "freshness_breach_event_schema": "st016.source_freshness_breach_event.v1",
+  "triage_metadata": {
+    "required_fields": [
+      "alert_class",
+      "alert_id",
+      "city_id",
+      "source_id",
+      "run_id",
+      "meeting_id",
+      "stage",
+      "outcome",
+      "environment",
+      "observed_value",
+      "threshold_value",
+      "evaluation_window",
+      "triggered_at_utc",
+      "last_success_at",
+      "last_success_age_hours",
+      "source_type",
+      "source_url",
+      "parser_drift_event_id"
+    ],
+    "correlation_fields": [
+      "run_id",
+      "source_id",
+      "parser_drift_event_id"
+    ],
+    "required_for_escalation": [
+      "city_id",
+      "source_id",
+      "run_id"
+    ]
+  },
+  "suppression": {
+    "window_label": "planned_maintenance_window",
+    "match_strategy": "source_id_then_city_id",
+    "require_window_name": true,
+    "record_suppressed_events": true
+  },
+  "rules": [
+    {
+      "alert_id": "source-freshness-regression-warning",
+      "alert_class": "source_freshness",
+      "severity": "warning",
+      "metric": "councilsense_source_last_success_age_hours",
+      "signal": "last_success_age_hours",
+      "filters": {
+        "stage": "ingest"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 24,
+        "unit": "hours",
+        "for": "PT30M",
+        "evaluation_window": "PT1H"
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT60M"
+      },
+      "runbook": "docs/runbooks/st-016-source-freshness-regression-alerting-runbook.md"
+    },
+    {
+      "alert_id": "source-freshness-regression-critical",
+      "alert_class": "source_freshness",
+      "severity": "critical",
+      "metric": "councilsense_source_last_success_age_hours",
+      "signal": "last_success_age_hours",
+      "filters": {
+        "stage": "ingest"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 48,
+        "unit": "hours",
+        "for": "PT30M",
+        "evaluation_window": "PT1H"
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT60M"
+      },
+      "runbook": "docs/runbooks/st-016-source-freshness-regression-alerting-runbook.md"
+    }
+  ]
+}
