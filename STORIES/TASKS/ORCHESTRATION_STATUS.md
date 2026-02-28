@@ -140,6 +140,26 @@ Last updated: 2026-02-28
 | TASK-ST-013-04 | ✅ Done | 3f6c795 |
 | TASK-ST-013-05 | ✅ Done | 120b861 |
 
+### ST-014 — Notification DLQ and Replay Hardening
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-014-01 | ✅ Done | e8421de |
+| TASK-ST-014-02 | ✅ Done | f091f2d |
+| TASK-ST-014-03 | ✅ Done | c8aed27 |
+| TASK-ST-014-04 | ✅ Done | a81cbec |
+| TASK-ST-014-05 | ✅ Done | 595b478 |
+
+### ST-015 — Quality Operations and ECR Audits
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-015-01 | ✅ Done | 4266e45 |
+| TASK-ST-015-02 | ✅ Done | c34680a |
+| TASK-ST-015-03 | ✅ Done | 672f32d |
+| TASK-ST-015-04 | ✅ Done | 04c32ae |
+| TASK-ST-015-05 | ✅ Done | 624f323 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -148,5 +168,4 @@ Last updated: 2026-02-28
 
 ## Next Queue (Dependency-Safe)
 
-1. Run ST-014 and ST-015 in parallel
-2. Finish with ST-016
+1. Finish with ST-016
