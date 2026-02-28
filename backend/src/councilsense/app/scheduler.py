@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from councilsense.app.ecr_audit_job import EcrAuditRunResult, WeeklyEcrAuditJob
+from councilsense.app.quality_ops_dashboard import QualityOpsDashboardService
 from councilsense.app.reviewer_queue import ReviewerQueueService
 from councilsense.db import CityRegistryRepository, ConfiguredCitySelectionService, ProcessingRunRepository
 
@@ -118,4 +119,7 @@ def run_weekly_ecr_audit_cycle(
     result = job.run_scheduled_weekly_audit(scheduler_triggered_at_utc=scheduler_triggered_at_utc)
     if result.status == "completed":
         ReviewerQueueService(connection=connection).seed_from_ecr_audit_run(run_id=result.run_id)
+        QualityOpsDashboardService(connection=connection).upsert_weekly_report(
+            audit_week_start_utc=result.audit_week_start_utc,
+        )
     return result

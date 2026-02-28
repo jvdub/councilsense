@@ -1,0 +1,74 @@
+{
+  "dashboard_id": "st-015-quality-ops",
+  "title": "ST-015 Quality Operations Dashboard",
+  "description": "Weekly quality operations visibility for ECR target attainment, reviewer outcomes, and calibration alignment.",
+  "default_time_window": "P12W",
+  "panels": [
+    {
+      "panel_id": "st015-ecr-trend-vs-target",
+      "title": "Weekly ECR trend vs target",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st015_ecr_trend_vs_target",
+        "kind": "sql",
+        "dataset": "quality_ops_weekly_reports",
+        "columns": ["audit_week_start_utc", "ecr", "ecr_target", "target_status"],
+        "sql": "SELECT audit_week_start_utc, ecr, ecr_target, target_status FROM quality_ops_weekly_reports ORDER BY audit_week_start_utc DESC LIMIT 26"
+      }
+    },
+    {
+      "panel_id": "st015-low-confidence-labeling-rate",
+      "title": "Low-confidence labeling rate",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st015_low_confidence_labeling_rate",
+        "kind": "sql",
+        "dataset": "quality_ops_weekly_reports",
+        "columns": ["audit_week_start_utc", "low_confidence_labeling_rate"],
+        "sql": "SELECT audit_week_start_utc, low_confidence_labeling_rate FROM quality_ops_weekly_reports ORDER BY audit_week_start_utc DESC LIMIT 26"
+      }
+    },
+    {
+      "panel_id": "st015-reviewer-queue-closure-rate",
+      "title": "Reviewer queue closure rate",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st015_reviewer_queue_closure_rate",
+        "kind": "sql",
+        "dataset": "quality_ops_weekly_reports",
+        "columns": ["audit_week_start_utc", "reviewer_queue_closure_rate", "reviewer_queue_item_count", "reviewer_queue_resolved_count"],
+        "sql": "SELECT audit_week_start_utc, reviewer_queue_closure_rate, reviewer_queue_item_count, reviewer_queue_resolved_count FROM quality_ops_weekly_reports ORDER BY audit_week_start_utc DESC LIMIT 26"
+      }
+    },
+    {
+      "panel_id": "st015-reviewer-backlog-and-outcomes",
+      "title": "Reviewer backlog and outcomes",
+      "type": "table",
+      "query": {
+        "query_id": "st015_reviewer_backlog_and_outcomes",
+        "kind": "sql",
+        "dataset": "quality_ops_weekly_reports",
+        "columns": [
+          "audit_week_start_utc",
+          "reviewer_backlog_open_count",
+          "reviewer_backlog_in_progress_count",
+          "reviewer_outcome_counts_json",
+          "calibration_policy_version"
+        ],
+        "sql": "SELECT audit_week_start_utc, reviewer_backlog_open_count, reviewer_backlog_in_progress_count, reviewer_outcome_counts_json, calibration_policy_version FROM quality_ops_weekly_reports ORDER BY audit_week_start_utc DESC LIMIT 26"
+      }
+    },
+    {
+      "panel_id": "st015-target-misses-and-escalation",
+      "title": "Target misses and escalation",
+      "type": "table",
+      "query": {
+        "query_id": "st015_target_misses_and_escalation",
+        "kind": "sql",
+        "dataset": "quality_ops_weekly_reports",
+        "columns": ["audit_week_start_utc", "ecr", "ecr_target", "escalation_owner_role", "escalation_triggered_at_utc"],
+        "sql": "SELECT audit_week_start_utc, ecr, ecr_target, escalation_owner_role, escalation_triggered_at_utc FROM quality_ops_weekly_reports WHERE target_status = 'below_target' ORDER BY audit_week_start_utc DESC LIMIT 26"
+      }
+    }
+  ]
+}

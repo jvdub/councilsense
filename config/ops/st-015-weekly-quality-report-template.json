@@ -1,0 +1,30 @@
+{
+  "report_version": "st-015-quality-ops-weekly-report-v1",
+  "story_task": "TASK-ST-015-05",
+  "target": {
+    "metric": "ecr",
+    "threshold": 0.85,
+    "operator": ">=",
+    "status": "met|below_target"
+  },
+  "sections": [
+    "ecr_trend",
+    "target_attainment",
+    "low_confidence_labeling_rate",
+    "reviewer_outcomes",
+    "reviewer_queue_closure_rate",
+    "reviewer_backlog",
+    "calibration_policy_version",
+    "escalation"
+  ],
+  "escalation": {
+    "owner_role": "ops-quality-oncall",
+    "trigger_condition": "ecr < 0.85",
+    "required_fields": ["owner_role", "triggered_at_utc"]
+  },
+  "retention": {
+    "store": "quality_ops_weekly_reports",
+    "key": "audit_week_start_utc",
+    "comparison_window": "week_over_week"
+  }
+}
