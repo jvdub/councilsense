@@ -1,0 +1,90 @@
+{
+  "environment": "staging",
+  "scenarios": [
+    {
+      "scenario_id": "ingestion-failure-critical",
+      "alert_class": "ingestion_failures",
+      "labels": {
+        "city_id": "city-riverton-ut",
+        "source_id": "source-riverton-ut-minutes-primary",
+        "run_id": "run-ingest-2026-02-28-001",
+        "meeting_id": "meeting-riverton-2026-02-27",
+        "stage": "ingest",
+        "outcome": "failure",
+        "environment": "staging"
+      },
+      "samples": [
+        {
+          "metric": "councilsense_pipeline_stage_events_total",
+          "stage": "ingest",
+          "outcome": "failure",
+          "value": 12.0
+        },
+        {
+          "metric": "councilsense_pipeline_stage_events_total",
+          "stage": "ingest",
+          "outcome": "success",
+          "value": 68.0
+        }
+      ],
+      "expected_alert_ids": [
+        "ingestion-failure-rate-warning",
+        "ingestion-failure-rate-critical"
+      ]
+    },
+    {
+      "scenario_id": "pipeline-latency-warning",
+      "alert_class": "pipeline_latency",
+      "labels": {
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-ut-agenda-primary",
+        "run_id": "run-publish-2026-02-28-002",
+        "meeting_id": "meeting-eagle-mountain-2026-02-26",
+        "stage": "publish",
+        "outcome": "success",
+        "environment": "staging"
+      },
+      "observed_value": 2400.0,
+      "expected_alert_ids": [
+        "pipeline-latency-p95-warning"
+      ]
+    },
+    {
+      "scenario_id": "notification-error-critical",
+      "alert_class": "notification_errors",
+      "labels": {
+        "city_id": "city-pleasant-grove-ut",
+        "source_id": "source-pleasant-grove-ut-minutes-primary",
+        "run_id": "run-notify-2026-02-28-003",
+        "meeting_id": "meeting-pleasant-grove-2026-02-25",
+        "stage": "notify_deliver",
+        "outcome": "failure",
+        "environment": "staging"
+      },
+      "samples": [
+        {
+          "metric": "councilsense_notifications_delivery_events_total",
+          "stage": "notify_deliver",
+          "outcome": "failure",
+          "value": 9.0
+        },
+        {
+          "metric": "councilsense_notifications_delivery_events_total",
+          "stage": "notify_deliver",
+          "outcome": "retry",
+          "value": 31.0
+        },
+        {
+          "metric": "councilsense_notifications_delivery_events_total",
+          "stage": "notify_deliver",
+          "outcome": "success",
+          "value": 60.0
+        }
+      ],
+      "expected_alert_ids": [
+        "notification-delivery-error-rate-warning",
+        "notification-delivery-error-rate-critical"
+      ]
+    }
+  ]
+}

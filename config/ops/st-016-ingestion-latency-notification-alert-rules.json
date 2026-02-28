@@ -1,0 +1,239 @@
+{
+  "ruleset_version": "st-016-ingestion-latency-notification-alert-rules-v1",
+  "story_task": "TASK-ST-016-02",
+  "baseline_reference": "config/ops/st-016-alert-threshold-baseline.json",
+  "deployment": {
+    "enabled_env_var": "COUNCILSENSE_ALERT_RULES_ENABLED",
+    "target_environment_env_var": "COUNCILSENSE_ENVIRONMENT",
+    "target_environment_default": "local",
+    "notification_channel_env_var": "COUNCILSENSE_ALERTS_NOTIFICATION_CHANNEL",
+    "notification_channel_default": "ops-alerts",
+    "owner_mapping_env_var": "COUNCILSENSE_ALERTS_OWNER_MAPPING",
+    "owner_mapping_default": "config/ops/st-016-alert-threshold-baseline.json"
+  },
+  "triage_metadata": {
+    "required_fields": [
+      "alert_class",
+      "alert_id",
+      "city_id",
+      "source_id",
+      "run_id",
+      "meeting_id",
+      "stage",
+      "outcome",
+      "environment",
+      "observed_value",
+      "threshold_value",
+      "evaluation_window",
+      "triggered_at_utc"
+    ],
+    "required_for_escalation": [
+      "city_id",
+      "source_id",
+      "run_id"
+    ],
+    "field_mapping": {
+      "city_id": "$labels.city_id",
+      "source_id": "$labels.source_id",
+      "run_id": "$labels.run_id",
+      "meeting_id": "$labels.meeting_id",
+      "stage": "$labels.stage",
+      "outcome": "$labels.outcome",
+      "environment": "$labels.environment"
+    }
+  },
+  "telemetry_tracking": {
+    "fire_count_metric": "councilsense_alert_rule_fires_total",
+    "acknowledgment_fields": [
+      "acknowledged_by",
+      "acknowledged_at_utc",
+      "acknowledgment_note"
+    ]
+  },
+  "rules": [
+    {
+      "alert_id": "ingestion-failure-rate-warning",
+      "alert_class": "ingestion_failures",
+      "severity": "warning",
+      "metric": "councilsense_pipeline_stage_events_total",
+      "signal": "failure_rate",
+      "filters": {
+        "stage": "ingest"
+      },
+      "calculation": {
+        "numerator_outcomes": [
+          "failure"
+        ],
+        "denominator_outcomes": [
+          "success",
+          "failure"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.05,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    },
+    {
+      "alert_id": "ingestion-failure-rate-critical",
+      "alert_class": "ingestion_failures",
+      "severity": "critical",
+      "metric": "councilsense_pipeline_stage_events_total",
+      "signal": "failure_rate",
+      "filters": {
+        "stage": "ingest"
+      },
+      "calculation": {
+        "numerator_outcomes": [
+          "failure"
+        ],
+        "denominator_outcomes": [
+          "success",
+          "failure"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.1,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    },
+    {
+      "alert_id": "pipeline-latency-p95-warning",
+      "alert_class": "pipeline_latency",
+      "severity": "warning",
+      "metric": "councilsense_pipeline_stage_duration_seconds",
+      "signal": "p95_duration_seconds",
+      "filters": {
+        "stage": "publish",
+        "outcome": "success"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 1800,
+        "unit": "seconds",
+        "for": "PT20M",
+        "evaluation_window": "PT30M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    },
+    {
+      "alert_id": "pipeline-latency-p95-critical",
+      "alert_class": "pipeline_latency",
+      "severity": "critical",
+      "metric": "councilsense_pipeline_stage_duration_seconds",
+      "signal": "p95_duration_seconds",
+      "filters": {
+        "stage": "publish",
+        "outcome": "success"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 3600,
+        "unit": "seconds",
+        "for": "PT20M",
+        "evaluation_window": "PT30M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    },
+    {
+      "alert_id": "notification-delivery-error-rate-warning",
+      "alert_class": "notification_errors",
+      "severity": "warning",
+      "metric": "councilsense_notifications_delivery_events_total",
+      "signal": "error_rate",
+      "filters": {
+        "stage": "notify_deliver"
+      },
+      "calculation": {
+        "numerator_outcomes": [
+          "failure"
+        ],
+        "denominator_outcomes": [
+          "success",
+          "retry",
+          "failure"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.03,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-notifications-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    },
+    {
+      "alert_id": "notification-delivery-error-rate-critical",
+      "alert_class": "notification_errors",
+      "severity": "critical",
+      "metric": "councilsense_notifications_delivery_events_total",
+      "signal": "error_rate",
+      "filters": {
+        "stage": "notify_deliver"
+      },
+      "calculation": {
+        "numerator_outcomes": [
+          "failure"
+        ],
+        "denominator_outcomes": [
+          "success",
+          "retry",
+          "failure"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.07,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-notifications-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "runbook": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+    }
+  ]
+}
