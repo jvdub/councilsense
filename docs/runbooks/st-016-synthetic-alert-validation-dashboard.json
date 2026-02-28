@@ -1,0 +1,99 @@
+{
+  "dashboard_id": "st-016-alert-hardening-validation",
+  "title": "ST-016 Synthetic Alert Validation Dashboard",
+  "description": "Hardening visibility for alert volume, parser drift events, source freshness breaches, and synthetic trigger quality metrics.",
+  "default_time_window": "P7D",
+  "panels": [
+    {
+      "panel_id": "st016-alert-volume-by-class-and-severity",
+      "title": "Alert volume by class and severity",
+      "type": "table",
+      "query": {
+        "query_id": "st016_alert_volume_by_class_and_severity",
+        "kind": "sql",
+        "dataset": "synthetic_alert_validation_results",
+        "columns": ["signal_class", "severity", "fired_count"],
+        "sql": "SELECT signal_class, severity, COUNT(*) AS fired_count FROM synthetic_alert_validation_results WHERE signal_type = 'alert_rule' GROUP BY signal_class, severity ORDER BY signal_class, severity"
+      }
+    },
+    {
+      "panel_id": "st016-parser-drift-events-weekly",
+      "title": "Parser drift events (weekly)",
+      "type": "table",
+      "query": {
+        "query_id": "st016_parser_drift_events_weekly",
+        "kind": "sql",
+        "dataset": "parser_drift_events",
+        "columns": ["iso_week", "city_id", "source_id", "current_parser_version", "detected_at"],
+        "sql": "SELECT strftime('%Y-%W', detected_at) AS iso_week, city_id, source_id, current_parser_version, detected_at FROM parser_drift_events ORDER BY detected_at DESC LIMIT 200"
+      }
+    },
+    {
+      "panel_id": "st016-source-freshness-breaches-weekly",
+      "title": "Source freshness breaches (weekly)",
+      "type": "table",
+      "query": {
+        "query_id": "st016_source_freshness_breaches_weekly",
+        "kind": "sql",
+        "dataset": "source_freshness_breach_events",
+        "columns": ["iso_week", "severity", "breach_count"],
+        "sql": "SELECT strftime('%Y-%W', detected_at) AS iso_week, severity, COUNT(*) AS breach_count FROM source_freshness_breach_events GROUP BY strftime('%Y-%W', detected_at), severity ORDER BY iso_week DESC, severity ASC"
+      }
+    },
+    {
+      "panel_id": "st016-synthetic-trigger-success-and-latency",
+      "title": "Synthetic trigger success and detection latency",
+      "type": "table",
+      "query": {
+        "query_id": "st016_synthetic_trigger_success_and_latency",
+        "kind": "sql",
+        "dataset": "synthetic_alert_validation_metrics",
+        "columns": ["metric_name", "value"],
+        "sql": "SELECT metric_name, value FROM synthetic_alert_validation_metrics WHERE metric_name IN ('alert_trigger_success_rate', 'median_detection_latency_seconds', 'parser_drift_events_per_week', 'freshness_breach_count_per_week') ORDER BY metric_name ASC"
+      }
+    },
+    {
+      "panel_id": "st016-owner-context-and-runbook-linkage",
+      "title": "Owner context and runbook linkage",
+      "type": "table",
+      "query": {
+        "query_id": "st016_owner_context_and_runbook_linkage",
+        "kind": "audit_evidence_links",
+        "dataset": "st016_alert_linkage",
+        "columns": ["signal_class", "primary_owner_role", "secondary_owner_role", "runbook_path"],
+        "rows": [
+          {
+            "signal_class": "ingestion_failures",
+            "primary_owner_role": "ops-ingestion-oncall",
+            "secondary_owner_role": "backend-oncall",
+            "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+          },
+          {
+            "signal_class": "pipeline_latency",
+            "primary_owner_role": "ops-pipeline-oncall",
+            "secondary_owner_role": "backend-oncall",
+            "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+          },
+          {
+            "signal_class": "notification_errors",
+            "primary_owner_role": "ops-notifications-oncall",
+            "secondary_owner_role": "backend-oncall",
+            "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md"
+          },
+          {
+            "signal_class": "source_freshness",
+            "primary_owner_role": "ops-ingestion-oncall",
+            "secondary_owner_role": "source-operations-owner",
+            "runbook_path": "docs/runbooks/st-016-source-freshness-regression-alerting-runbook.md"
+          },
+          {
+            "signal_class": "parser_drift",
+            "primary_owner_role": "ops-ingestion-oncall",
+            "secondary_owner_role": "backend-oncall",
+            "runbook_path": "docs/runbooks/st-016-parser-drift-monitoring-runbook.md"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "reporting_window": {
+    "week_start_utc": "2026-02-22T00:00:00Z",
+    "week_end_utc": "2026-02-28T23:59:59Z"
+  },
+  "synthetic_results": [
+    {
+      "scenario_id": "st016-05-ingestion-warning",
+      "signal_type": "alert_rule",
+      "signal_class": "ingestion_failures",
+      "alert_id": "ingestion-failure-rate-warning",
+      "severity": "warning",
+      "owner_role": "ops-ingestion-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:00:00Z",
+      "detected_at_utc": "2026-02-28T10:00:45Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-ingestion-critical",
+      "signal_type": "alert_rule",
+      "signal_class": "ingestion_failures",
+      "alert_id": "ingestion-failure-rate-critical",
+      "severity": "critical",
+      "owner_role": "ops-ingestion-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:05:00Z",
+      "detected_at_utc": "2026-02-28T10:06:00Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-pipeline-warning",
+      "signal_type": "alert_rule",
+      "signal_class": "pipeline_latency",
+      "alert_id": "pipeline-latency-p95-warning",
+      "severity": "warning",
+      "owner_role": "ops-pipeline-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:10:00Z",
+      "detected_at_utc": "2026-02-28T10:11:15Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-pipeline-critical",
+      "signal_type": "alert_rule",
+      "signal_class": "pipeline_latency",
+      "alert_id": "pipeline-latency-p95-critical",
+      "severity": "critical",
+      "owner_role": "ops-pipeline-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:15:00Z",
+      "detected_at_utc": "2026-02-28T10:16:30Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-notification-warning",
+      "signal_type": "alert_rule",
+      "signal_class": "notification_errors",
+      "alert_id": "notification-delivery-error-rate-warning",
+      "severity": "warning",
+      "owner_role": "ops-notifications-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:20:00Z",
+      "detected_at_utc": "2026-02-28T10:22:00Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-notification-critical",
+      "signal_type": "alert_rule",
+      "signal_class": "notification_errors",
+      "alert_id": "notification-delivery-error-rate-critical",
+      "severity": "critical",
+      "owner_role": "ops-notifications-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-ingestion-latency-notification-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:25:00Z",
+      "detected_at_utc": "2026-02-28T10:27:30Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-freshness-warning",
+      "signal_type": "alert_rule",
+      "signal_class": "source_freshness",
+      "alert_id": "source-freshness-regression-warning",
+      "severity": "warning",
+      "owner_role": "ops-ingestion-oncall",
+      "owner_secondary_role": "source-operations-owner",
+      "runbook_path": "docs/runbooks/st-016-source-freshness-regression-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:30:00Z",
+      "detected_at_utc": "2026-02-28T10:33:00Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-freshness-critical",
+      "signal_type": "alert_rule",
+      "signal_class": "source_freshness",
+      "alert_id": "source-freshness-regression-critical",
+      "severity": "critical",
+      "owner_role": "ops-ingestion-oncall",
+      "owner_secondary_role": "source-operations-owner",
+      "runbook_path": "docs/runbooks/st-016-source-freshness-regression-alerting-runbook.md",
+      "injected_at_utc": "2026-02-28T10:35:00Z",
+      "detected_at_utc": "2026-02-28T10:38:30Z",
+      "triggered": true
+    },
+    {
+      "scenario_id": "st016-05-parser-drift-event",
+      "signal_type": "drift_event",
+      "signal_class": "parser_drift",
+      "event_schema_version": "st016.parser_drift_event.v1",
+      "owner_role": "ops-ingestion-oncall",
+      "owner_secondary_role": "backend-oncall",
+      "runbook_path": "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
+      "injected_at_utc": "2026-02-28T10:40:00Z",
+      "detected_at_utc": "2026-02-28T10:44:00Z",
+      "triggered": true
+    }
+  ],
+  "reported_metrics": {
+    "alert_trigger_success_rate": 1.0,
+    "median_detection_latency_seconds": 120.0,
+    "parser_drift_events_per_week": 1,
+    "freshness_breach_count_per_week": 2
+  }
+}
