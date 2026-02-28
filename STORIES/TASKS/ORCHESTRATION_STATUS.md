@@ -100,6 +100,16 @@ Last updated: 2026-02-27
 | TASK-ST-008-04 | ✅ Done | 5e7ee0c |
 | TASK-ST-008-05 | ✅ Done | 8abcaff |
 
+### ST-009 — Idempotent Notification Fan-Out + Delivery
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-009-01 | ✅ Done | 3df49bc |
+| TASK-ST-009-02 | ✅ Done | c786ba8 |
+| TASK-ST-009-03 | ✅ Done | b1a3ae3 |
+| TASK-ST-009-04 | ✅ Done | 90b49c2 |
+| TASK-ST-009-05 | ✅ Done | 1d9c0b4 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -108,6 +118,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Start ST-009 (`TASK-ST-009-01` → `TASK-ST-009-05`)
-2. Then run ST-011 (`TASK-ST-011-01` → `TASK-ST-011-05`)
-3. After ST-011, start ST-012 and ST-013
+1. Start ST-011 (`TASK-ST-011-01` → `TASK-ST-011-05`)
+2. Then run ST-012 (`TASK-ST-012-01` → `TASK-ST-012-05`)
+3. Then run ST-013 (`TASK-ST-013-01` → `TASK-ST-013-05`)
