@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, patchProfile } from "../../lib/api/profile";
 import {
+  createDeletionRequest,
+  createExportRequest,
+  getDeletionRequest,
+  getExportRequest,
+} from "../../lib/api/governance";
+import {
   createOrRefreshPushSubscription,
   deletePushSubscription,
   listPushSubscriptions,
@@ -159,6 +165,17 @@ vi.mock("../../lib/api/pushSubscriptions", async (importOriginal) => {
   };
 });
 
+vi.mock("../../lib/api/governance", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api/governance")>();
+  return {
+    ...actual,
+    createExportRequest: vi.fn(),
+    getExportRequest: vi.fn(),
+    createDeletionRequest: vi.fn(),
+    getDeletionRequest: vi.fn(),
+  };
+});
+
 describe("SettingsPreferencesForm", () => {
   afterEach(() => {
     cleanup();
@@ -177,6 +194,60 @@ describe("SettingsPreferencesForm", () => {
       failure_reason: null,
     });
     vi.mocked(deletePushSubscription).mockResolvedValue(undefined);
+    vi.mocked(createExportRequest).mockResolvedValue({
+      id: "export-1",
+      status: "requested",
+      scope: {
+        include_profile: true,
+        include_preferences: true,
+        include_notification_history: true,
+      },
+      artifact_uri: null,
+      error_code: null,
+      completed_at: null,
+      processing_attempt_count: 0,
+      max_processing_attempts: 3,
+      created_at: "2026-02-28T10:00:00Z",
+      updated_at: "2026-02-28T10:00:00Z",
+    });
+    vi.mocked(getExportRequest).mockResolvedValue({
+      id: "export-1",
+      status: "processing",
+      scope: {
+        include_profile: true,
+        include_preferences: true,
+        include_notification_history: true,
+      },
+      artifact_uri: null,
+      error_code: null,
+      completed_at: null,
+      processing_attempt_count: 1,
+      max_processing_attempts: 3,
+      created_at: "2026-02-28T10:00:00Z",
+      updated_at: "2026-02-28T10:05:00Z",
+    });
+    vi.mocked(createDeletionRequest).mockResolvedValue({
+      id: "deletion-1",
+      status: "requested",
+      mode: "anonymize",
+      reason_code: "user_requested_account_deletion",
+      due_at: "2026-03-30T10:00:00Z",
+      completed_at: null,
+      error_code: null,
+      created_at: "2026-02-28T10:00:00Z",
+      updated_at: "2026-02-28T10:00:00Z",
+    });
+    vi.mocked(getDeletionRequest).mockResolvedValue({
+      id: "deletion-1",
+      status: "accepted",
+      mode: "anonymize",
+      reason_code: "user_requested_account_deletion",
+      due_at: "2026-03-30T10:00:00Z",
+      completed_at: null,
+      error_code: null,
+      created_at: "2026-02-28T10:00:00Z",
+      updated_at: "2026-02-28T10:05:00Z",
+    });
   });
 
   it("renders persisted profile values", () => {
@@ -197,6 +268,100 @@ describe("SettingsPreferencesForm", () => {
     expect(screen.getByLabelText("Enable notifications")).toBeChecked();
     expect(screen.getByText("Notifications paused until: Not paused")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unpause" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
+      "href",
+      "https://www.councilsense.org/privacy",
+    );
+    expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
+      "href",
+      "https://www.councilsense.org/terms",
+    );
+  });
+
+  it("submits and refreshes export request status", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Request data export" }));
+
+    expect(createExportRequest).toHaveBeenCalledWith("token-abc", {
+      idempotency_key: expect.stringMatching(/^export-/),
+    });
+    expect(await screen.findByText("Export request status: requested")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Refresh export status" }));
+
+    expect(getExportRequest).toHaveBeenCalledWith("token-abc", "export-1");
+    expect(await screen.findByText("Export request status: processing")).toBeInTheDocument();
+  });
+
+  it("requires explicit confirmation before deletion request", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Request deletion" }));
+
+    expect(createDeletionRequest).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Confirm deletion request before submitting.",
+    );
+  });
+
+  it("submits and refreshes deletion request status", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa"]}
+        initialProfile={{
+          email: null,
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: null,
+        }}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("Request mode"), "delete");
+    await user.click(screen.getByLabelText("I understand this request can remove my personal data."));
+    await user.click(screen.getByRole("button", { name: "Request deletion" }));
+
+    expect(createDeletionRequest).toHaveBeenCalledWith("token-abc", {
+      idempotency_key: expect.stringMatching(/^deletion-/),
+      mode: "delete",
+      reason_code: "user_requested_account_deletion",
+    });
+    expect(await screen.findByText("Deletion request status: requested")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Refresh deletion status" }));
+
+    expect(getDeletionRequest).toHaveBeenCalledWith("token-abc", "deletion-1");
+    expect(await screen.findByText("Deletion request status: accepted")).toBeInTheDocument();
   });
 
   it("rehydrates persisted paused state", () => {

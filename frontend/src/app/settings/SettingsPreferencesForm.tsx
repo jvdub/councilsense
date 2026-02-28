@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 
 import { ApiError, patchProfile, ProfileResponse } from "../../lib/api/profile";
 import {
+  createDeletionRequest,
+  createExportRequest,
+  getDeletionRequest,
+  getExportRequest,
+  GovernanceApiError,
+  type DeletionRequestMode,
+  type DeletionRequestRecord,
+  type ExportRequestRecord,
+} from "../../lib/api/governance";
+import {
   createOrRefreshPushSubscription,
   deletePushSubscription,
   listPushSubscriptions,
@@ -15,6 +25,7 @@ import {
   mapPushRecoveryAction,
   type BrowserPermissionState,
 } from "../../lib/push/subscriptionState";
+import { LegalLinks } from "../LegalLinks";
 
 type SettingsPreferencesFormProps = {
   authToken: string;
@@ -39,6 +50,14 @@ function decodeBase64Url(value: string): Uint8Array {
   return bytes;
 }
 
+function createIdempotencyKey(prefix: "export" | "deletion") {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now()}`;
+}
+
 export function SettingsPreferencesForm({
   authToken,
   supportedCityIds,
@@ -61,6 +80,13 @@ export function SettingsPreferencesForm({
   const [isPushSubmitting, setIsPushSubmitting] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [pushErrorMessage, setPushErrorMessage] = useState<string | null>(null);
+  const [exportRequest, setExportRequest] = useState<ExportRequestRecord | null>(null);
+  const [deletionRequest, setDeletionRequest] = useState<DeletionRequestRecord | null>(null);
+  const [deletionMode, setDeletionMode] = useState<DeletionRequestMode>("anonymize");
+  const [deletionConfirmChecked, setDeletionConfirmChecked] = useState(false);
+  const [isGovernanceSubmitting, setIsGovernanceSubmitting] = useState(false);
+  const [governanceMessage, setGovernanceMessage] = useState<string | null>(null);
+  const [governanceErrorMessage, setGovernanceErrorMessage] = useState<string | null>(null);
 
   const cityOptions = useMemo(
     () => supportedCityIds.map((cityId) => ({ cityId, label: cityId })),
@@ -310,6 +336,97 @@ export function SettingsPreferencesForm({
     }
   }
 
+  async function onRequestExport() {
+    setIsGovernanceSubmitting(true);
+    setGovernanceMessage(null);
+    setGovernanceErrorMessage(null);
+
+    try {
+      const record = await createExportRequest(authToken, {
+        idempotency_key: createIdempotencyKey("export"),
+      });
+      setExportRequest(record);
+      setGovernanceMessage("Export request submitted.");
+    } catch (error) {
+      if (error instanceof GovernanceApiError && error.status === 422) {
+        setGovernanceErrorMessage("Unable to submit export request. Check request details and try again.");
+      } else {
+        setGovernanceErrorMessage("Unable to submit export request. Try again.");
+      }
+    } finally {
+      setIsGovernanceSubmitting(false);
+    }
+  }
+
+  async function onRefreshExportStatus() {
+    if (!exportRequest) {
+      return;
+    }
+
+    setIsGovernanceSubmitting(true);
+    setGovernanceMessage(null);
+    setGovernanceErrorMessage(null);
+
+    try {
+      const refreshed = await getExportRequest(authToken, exportRequest.id);
+      setExportRequest(refreshed);
+      setGovernanceMessage("Export request status refreshed.");
+    } catch {
+      setGovernanceErrorMessage("Unable to refresh export request status. Try again.");
+    } finally {
+      setIsGovernanceSubmitting(false);
+    }
+  }
+
+  async function onRequestDeletion() {
+    if (!deletionConfirmChecked) {
+      setGovernanceErrorMessage("Confirm deletion request before submitting.");
+      return;
+    }
+
+    setIsGovernanceSubmitting(true);
+    setGovernanceMessage(null);
+    setGovernanceErrorMessage(null);
+
+    try {
+      const record = await createDeletionRequest(authToken, {
+        idempotency_key: createIdempotencyKey("deletion"),
+        mode: deletionMode,
+        reason_code: "user_requested_account_deletion",
+      });
+      setDeletionRequest(record);
+      setGovernanceMessage("Deletion request submitted.");
+    } catch (error) {
+      if (error instanceof GovernanceApiError && error.status === 422) {
+        setGovernanceErrorMessage("Unable to submit deletion request. Check request details and try again.");
+      } else {
+        setGovernanceErrorMessage("Unable to submit deletion request. Try again.");
+      }
+    } finally {
+      setIsGovernanceSubmitting(false);
+    }
+  }
+
+  async function onRefreshDeletionStatus() {
+    if (!deletionRequest) {
+      return;
+    }
+
+    setIsGovernanceSubmitting(true);
+    setGovernanceMessage(null);
+    setGovernanceErrorMessage(null);
+
+    try {
+      const refreshed = await getDeletionRequest(authToken, deletionRequest.id);
+      setDeletionRequest(refreshed);
+      setGovernanceMessage("Deletion request status refreshed.");
+    } catch {
+      setGovernanceErrorMessage("Unable to refresh deletion request status. Try again.");
+    } finally {
+      setIsGovernanceSubmitting(false);
+    }
+  }
+
   return (
     <main>
       <h1>Settings</h1>
@@ -407,10 +524,94 @@ export function SettingsPreferencesForm({
         )}
       </section>
 
+      <section aria-label="Data governance">
+        <h2>Data governance</h2>
+
+        <section aria-label="Data export request">
+          <h3>Data export</h3>
+          <p>
+            Request an export of your profile, preferences, and notification history.
+          </p>
+          <button type="button" onClick={onRequestExport} disabled={isGovernanceSubmitting}>
+            {isGovernanceSubmitting ? "Submitting..." : "Request data export"}
+          </button>
+          <button
+            type="button"
+            onClick={onRefreshExportStatus}
+            disabled={isGovernanceSubmitting || !exportRequest}
+          >
+            Refresh export status
+          </button>
+          <p>
+            Export request status: {exportRequest?.status ?? "not requested"}
+          </p>
+          {exportRequest?.completed_at ? <p>Export completed at: {exportRequest.completed_at}</p> : null}
+          {exportRequest?.artifact_uri ? <p>Export artifact: {exportRequest.artifact_uri}</p> : null}
+          {exportRequest?.error_code ? <p>Export error code: {exportRequest.error_code}</p> : null}
+        </section>
+
+        <section aria-label="Deletion request">
+          <h3>Deletion request</h3>
+          <p>Submit a deletion or anonymization request for your account data.</p>
+
+          <label htmlFor="deletion-mode">Request mode</label>
+          <select
+            id="deletion-mode"
+            name="deletion-mode"
+            value={deletionMode}
+            onChange={(event) => setDeletionMode(event.target.value as DeletionRequestMode)}
+            disabled={isGovernanceSubmitting}
+          >
+            <option value="anonymize">Anonymize profile data</option>
+            <option value="delete">Delete account data</option>
+          </select>
+
+          <label htmlFor="deletion-confirm">
+            <input
+              id="deletion-confirm"
+              name="deletion-confirm"
+              type="checkbox"
+              checked={deletionConfirmChecked}
+              onChange={(event) => setDeletionConfirmChecked(event.target.checked)}
+              disabled={isGovernanceSubmitting}
+            />
+            I understand this request can remove my personal data.
+          </label>
+
+          <button type="button" onClick={onRequestDeletion} disabled={isGovernanceSubmitting}>
+            {isGovernanceSubmitting ? "Submitting..." : "Request deletion"}
+          </button>
+          <button
+            type="button"
+            onClick={onRefreshDeletionStatus}
+            disabled={isGovernanceSubmitting || !deletionRequest}
+          >
+            Refresh deletion status
+          </button>
+          <p>
+            Deletion request status: {deletionRequest?.status ?? "not requested"}
+          </p>
+          <p>
+            Deletion mode: {deletionRequest?.mode ?? deletionMode}
+          </p>
+          {deletionRequest?.due_at ? <p>Deletion due at: {deletionRequest.due_at}</p> : null}
+          {deletionRequest?.completed_at ? <p>Deletion completed at: {deletionRequest.completed_at}</p> : null}
+          {deletionRequest?.error_code ? <p>Deletion error code: {deletionRequest.error_code}</p> : null}
+        </section>
+
+        <LegalLinks label="Settings legal links" />
+      </section>
+
       {successMessage ? <p role="status">{successMessage}</p> : null}
       {errorMessage ? <p role="alert">{errorMessage}</p> : null}
       {pushMessage ? <p role="status">{pushMessage}</p> : null}
       {pushErrorMessage ? <p role="alert">{pushErrorMessage}</p> : null}
+      {governanceMessage ? (
+        <p role="status">{governanceMessage}</p>
+      ) : null}
+      {governanceErrorMessage ? (
+        <p role="alert">{governanceErrorMessage}</p>
+      ) : null}
     </main>
   );
 }

@@ -4,6 +4,7 @@ import React, { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError, submitHomeCitySelection } from "../../../lib/api/bootstrap";
+import { LegalLinks } from "../../LegalLinks";
 
 type CitySelectionFormProps = {
   authToken: string;
@@ -70,6 +71,7 @@ export function CitySelectionForm({ authToken, cityIds }: CitySelectionFormProps
           {isSubmitting ? "Saving..." : "Continue"}
         </button>
       </form>
+      <LegalLinks label="Onboarding legal links" />
       {submitError ? <p role="alert">{submitError}</p> : null}
     </main>
   );

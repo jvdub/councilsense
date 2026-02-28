@@ -50,6 +50,14 @@ describe("CitySelectionForm", () => {
     expect(submitHomeCitySelection).toHaveBeenCalledWith("token-abc", "portland-or");
     expect(pushMock).toHaveBeenCalledWith("/meetings");
     expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
+      "href",
+      "https://www.councilsense.org/privacy",
+    );
+    expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
+      "href",
+      "https://www.councilsense.org/terms",
+    );
   });
 
   it("shows validation message when backend rejects city", async () => {
