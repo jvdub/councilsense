@@ -12,6 +12,7 @@ from councilsense.app.notification_contracts import (
     NotificationEventMessage,
     consume_notification_event_payload,
 )
+from councilsense.app.settings import get_settings
 from councilsense.db.notifications import NotificationOutboxRecord
 
 
@@ -75,6 +76,10 @@ _NOTIFY_DELIVERY_DURATION = "councilsense_notifications_delivery_duration_second
 _UNKNOWN_RUN_ID = "run-unknown"
 
 logger = logging.getLogger(__name__)
+
+
+def validate_worker_startup_environment() -> None:
+    get_settings(service_name="worker")
 
 
 @dataclass(frozen=True)
