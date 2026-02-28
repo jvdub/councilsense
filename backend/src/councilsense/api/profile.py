@@ -91,6 +91,14 @@ class InMemoryUserProfileRepository:
         self._profiles_by_user_id[profile.user_id] = profile
         return profile
 
+    def apply_governance_deletion(self, *, user_id: str, mode: str) -> UserProfile:
+        profile = self.get_or_create(user_id)
+        profile.home_city_id = None
+        profile.notifications_enabled = False
+        profile.notifications_paused_until = None
+        self.save(profile)
+        return profile
+
 
 class UserBootstrapService:
     def __init__(self, repository: InMemoryUserProfileRepository, supported_city_ids: tuple[str, ...]) -> None:
@@ -191,6 +199,9 @@ class UserProfileService:
     ) -> NotificationEligibility:
         profile = self.get_profile_for_subject(actor_user_id=actor_user_id, subject_user_id=subject_user_id)
         return profile.notification_eligibility(as_of=as_of)
+
+    def apply_governance_deletion(self, *, user_id: str, mode: str) -> UserProfile:
+        return self._repository.apply_governance_deletion(user_id=user_id, mode=mode)
 
     def _enforce_self_only(self, *, actor_user_id: str, subject_user_id: str) -> None:
         if actor_user_id != subject_user_id:
