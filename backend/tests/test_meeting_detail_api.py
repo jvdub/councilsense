@@ -41,6 +41,7 @@ def _insert_meeting(
     meeting_uid: str,
     title: str,
     created_at: str,
+    city_id: str = PILOT_CITY_ID,
 ) -> None:
     app = cast(Any, client.app)
     app.state.db_connection.execute(
@@ -48,8 +49,24 @@ def _insert_meeting(
         INSERT INTO meetings (id, city_id, meeting_uid, title, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (meeting_id, PILOT_CITY_ID, meeting_uid, title, created_at, created_at),
+        (meeting_id, city_id, meeting_uid, title, created_at, created_at),
     )
+
+
+def _insert_city(client: TestClient, *, city_id: str, slug: str, name: str) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT INTO cities (id, slug, name, state_code, timezone, enabled, priority_tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (city_id, slug, name, "UT", "America/Denver", 1, 2),
+    )
+
+
+def _set_home_city(client: TestClient, *, headers: dict[str, str], city_id: str = PILOT_CITY_ID) -> None:
+    response = client.patch("/v1/me", headers=headers, json={"home_city_id": city_id})
+    assert response.status_code == 200
 
 
 def _insert_publication(
@@ -147,6 +164,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     client = _client_with_configured_cities(monkeypatch, secret="test-secret", supported_city_ids=PILOT_CITY_ID)
     token = _issue_token("user-detail", secret="test-secret", expires_in_seconds=300)
     headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
 
     _insert_meeting(
         client,
@@ -219,6 +237,7 @@ def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) 
     client = _client_with_configured_cities(monkeypatch, secret="test-secret", supported_city_ids=PILOT_CITY_ID)
     token = _issue_token("user-limited", secret="test-secret", expires_in_seconds=300)
     headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
 
     _insert_meeting(
         client,
@@ -253,10 +272,12 @@ def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) 
 def test_meeting_detail_returns_predictable_not_found_for_unknown_id(monkeypatch) -> None:
     client = _client_with_configured_cities(monkeypatch, secret="test-secret", supported_city_ids=PILOT_CITY_ID)
     token = _issue_token("user-not-found", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
 
     response = client.get(
         "/v1/meetings/missing-meeting-id",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
     )
 
     assert response.status_code == 404
@@ -265,5 +286,37 @@ def test_meeting_detail_returns_predictable_not_found_for_unknown_id(monkeypatch
             "code": "not_found",
             "message": "Meeting not found",
             "details": {"meeting_id": "missing-meeting-id"},
+        }
+    }
+
+
+def test_meeting_detail_denies_cross_city_lookup_without_city_leakage(monkeypatch) -> None:
+    client = _client_with_configured_cities(
+        monkeypatch,
+        secret="test-secret",
+        supported_city_ids=f"{PILOT_CITY_ID},other-city",
+    )
+    token = _issue_token("user-cross-city", secret="test-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers, city_id=PILOT_CITY_ID)
+
+    _insert_city(client, city_id="other-city", slug="other-city-ut", name="Other City")
+    _insert_meeting(
+        client,
+        meeting_id="meeting-foreign",
+        meeting_uid="uid-foreign",
+        title="Foreign City Session",
+        created_at="2026-02-23 12:00:00",
+        city_id="other-city",
+    )
+
+    response = client.get("/v1/meetings/meeting-foreign", headers=headers)
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "not_found",
+            "message": "Meeting not found",
+            "details": {"meeting_id": "meeting-foreign"},
         }
     }

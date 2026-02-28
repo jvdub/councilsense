@@ -283,8 +283,20 @@ class MeetingReadRepository:
         return MeetingListPage(items=items, next_cursor=next_cursor)
 
     def get_meeting_detail(self, *, meeting_id: str) -> MeetingDetail | None:
+        return self._get_meeting_detail(meeting_id=meeting_id)
+
+    def get_meeting_detail_for_city(self, *, meeting_id: str, city_id: str) -> MeetingDetail | None:
+        return self._get_meeting_detail(meeting_id=meeting_id, city_id=city_id)
+
+    def _get_meeting_detail(self, *, meeting_id: str, city_id: str | None = None) -> MeetingDetail | None:
+        where_sql = "WHERE m.id = ?"
+        params: list[str] = [meeting_id]
+        if city_id is not None:
+            where_sql += " AND m.city_id = ?"
+            params.append(city_id)
+
         meeting_row = self._connection.execute(
-            """
+            f"""
             SELECT
                 m.id,
                 m.city_id,
@@ -309,9 +321,9 @@ class MeetingReadRepository:
                 ORDER BY sp2.published_at DESC, sp2.id DESC
                 LIMIT 1
               )
-            WHERE m.id = ?
+            {where_sql}
             """,
-            (meeting_id,),
+            tuple(params),
         ).fetchone()
 
         if meeting_row is None:

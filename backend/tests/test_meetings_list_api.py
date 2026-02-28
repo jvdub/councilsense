@@ -198,6 +198,5 @@ def test_city_meetings_list_rejects_city_scope_bypass(monkeypatch) -> None:
         "error": {
             "code": "forbidden",
             "message": "City access denied",
-            "details": {"city_id": "other-city"},
         }
     }

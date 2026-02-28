@@ -14,6 +14,14 @@ from councilsense.db import InvalidMeetingListCursorError, MeetingListCursor, Me
 router = APIRouter(prefix="/v1", tags=["meetings"])
 
 
+CITY_ACCESS_DENIED_BODY = {
+    "error": {
+        "code": "forbidden",
+        "message": "City access denied",
+    }
+}
+
+
 class MeetingListItemResponse(BaseModel):
     id: str
     city_id: str
@@ -73,6 +81,23 @@ def get_meeting_read_repository(request: Request) -> MeetingReadRepository:
     return request.app.state.meeting_read_repository
 
 
+def _city_access_denied_response() -> JSONResponse:
+    return JSONResponse(status_code=403, content=CITY_ACCESS_DENIED_BODY)
+
+
+def _meeting_not_found_response(meeting_id: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": {
+                "code": "not_found",
+                "message": "Meeting not found",
+                "details": {"meeting_id": meeting_id},
+            }
+        },
+    )
+
+
 @router.get("/cities/{city_id}/meetings")
 def get_city_meetings(
     city_id: str,
@@ -84,17 +109,8 @@ def get_city_meetings(
     status: str | None = Query(default=None),
 ) -> CityMeetingsListResponse:
     profile = profile_service.get_profile(user.user_id)
-    if profile.home_city_id != city_id:
-        return JSONResponse(
-            status_code=403,
-            content={
-                "error": {
-                    "code": "forbidden",
-                    "message": "City access denied",
-                    "details": {"city_id": city_id},
-                }
-            },
-        )
+    if profile.home_city_id is None or profile.home_city_id != city_id:
+        return _city_access_denied_response()
 
     parsed_cursor: MeetingListCursor | None = None
     if cursor is not None:
@@ -140,21 +156,20 @@ def get_city_meetings(
 @router.get("/meetings/{meeting_id}")
 def get_meeting_detail(
     meeting_id: str,
-    _: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    profile_service: Annotated[UserProfileService, Depends(get_profile_service)],
     repository: Annotated[MeetingReadRepository, Depends(get_meeting_read_repository)],
 ) -> MeetingDetailResponse:
-    detail = repository.get_meeting_detail(meeting_id=meeting_id)
+    profile = profile_service.get_profile(user.user_id)
+    if profile.home_city_id is None:
+        return _city_access_denied_response()
+
+    detail = repository.get_meeting_detail_for_city(
+        meeting_id=meeting_id,
+        city_id=profile.home_city_id,
+    )
     if detail is None:
-        return JSONResponse(
-            status_code=404,
-            content={
-                "error": {
-                    "code": "not_found",
-                    "message": "Meeting not found",
-                    "details": {"meeting_id": meeting_id},
-                }
-            },
-        )
+        return _meeting_not_found_response(meeting_id)
 
     return MeetingDetailResponse(
         id=detail.id,
