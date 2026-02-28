@@ -49,6 +49,25 @@ describe("SettingsPreferencesForm", () => {
     expect(screen.getByLabelText("Home city")).toHaveValue("seattle-wa");
     expect(screen.getByLabelText("Enable notifications")).toBeChecked();
     expect(screen.getByText("Notifications paused until: Not paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unpause" })).toBeDisabled();
+  });
+
+  it("rehydrates persisted paused state", () => {
+    render(
+      <SettingsPreferencesForm
+        authToken="token-abc"
+        supportedCityIds={["seattle-wa", "portland-or"]}
+        initialProfile={{
+          email: "user@example.com",
+          home_city_id: "seattle-wa",
+          notifications_enabled: true,
+          notifications_paused_until: "2026-02-28T12:00:00.000Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Notifications paused until: 2026-02-28T12:00:00.000Z")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unpause" })).toBeEnabled();
   });
 
   it("submits city and notification updates", async () => {
