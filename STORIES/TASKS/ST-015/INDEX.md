@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-015-01](TASK-ST-015-01-weekly-audit-sampling-spec-and-schedule.md) — Weekly Audit Sampling Spec and Schedule
+- [x] [TASK-ST-015-01](TASK-ST-015-01-weekly-audit-sampling-spec-and-schedule.md) — Weekly Audit Sampling Spec and Schedule
 - [ ] [TASK-ST-015-02](TASK-ST-015-02-ecr-audit-job-and-report-artifact.md) — ECR Audit Job and Weekly Report Artifact
 - [ ] [TASK-ST-015-03](TASK-ST-015-03-reviewer-queue-and-outcome-capture.md) — Reviewer Queue and Outcome Capture for Low-Confidence Outputs
 - [ ] [TASK-ST-015-04](TASK-ST-015-04-confidence-calibration-policy-controls.md) — Confidence Calibration Policy Controls

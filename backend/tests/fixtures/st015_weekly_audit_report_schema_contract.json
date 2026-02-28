@@ -1,0 +1,55 @@
+{
+  "contract_version": "st-015-weekly-audit-report-v1",
+  "story_task": "TASK-ST-015-01",
+  "time_zone": "UTC",
+  "weekly_window": {
+    "start_day": "monday",
+    "start_time": "00:00:00",
+    "duration_days": 7
+  },
+  "sampling": {
+    "sample_size_default": 60,
+    "seed_prefix": "st-015-weekly-ecr-audit",
+    "seed_salt_default": "v1",
+    "min_city_slots": 3,
+    "min_source_slots": 2,
+    "eligible_publication_statuses": [
+      "processed",
+      "limited_confidence"
+    ]
+  },
+  "required_report_fields": [
+    "report_version",
+    "audit_week_start_utc",
+    "audit_week_end_utc",
+    "generated_at_utc",
+    "scheduler_triggered_at_utc",
+    "owner_role",
+    "seed",
+    "sample_size_requested",
+    "sample_size_actual",
+    "eligible_frame_count",
+    "malformed_exclusion_count",
+    "representativeness",
+    "ecr",
+    "claim_count",
+    "claims_with_evidence_count",
+    "selected_publication_ids"
+  ],
+  "representativeness_fields": [
+    "target_city_slots",
+    "target_source_slots",
+    "achieved_city_slots",
+    "achieved_source_slots",
+    "degraded"
+  ],
+  "malformed_reason_codes": [
+    "missing_publication_id",
+    "missing_meeting_id",
+    "missing_city_id",
+    "missing_source_id",
+    "missing_published_at",
+    "invalid_published_at_timezone",
+    "invalid_publication_status"
+  ]
+}

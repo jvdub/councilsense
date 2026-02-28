@@ -1,0 +1,35 @@
+version: "st-015-schedule-v1"
+job_name: "weekly_ecr_audit"
+story_task: "TASK-ST-015-01"
+
+timezone: "UTC"
+window:
+  type: "weekly"
+  starts_on: "monday"
+  starts_at_utc: "00:00:00"
+
+schedule:
+  cron_utc: "0 7 * * 1"
+  sla_complete_by_utc: "09:00:00"
+
+ownership:
+  primary_role: "ops-quality-oncall"
+  backup_role: "backend-oncall"
+
+sampling:
+  sample_size_default: 60
+  seed_prefix: "st-015-weekly-ecr-audit"
+  seed_salt_default: "v1"
+  min_city_slots: 3
+  min_source_slots: 2
+  eligible_publication_statuses:
+    - "processed"
+    - "limited_confidence"
+
+artifact:
+  report_schema_contract: "backend/tests/fixtures/st015_weekly_audit_report_schema_contract.json"
+  report_storage_prefix: "quality/ecr-audits/{window_start_utc}/"
+
+failure_policy:
+  initial_retry_within_minutes: 30
+  degraded_representativeness_escalation_after_consecutive_weeks: 2
