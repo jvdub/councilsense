@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-012-01](TASK-ST-012-01-parity-architecture-contract.md) — Parity Architecture Contract
+- [x] [TASK-ST-012-01](TASK-ST-012-01-parity-architecture-contract.md) — Parity Architecture Contract
 - [ ] [TASK-ST-012-02](TASK-ST-012-02-environment-contract-and-startup-validation.md) — Environment Contract and Startup Validation
 - [ ] [TASK-ST-012-03](TASK-ST-012-03-local-runtime-compose-and-smoke-flow.md) — Local Runtime Compose and Smoke Flow
 - [ ] [TASK-ST-012-04](TASK-ST-012-04-aws-baseline-wiring.md) — AWS Baseline Wiring
