@@ -60,6 +60,26 @@ Last updated: 2026-02-27
 | TASK-ST-005-04 | ✅ Done | 13d4290 |
 | TASK-ST-005-05 | ✅ Done | 39f072d |
 
+### ST-006 — Meeting Reader API (City List + Detail)
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-006-01 | ✅ Done | 1901861 |
+| TASK-ST-006-02 | ✅ Done | 5fe9751 |
+| TASK-ST-006-03 | ✅ Done | 52fadf4 |
+| TASK-ST-006-04 | ✅ Done | c3b4dd4 |
+| TASK-ST-006-05 | ✅ Done | 6001226 |
+
+### ST-010 — Source Health + Manual Review Baseline
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-010-01 | ✅ Done | 6684067 |
+| TASK-ST-010-02 | ✅ Done | 1b9c271 |
+| TASK-ST-010-03 | ✅ Done | 6047484 |
+| TASK-ST-010-04 | ✅ Done | b16d889 |
+| TASK-ST-010-05 | ✅ Done | 13d6958 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -68,6 +88,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Start ST-006 (`TASK-ST-006-01` → `TASK-ST-006-05`)
-2. Run ST-010 in parallel (`TASK-ST-010-01` → `TASK-ST-010-05`)
-3. After ST-006, start ST-007 and ST-008 branch
+1. Start ST-007 (`TASK-ST-007-01` → `TASK-ST-007-05`)
+2. Then run ST-008 (`TASK-ST-008-01` → `TASK-ST-008-05`)
+3. After ST-008, start ST-009 and then ST-011
