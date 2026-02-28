@@ -21,9 +21,14 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     before = get_migration_status(connection)
     assert "0001_city_registry.sql" in before.pending
     assert "0002_meetings_city_linkage.sql" in before.pending
+    assert "0003_pipeline_run_lifecycle.sql" in before.pending
 
     applied_once = apply_migrations(connection)
-    assert applied_once == ("0001_city_registry.sql", "0002_meetings_city_linkage.sql")
+    assert applied_once == (
+        "0001_city_registry.sql",
+        "0002_meetings_city_linkage.sql",
+        "0003_pipeline_run_lifecycle.sql",
+    )
 
     after_first_apply = get_migration_status(connection)
     assert after_first_apply.pending == ()
@@ -42,7 +47,14 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
     }
-    assert {"cities", "city_sources", "meetings", "schema_migrations"}.issubset(table_names)
+    assert {
+        "cities",
+        "city_sources",
+        "meetings",
+        "processing_runs",
+        "processing_stage_outcomes",
+        "schema_migrations",
+    }.issubset(table_names)
 
     index_names = {
         row[0]
@@ -54,6 +66,9 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_city_sources_city_enabled" in index_names
     assert "idx_city_sources_health_last_success" in index_names
     assert "idx_meetings_city_id" in index_names
+    assert "idx_processing_runs_city_status" in index_names
+    assert "idx_processing_runs_cycle_city" in index_names
+    assert "idx_processing_stage_outcomes_run_city" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:

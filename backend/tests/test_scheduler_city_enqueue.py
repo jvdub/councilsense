@@ -67,10 +67,22 @@ def test_scheduler_enqueues_one_scan_per_enabled_city_each_cycle(connection: sql
     )
 
     assert enqueued_city_ids == (PILOT_CITY_ID, "city-second")
-    assert queue.enqueued_actions == [
-        type(queue.enqueued_actions[0])(city_id=PILOT_CITY_ID, cycle_id="2026-02-27T00:00:00Z"),
-        type(queue.enqueued_actions[0])(city_id="city-second", cycle_id="2026-02-27T00:00:00Z"),
-    ]
+    assert [action.city_id for action in queue.enqueued_actions] == [PILOT_CITY_ID, "city-second"]
+    assert all(action.cycle_id == "2026-02-27T00:00:00Z" for action in queue.enqueued_actions)
+    assert all(action.run_id.startswith("run-") for action in queue.enqueued_actions)
+
+    persisted_runs = connection.execute(
+        """
+        SELECT city_id, cycle_id, status, started_at, finished_at
+        FROM processing_runs
+        ORDER BY city_id ASC
+        """
+    ).fetchall()
+    assert {row[0] for row in persisted_runs} == {PILOT_CITY_ID, "city-second"}
+    assert all(row[1] == "2026-02-27T00:00:00Z" for row in persisted_runs)
+    assert all(row[2] == "pending" for row in persisted_runs)
+    assert all(row[3] is not None for row in persisted_runs)
+    assert all(row[4] is None for row in persisted_runs)
 
 
 def test_scheduler_enqueue_is_independent_of_subscriber_rows(connection: sqlite3.Connection) -> None:
@@ -87,6 +99,7 @@ def test_scheduler_enqueue_is_independent_of_subscriber_rows(connection: sqlite3
 
     assert enqueued_city_ids == (PILOT_CITY_ID,)
     assert [action.city_id for action in queue.enqueued_actions] == [PILOT_CITY_ID]
+    assert queue.enqueued_actions[0].run_id.startswith("run-")
 
 
 def test_scheduler_noops_when_overlap_guard_cannot_acquire(connection: sqlite3.Connection) -> None:

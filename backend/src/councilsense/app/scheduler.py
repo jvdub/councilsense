@@ -4,8 +4,9 @@ import sqlite3
 from dataclasses import dataclass
 from threading import Lock
 from typing import Protocol
+from uuid import uuid4
 
-from councilsense.db import CityRegistryRepository, ConfiguredCitySelectionService
+from councilsense.db import CityRegistryRepository, ConfiguredCitySelectionService, ProcessingRunRepository
 
 
 class EnabledCityIdsReader(Protocol):
@@ -13,7 +14,7 @@ class EnabledCityIdsReader(Protocol):
 
 
 class CityScanQueueProducer(Protocol):
-    def enqueue_city_scan(self, *, city_id: str, cycle_id: str) -> None: ...
+    def enqueue_city_scan(self, *, city_id: str, cycle_id: str, run_id: str) -> None: ...
 
 
 class SchedulerOverlapGuard(Protocol):
@@ -38,14 +39,15 @@ class NonOverlappingExecutionGuard:
 class CityScanEnqueueAction:
     city_id: str
     cycle_id: str
+    run_id: str
 
 
 class InMemoryCityScanQueueProducer:
     def __init__(self) -> None:
         self.enqueued_actions: list[CityScanEnqueueAction] = []
 
-    def enqueue_city_scan(self, *, city_id: str, cycle_id: str) -> None:
-        self.enqueued_actions.append(CityScanEnqueueAction(city_id=city_id, cycle_id=cycle_id))
+    def enqueue_city_scan(self, *, city_id: str, cycle_id: str, run_id: str) -> None:
+        self.enqueued_actions.append(CityScanEnqueueAction(city_id=city_id, cycle_id=cycle_id, run_id=run_id))
 
 
 class EnabledCityScheduler:
@@ -54,10 +56,12 @@ class EnabledCityScheduler:
         city_reader: EnabledCityIdsReader,
         queue_producer: CityScanQueueProducer,
         *,
+        run_repository: ProcessingRunRepository | None = None,
         overlap_guard: SchedulerOverlapGuard | None = None,
     ) -> None:
         self._city_reader = city_reader
         self._queue_producer = queue_producer
+        self._run_repository = run_repository
         self._overlap_guard = overlap_guard
 
     def enqueue_enabled_city_scans(self, *, cycle_id: str) -> tuple[str, ...]:
@@ -71,7 +75,14 @@ class EnabledCityScheduler:
         try:
             city_ids = self._city_reader.list_enabled_city_ids()
             for city_id in city_ids:
-                self._queue_producer.enqueue_city_scan(city_id=city_id, cycle_id=normalized_cycle_id)
+                run_id = f"run-{uuid4().hex}"
+                if self._run_repository is not None:
+                    self._run_repository.create_pending_run(
+                        run_id=run_id,
+                        city_id=city_id,
+                        cycle_id=normalized_cycle_id,
+                    )
+                self._queue_producer.enqueue_city_scan(city_id=city_id, cycle_id=normalized_cycle_id, run_id=run_id)
             return city_ids
         finally:
             if self._overlap_guard is not None:
@@ -89,6 +100,7 @@ def run_scheduler_cycle(
     scheduler = EnabledCityScheduler(
         city_reader=city_reader,
         queue_producer=queue_producer,
+        run_repository=ProcessingRunRepository(connection),
         overlap_guard=overlap_guard,
     )
     return scheduler.enqueue_enabled_city_scans(cycle_id=cycle_id)

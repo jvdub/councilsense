@@ -11,6 +11,13 @@ from councilsense.db.meetings import (
 	MeetingWriteRepository,
 	MissingMeetingCityError,
 )
+from councilsense.db.pipeline_runs import (
+	ProcessingLifecycleService,
+	ProcessingRunRecord,
+	ProcessingRunRepository,
+	RunLifecycleStatus,
+	StageOutcomeRecord,
+)
 from councilsense.db.migrations import apply_migrations, get_migration_status
 from councilsense.db.seed import PILOT_CITY_ID, PILOT_CITY_SOURCE_ID, seed_city_registry
 
@@ -24,8 +31,13 @@ __all__ = [
 	"MeetingRecord",
 	"MeetingWriteRepository",
 	"MissingMeetingCityError",
+	"ProcessingLifecycleService",
+	"ProcessingRunRecord",
+	"ProcessingRunRepository",
 	"PILOT_CITY_ID",
 	"PILOT_CITY_SOURCE_ID",
+	"RunLifecycleStatus",
+	"StageOutcomeRecord",
 	"apply_migrations",
 	"get_migration_status",
 	"seed_city_registry",
