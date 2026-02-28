@@ -214,6 +214,22 @@ def test_notification_delivery_emits_retry_terminal_latency_and_contract_logs(ca
             ("councilsense_notifications_delivery_duration_seconds", "notify_deliver", "failure", 360.0),
         ]
 
+        dlq_metrics = [
+            item
+            for item in metrics
+            if item[0]
+            in {
+                "councilsense_notifications_dlq_events_total",
+                "councilsense_notifications_dlq_backlog_count",
+                "councilsense_notifications_dlq_oldest_age_seconds",
+            }
+        ]
+        assert dlq_metrics == [
+            ("councilsense_notifications_dlq_events_total", "notify_dlq", "transient", 1.0),
+            ("councilsense_notifications_dlq_backlog_count", "notify_dlq", "backlog", 1.0),
+            ("councilsense_notifications_dlq_oldest_age_seconds", "notify_dlq", "oldest_age", 0.0),
+        ]
+
         delivery_events: list[dict[str, object]] = []
         for record in caplog.records:
             event = getattr(record, "event", None)
@@ -231,5 +247,27 @@ def test_notification_delivery_emits_retry_terminal_latency_and_contract_logs(ca
             assert event["error_summary"] == "provider timed out due to transient overload"
 
         assert {event["outcome"] for event in delivery_events} == {"retry", "failure"}
+
+        dlq_transition_events = [
+            event
+            for record in caplog.records
+            if isinstance((event := getattr(record, "event", None)), dict)
+            and event.get("event_name") == "notification_dlq_transition"
+        ]
+        assert len(dlq_transition_events) == 1
+        dlq_transition = dlq_transition_events[0]
+        assert dlq_transition["stage"] == "notify_dlq"
+        assert dlq_transition["outcome"] == "transient"
+        assert dlq_transition["channel"] == "meeting_published"
+
+        dlq_backlog_events = [
+            event
+            for record in caplog.records
+            if isinstance((event := getattr(record, "event", None)), dict)
+            and event.get("event_name") == "notification_dlq_backlog_snapshot"
+        ]
+        assert len(dlq_backlog_events) >= 1
+        assert dlq_backlog_events[-1]["backlog_count"] == 1
+        assert dlq_backlog_events[-1]["oldest_age_seconds"] == 0.0
     finally:
         connection.close()

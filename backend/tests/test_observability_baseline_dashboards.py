@@ -110,6 +110,14 @@ def test_st011_baseline_dashboard_exists_and_has_required_scope_panels() -> None
         "notification-delivery-outcomes",
         "notification-delivery-duration-p95",
         "source-freshness-and-failure-snapshot",
+        "notification-dlq-inflow",
+        "notification-dlq-backlog-count",
+        "notification-dlq-oldest-age-seconds",
+        "notification-dlq-replay-outcomes",
+        "notification-dlq-replay-success-rate",
+        "notification-dlq-replay-failure-rate",
+        "notification-dlq-replay-duplicate-prevention-hits",
+        "notification-dlq-replay-audit-evidence-links",
     }
 
 
@@ -176,3 +184,19 @@ def test_st011_dashboard_evidence_artifact_exists() -> None:
     assert "pipeline-stage-outcomes" in content
     assert "notification-delivery-outcomes" in content
     assert "source-freshness-and-failure-snapshot" in content
+
+
+def test_st014_dashboard_links_include_replay_audit_evidence() -> None:
+    dashboard = _load_dashboard()
+
+    replay_links_panel = next(
+        panel
+        for panel in _as_panel_list(dashboard["panels"])
+        if panel["panel_id"] == "notification-dlq-replay-audit-evidence-links"
+    )
+    query = cast(dict[str, Any], replay_links_panel["query"])
+
+    rows = cast(list[dict[str, str]], query["rows"])
+    paths = {row["path"] for row in rows}
+    assert "docs/runbooks/st-014-dlq-replay-observability-runbook.md" in paths
+    assert "docs/runbooks/st-014-dlq-replay-audit-evidence.md" in paths

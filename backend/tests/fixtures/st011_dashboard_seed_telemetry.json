@@ -3,63 +3,183 @@
   "metric_samples": [
     {
       "metric": "councilsense_pipeline_stage_events_total",
-      "labels": {"stage": "ingest", "outcome": "success", "environment": "local"},
+      "labels": {
+        "stage": "ingest",
+        "outcome": "success",
+        "environment": "local"
+      },
       "value": 18.0
     },
     {
       "metric": "councilsense_pipeline_stage_events_total",
-      "labels": {"stage": "extract", "outcome": "failure", "environment": "local"},
+      "labels": {
+        "stage": "extract",
+        "outcome": "failure",
+        "environment": "local"
+      },
       "value": 2.0
     },
     {
       "metric": "councilsense_pipeline_stage_events_total",
-      "labels": {"stage": "summarize", "outcome": "retry", "environment": "local"},
+      "labels": {
+        "stage": "summarize",
+        "outcome": "retry",
+        "environment": "local"
+      },
       "value": 1.0
     },
     {
       "metric": "councilsense_pipeline_stage_duration_seconds",
-      "labels": {"stage": "ingest", "outcome": "success", "environment": "local"},
+      "labels": {
+        "stage": "ingest",
+        "outcome": "success",
+        "environment": "local"
+      },
       "value": 12.4
     },
     {
       "metric": "councilsense_pipeline_stage_duration_seconds",
-      "labels": {"stage": "extract", "outcome": "failure", "environment": "local"},
+      "labels": {
+        "stage": "extract",
+        "outcome": "failure",
+        "environment": "local"
+      },
       "value": 35.2
     },
     {
       "metric": "councilsense_notifications_enqueue_events_total",
-      "labels": {"stage": "notify_enqueue", "outcome": "success", "environment": "local"},
+      "labels": {
+        "stage": "notify_enqueue",
+        "outcome": "success",
+        "environment": "local"
+      },
       "value": 9.0
     },
     {
       "metric": "councilsense_notifications_enqueue_events_total",
-      "labels": {"stage": "notify_enqueue", "outcome": "duplicate", "environment": "local"},
+      "labels": {
+        "stage": "notify_enqueue",
+        "outcome": "duplicate",
+        "environment": "local"
+      },
       "value": 3.0
     },
     {
       "metric": "councilsense_notifications_delivery_events_total",
-      "labels": {"stage": "notify_deliver", "outcome": "success", "environment": "local"},
+      "labels": {
+        "stage": "notify_deliver",
+        "outcome": "success",
+        "environment": "local"
+      },
       "value": 7.0
     },
     {
       "metric": "councilsense_notifications_delivery_events_total",
-      "labels": {"stage": "notify_deliver", "outcome": "retry", "environment": "local"},
+      "labels": {
+        "stage": "notify_deliver",
+        "outcome": "retry",
+        "environment": "local"
+      },
       "value": 1.0
     },
     {
       "metric": "councilsense_notifications_delivery_events_total",
-      "labels": {"stage": "notify_deliver", "outcome": "failure", "environment": "local"},
+      "labels": {
+        "stage": "notify_deliver",
+        "outcome": "failure",
+        "environment": "local"
+      },
       "value": 1.0
     },
     {
       "metric": "councilsense_notifications_delivery_duration_seconds",
-      "labels": {"stage": "notify_deliver", "outcome": "retry", "environment": "local"},
+      "labels": {
+        "stage": "notify_deliver",
+        "outcome": "retry",
+        "environment": "local"
+      },
       "value": 300.0
     },
     {
       "metric": "councilsense_notifications_delivery_duration_seconds",
-      "labels": {"stage": "notify_deliver", "outcome": "failure", "environment": "local"},
+      "labels": {
+        "stage": "notify_deliver",
+        "outcome": "failure",
+        "environment": "local"
+      },
       "value": 360.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_events_total",
+      "labels": {
+        "stage": "notify_dlq",
+        "outcome": "transient",
+        "environment": "local"
+      },
+      "value": 4.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_events_total",
+      "labels": {
+        "stage": "notify_dlq",
+        "outcome": "permanent",
+        "environment": "local"
+      },
+      "value": 1.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_backlog_count",
+      "labels": {
+        "stage": "notify_dlq",
+        "outcome": "backlog",
+        "environment": "local"
+      },
+      "value": 6.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_oldest_age_seconds",
+      "labels": {
+        "stage": "notify_dlq",
+        "outcome": "oldest_age",
+        "environment": "local"
+      },
+      "value": 7200.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_replay_events_total",
+      "labels": {
+        "stage": "notify_dlq_replay",
+        "outcome": "requeued",
+        "environment": "local"
+      },
+      "value": 3.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_replay_events_total",
+      "labels": {
+        "stage": "notify_dlq_replay",
+        "outcome": "ineligible",
+        "environment": "local"
+      },
+      "value": 1.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_replay_events_total",
+      "labels": {
+        "stage": "notify_dlq_replay",
+        "outcome": "duplicate",
+        "environment": "local"
+      },
+      "value": 2.0
+    },
+    {
+      "metric": "councilsense_notifications_dlq_replay_duplicate_prevention_hits_total",
+      "labels": {
+        "stage": "notify_dlq_replay",
+        "outcome": "duplicate",
+        "environment": "local"
+      },
+      "value": 2.0
     }
   ],
   "source_snapshot_rows": [

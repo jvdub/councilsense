@@ -1,0 +1,23 @@
+{
+  "alert_group": "st-014-notification-dlq-replay",
+  "owner": "ops-notifications",
+  "rules": [
+    {
+      "alert_id": "notification-dlq-backlog-growth-warning",
+      "severity": "warning",
+      "description": "Warn when notification DLQ backlog remains above threshold for sustained interval.",
+      "metric": "councilsense_notifications_dlq_backlog_count",
+      "threshold": {
+        "operator": ">=",
+        "value": 5,
+        "for": "PT15M"
+      },
+      "filters": {
+        "stage": "notify_dlq",
+        "outcome": "backlog"
+      },
+      "promql": "sum(councilsense_notifications_dlq_backlog_count{environment=\"$environment\",stage=\"notify_dlq\",outcome=\"backlog\"}) >= 5",
+      "runbook": "docs/runbooks/st-014-dlq-replay-observability-runbook.md"
+    }
+  ]
+}

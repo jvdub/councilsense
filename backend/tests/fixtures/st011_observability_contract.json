@@ -13,7 +13,9 @@
     "summarize",
     "publish",
     "notify_enqueue",
-    "notify_deliver"
+    "notify_deliver",
+    "notify_dlq",
+    "notify_dlq_replay"
   ],
   "outcomes": [
     "success",
@@ -22,7 +24,14 @@
     "suppressed",
     "invalid_subscription",
     "expired_subscription",
-    "duplicate"
+    "duplicate",
+    "transient",
+    "permanent",
+    "unknown",
+    "requeued",
+    "ineligible",
+    "backlog",
+    "oldest_age"
   ],
   "metrics": [
     {
@@ -53,6 +62,36 @@
       "name": "councilsense_notifications_delivery_duration_seconds",
       "type": "histogram",
       "unit": "seconds",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_dlq_events_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_dlq_backlog_count",
+      "type": "gauge",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_dlq_oldest_age_seconds",
+      "type": "gauge",
+      "unit": "seconds",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_dlq_replay_events_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome"]
+    },
+    {
+      "name": "councilsense_notifications_dlq_replay_duplicate_prevention_hits_total",
+      "type": "counter",
+      "unit": "events",
       "labels": ["stage", "outcome"]
     }
   ],
@@ -92,6 +131,15 @@
       "dedupe_key": "notif-dedupe-v1:26f6aee97ae3f4bd8f8b7d7be54f6f4f8f2f1385c3ae74ab0a6e54b4b4027cd4",
       "stage": "notify_deliver",
       "outcome": "expired_subscription"
+    },
+    {
+      "event_name": "notification_dlq_replay_attempt",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-2026-02-27-001",
+      "run_id": "run-20260227-001",
+      "dedupe_key": "replay-key-20260227-001",
+      "stage": "notify_dlq_replay",
+      "outcome": "requeued"
     }
   ]
 }

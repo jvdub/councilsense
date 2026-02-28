@@ -74,6 +74,10 @@ NotificationMetricEmitter = Callable[[str, str, str, float], None]
 _NOTIFY_DELIVER_STAGE = "notify_deliver"
 _NOTIFY_DELIVERY_COUNTER = "councilsense_notifications_delivery_events_total"
 _NOTIFY_DELIVERY_DURATION = "councilsense_notifications_delivery_duration_seconds"
+_NOTIFY_DLQ_STAGE = "notify_dlq"
+_NOTIFY_DLQ_INFLOW_COUNTER = "councilsense_notifications_dlq_events_total"
+_NOTIFY_DLQ_BACKLOG_COUNT = "councilsense_notifications_dlq_backlog_count"
+_NOTIFY_DLQ_OLDEST_AGE_SECONDS = "councilsense_notifications_dlq_oldest_age_seconds"
 _UNKNOWN_RUN_ID = "run-unknown"
 
 logger = logging.getLogger(__name__)
@@ -579,6 +583,31 @@ class NotificationDeliveryWorker:
                 ),
             )
 
+            self._emit_metric(
+                name=_NOTIFY_DLQ_INFLOW_COUNTER,
+                stage=_NOTIFY_DLQ_STAGE,
+                outcome=failure_classification,
+                value=1.0,
+            )
+            self._emit_dlq_backlog_snapshot(observed_at=attempted_at)
+            logger.info(
+                "notification_dlq_transition",
+                extra={
+                    "event": {
+                        "event_name": "notification_dlq_transition",
+                        "city_id": record.city_id,
+                        "meeting_id": record.meeting_id,
+                        "run_id": run_id or _UNKNOWN_RUN_ID,
+                        "dedupe_key": record.dedupe_key,
+                        "stage": _NOTIFY_DLQ_STAGE,
+                        "outcome": failure_classification,
+                        "source_id": source_id,
+                        "channel": record.notification_type,
+                        "error_code": error_code,
+                    }
+                },
+            )
+
             self._emit_delivery_outcome(
                 record=record,
                 outcome="failure",
@@ -610,6 +639,63 @@ class NotificationDeliveryWorker:
                     record.id,
                 ),
             )
+
+    def _emit_dlq_backlog_snapshot(self, *, observed_at: datetime) -> None:
+        backlog_row = self._connection.execute(
+            """
+            SELECT COUNT(*), MIN(terminal_transitioned_at)
+            FROM notification_delivery_dlq
+            WHERE replayed_at IS NULL
+            """
+        ).fetchone()
+
+        backlog_count = 0
+        oldest_age_seconds = 0.0
+        if backlog_row is not None:
+            backlog_count = int(backlog_row[0])
+            oldest_raw = backlog_row[1]
+            if oldest_raw is not None:
+                oldest_age_seconds = self._age_seconds(
+                    observed_at=observed_at,
+                    timestamp_value=str(oldest_raw),
+                )
+
+        self._emit_metric(
+            name=_NOTIFY_DLQ_BACKLOG_COUNT,
+            stage=_NOTIFY_DLQ_STAGE,
+            outcome="backlog",
+            value=float(backlog_count),
+        )
+        self._emit_metric(
+            name=_NOTIFY_DLQ_OLDEST_AGE_SECONDS,
+            stage=_NOTIFY_DLQ_STAGE,
+            outcome="oldest_age",
+            value=oldest_age_seconds,
+        )
+
+        logger.info(
+            "notification_dlq_backlog_snapshot",
+            extra={
+                "event": {
+                    "event_name": "notification_dlq_backlog_snapshot",
+                    "city_id": "city-aggregate",
+                    "meeting_id": "meeting-aggregate",
+                    "run_id": _UNKNOWN_RUN_ID,
+                    "dedupe_key": "notification-dlq-backlog-snapshot",
+                    "stage": _NOTIFY_DLQ_STAGE,
+                    "outcome": "snapshot",
+                    "backlog_count": backlog_count,
+                    "oldest_age_seconds": oldest_age_seconds,
+                }
+            },
+        )
+
+    @staticmethod
+    def _age_seconds(*, observed_at: datetime, timestamp_value: str) -> float:
+        parsed = datetime.fromisoformat(timestamp_value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return max((observed_at.astimezone(UTC) - parsed.astimezone(UTC)).total_seconds(), 0.0)
 
     def _retry_backoff_seconds(self, *, attempt_number: int) -> int:
         index = min(max(attempt_number - 1, 0), len(self._config.retry_backoff_seconds) - 1)

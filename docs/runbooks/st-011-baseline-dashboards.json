@@ -1,7 +1,7 @@
 {
   "dashboard_id": "st-011-baseline-ops",
   "title": "ST-011 Baseline Observability Dashboard",
-  "description": "MVP dashboard for pipeline and notification health with source freshness/failure snapshot.",
+  "description": "MVP dashboard for pipeline, notification, and DLQ/replay health with source freshness/failure snapshot.",
   "default_time_window": "PT6H",
   "filters": [
     {
@@ -71,7 +71,13 @@
         "group_by": ["outcome"],
         "filters": {
           "stage": ["notify_deliver"],
-          "outcome": ["success", "retry", "failure", "invalid_subscription", "expired_subscription"]
+          "outcome": [
+            "success",
+            "retry",
+            "failure",
+            "invalid_subscription",
+            "expired_subscription"
+          ]
         },
         "promql": "sum by (outcome) (increase(councilsense_notifications_delivery_events_total{environment=\"$environment\",stage=\"notify_deliver\",outcome=~\"success|retry|failure|invalid_subscription|expired_subscription\"}[15m]))"
       }
@@ -87,7 +93,13 @@
         "group_by": ["outcome"],
         "filters": {
           "stage": ["notify_deliver"],
-          "outcome": ["success", "retry", "failure", "invalid_subscription", "expired_subscription"]
+          "outcome": [
+            "success",
+            "retry",
+            "failure",
+            "invalid_subscription",
+            "expired_subscription"
+          ]
         },
         "promql": "histogram_quantile(0.95, sum by (le, outcome) (rate(councilsense_notifications_delivery_duration_seconds_bucket{environment=\"$environment\",stage=\"notify_deliver\",outcome=~\"success|retry|failure|invalid_subscription|expired_subscription\"}[15m])))"
       }
@@ -113,6 +125,137 @@
           "freshness_hours_gte": 24
         },
         "sql": "SELECT city_id, id AS source_id, health_status, failure_streak, ROUND((julianday('now') - julianday(last_success_at)) * 24, 1) AS last_success_age_hours, last_failure_reason FROM city_sources WHERE enabled = 1 AND (health_status IN ('degraded', 'failing') OR last_success_at IS NULL OR ((julianday('now') - julianday(last_success_at)) * 24) >= 24) ORDER BY health_status DESC, failure_streak DESC, city_id ASC, id ASC"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-inflow",
+      "title": "Notification DLQ inflow",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_dlq_inflow_total",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_dlq_events_total",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_dlq"],
+          "outcome": ["transient", "permanent", "unknown"]
+        },
+        "promql": "sum by (outcome) (increase(councilsense_notifications_dlq_events_total{environment=\"$environment\",stage=\"notify_dlq\",outcome=~\"transient|permanent|unknown\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-backlog-count",
+      "title": "Notification DLQ backlog count",
+      "type": "stat",
+      "query": {
+        "query_id": "notification_dlq_backlog_count",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_dlq_backlog_count",
+        "group_by": ["stage"],
+        "filters": {
+          "stage": ["notify_dlq"],
+          "outcome": ["backlog"]
+        },
+        "promql": "sum(councilsense_notifications_dlq_backlog_count{environment=\"$environment\",stage=\"notify_dlq\",outcome=\"backlog\"})"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-oldest-age-seconds",
+      "title": "Notification DLQ oldest age (seconds)",
+      "type": "stat",
+      "query": {
+        "query_id": "notification_dlq_oldest_age_seconds",
+        "kind": "metric_histogram",
+        "metric": "councilsense_notifications_dlq_oldest_age_seconds",
+        "group_by": ["stage"],
+        "filters": {
+          "stage": ["notify_dlq"],
+          "outcome": ["oldest_age"]
+        },
+        "promql": "max(councilsense_notifications_dlq_oldest_age_seconds{environment=\"$environment\",stage=\"notify_dlq\",outcome=\"oldest_age\"})"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-replay-outcomes",
+      "title": "Notification DLQ replay outcomes",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_dlq_replay_outcomes_total",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_dlq_replay_events_total",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_dlq_replay"],
+          "outcome": ["requeued", "ineligible", "duplicate"]
+        },
+        "promql": "sum by (outcome) (increase(councilsense_notifications_dlq_replay_events_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=~\"requeued|ineligible|duplicate\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-replay-success-rate",
+      "title": "Notification DLQ replay success rate",
+      "type": "stat",
+      "query": {
+        "query_id": "notification_dlq_replay_success_rate",
+        "kind": "formula",
+        "metric": "councilsense_notifications_dlq_replay_events_total",
+        "filters": {
+          "stage": ["notify_dlq_replay"],
+          "outcome": ["requeued", "ineligible", "duplicate"]
+        },
+        "promql": "sum(increase(councilsense_notifications_dlq_replay_events_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=\"requeued\"}[15m])) / clamp_min(sum(increase(councilsense_notifications_dlq_replay_events_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=~\"requeued|ineligible|duplicate\"}[15m])), 1)"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-replay-failure-rate",
+      "title": "Notification DLQ replay failure rate",
+      "type": "stat",
+      "query": {
+        "query_id": "notification_dlq_replay_failure_rate",
+        "kind": "formula",
+        "metric": "councilsense_notifications_dlq_replay_events_total",
+        "filters": {
+          "stage": ["notify_dlq_replay"],
+          "outcome": ["requeued", "ineligible", "duplicate"]
+        },
+        "promql": "sum(increase(councilsense_notifications_dlq_replay_events_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=\"ineligible\"}[15m])) / clamp_min(sum(increase(councilsense_notifications_dlq_replay_events_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=~\"requeued|ineligible|duplicate\"}[15m])), 1)"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-replay-duplicate-prevention-hits",
+      "title": "Notification DLQ replay duplicate-prevention hits",
+      "type": "timeseries",
+      "query": {
+        "query_id": "notification_dlq_replay_duplicate_prevention_hits_total",
+        "kind": "metric_count",
+        "metric": "councilsense_notifications_dlq_replay_duplicate_prevention_hits_total",
+        "group_by": ["outcome"],
+        "filters": {
+          "stage": ["notify_dlq_replay"],
+          "outcome": ["duplicate"]
+        },
+        "promql": "sum(increase(councilsense_notifications_dlq_replay_duplicate_prevention_hits_total{environment=\"$environment\",stage=\"notify_dlq_replay\",outcome=\"duplicate\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "notification-dlq-replay-audit-evidence-links",
+      "title": "Notification DLQ replay audit evidence",
+      "type": "table",
+      "query": {
+        "query_id": "notification_dlq_replay_audit_evidence_links",
+        "kind": "audit_evidence_links",
+        "dataset": "notification_dlq_replay_audit",
+        "columns": ["artifact", "path"],
+        "rows": [
+          {
+            "artifact": "replay-observability-runbook",
+            "path": "docs/runbooks/st-014-dlq-replay-observability-runbook.md"
+          },
+          {
+            "artifact": "replay-audit-evidence",
+            "path": "docs/runbooks/st-014-dlq-replay-audit-evidence.md"
+          }
+        ]
       }
     }
   ]

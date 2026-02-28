@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from councilsense.app.main import create_app
 from councilsense.app.notification_contracts import produce_notification_event_payload
+from councilsense.app.notification_dlq_replay import NotificationDlqReplayService
 from councilsense.db import PILOT_CITY_ID
 
 
@@ -336,3 +337,80 @@ def test_replay_idempotency_key_prevents_double_requeue(monkeypatch) -> None:
     ).fetchone()
     assert audit_count is not None
     assert int(audit_count[0]) == 1
+
+
+def test_replay_emits_observability_metrics_and_tagged_events(monkeypatch, caplog) -> None:
+    secret = "test-secret"
+    client = _client(monkeypatch, secret=secret, operator_user_ids="operator-1")
+    _insert_dlq_notification(
+        client,
+        outbox_id="outbox-replay-obsv",
+        meeting_id="meeting-replay-obsv",
+        user_id="user-replay-obsv",
+        failure_classification="transient",
+    )
+
+    app = cast(Any, client.app)
+    metrics: list[tuple[str, str, str, float]] = []
+
+    def _metric_emitter(name: str, stage: str, outcome: str, value: float) -> None:
+        metrics.append((name, stage, outcome, value))
+
+    app.state.notification_dlq_replay_service = NotificationDlqReplayService(
+        connection=app.state.db_connection,
+        allow_permanent_invalid_override=False,
+        metric_emitter=_metric_emitter,
+    )
+
+    token = _issue_token("operator-1", secret=secret, expires_in_seconds=300)
+    with caplog.at_level(logging.INFO):
+        first = client.post(
+            "/v1/operators/notifications/dlq/outbox-replay-obsv/replay",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"idempotency_key": "replay-key-obsv-1", "reason": "first replay"},
+        )
+        second = client.post(
+            "/v1/operators/notifications/dlq/outbox-replay-obsv/replay",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"idempotency_key": "replay-key-obsv-2", "reason": "second replay"},
+        )
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["outcome"] == "requeued"
+    assert second.json()["outcome"] == "duplicate"
+
+    assert (
+        "councilsense_notifications_dlq_replay_events_total",
+        "notify_dlq_replay",
+        "requeued",
+        1.0,
+    ) in metrics
+    assert (
+        "councilsense_notifications_dlq_replay_events_total",
+        "notify_dlq_replay",
+        "duplicate",
+        1.0,
+    ) in metrics
+    assert (
+        "councilsense_notifications_dlq_replay_duplicate_prevention_hits_total",
+        "notify_dlq_replay",
+        "duplicate",
+        1.0,
+    ) in metrics
+    assert (
+        "councilsense_notifications_dlq_backlog_count",
+        "notify_dlq",
+        "backlog",
+        0.0,
+    ) in metrics
+
+    replay_events: list[dict[str, object]] = []
+    for record in caplog.records:
+        event = getattr(record, "event", None)
+        if isinstance(event, dict) and event.get("event_name") == "notification_dlq_replay_attempt":
+            replay_events.append(event)
+    assert len(replay_events) == 2
+    assert all(event["city_id"] == PILOT_CITY_ID for event in replay_events)
+    assert all(event["source_id"] == "source-seattle-minutes" for event in replay_events)
+    assert all(event["channel"] == "meeting_published" for event in replay_events)

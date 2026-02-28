@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -8,6 +9,19 @@ from uuid import uuid4
 from collections.abc import Callable
 
 from councilsense.app.notification_contracts import NotificationEventMessage, consume_notification_event_payload
+
+
+logger = logging.getLogger(__name__)
+
+NotificationMetricEmitter = Callable[[str, str, str, float], None]
+
+_NOTIFY_DLQ_STAGE = "notify_dlq"
+_NOTIFY_REPLAY_STAGE = "notify_dlq_replay"
+_NOTIFY_DLQ_BACKLOG_COUNT = "councilsense_notifications_dlq_backlog_count"
+_NOTIFY_DLQ_OLDEST_AGE_SECONDS = "councilsense_notifications_dlq_oldest_age_seconds"
+_NOTIFY_REPLAY_COUNTER = "councilsense_notifications_dlq_replay_events_total"
+_NOTIFY_REPLAY_DUPLICATE_HITS = "councilsense_notifications_dlq_replay_duplicate_prevention_hits_total"
+_UNKNOWN_RUN_ID = "run-unknown"
 
 
 class NotificationDlqReplayNotFoundError(LookupError):
@@ -40,10 +54,12 @@ class NotificationDlqReplayService:
         *,
         connection: sqlite3.Connection,
         allow_permanent_invalid_override: bool,
+        metric_emitter: NotificationMetricEmitter | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self._connection = connection
         self._allow_permanent_invalid_override = allow_permanent_invalid_override
+        self._metric_emitter = metric_emitter
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
 
     def replay(
@@ -91,7 +107,12 @@ class NotificationDlqReplayService:
                     id,
                     outbox_id,
                     failure_classification,
-                    replay_outbox_id
+                    replay_outbox_id,
+                    city_id,
+                    source_id,
+                    meeting_id,
+                    run_id,
+                    notification_type
                 FROM notification_delivery_dlq
                 WHERE outbox_id = ?
                 """,
@@ -104,9 +125,14 @@ class NotificationDlqReplayService:
             source_outbox_id = str(dlq_row[1])
             failure_classification = str(dlq_row[2])
             existing_replay_outbox_id = str(dlq_row[3]) if dlq_row[3] is not None else None
+            city_id = str(dlq_row[4])
+            source_id = str(dlq_row[5]) if dlq_row[5] is not None else None
+            meeting_id = str(dlq_row[6])
+            run_id = str(dlq_row[7]) if dlq_row[7] is not None else _UNKNOWN_RUN_ID
+            notification_type = str(dlq_row[8])
 
             if existing_replay_outbox_id is not None:
-                return self._insert_audit_row(
+                result = self._insert_audit_row(
                     dlq_id=dlq_id,
                     source_outbox_id=source_outbox_id,
                     replay_outbox_id=existing_replay_outbox_id,
@@ -117,11 +143,20 @@ class NotificationDlqReplayService:
                     outcome="duplicate",
                     outcome_detail="dlq_item_already_replayed",
                 )
+                self._emit_replay_observability(
+                    result=result,
+                    city_id=city_id,
+                    source_id=source_id,
+                    meeting_id=meeting_id,
+                    run_id=run_id,
+                    notification_type=notification_type,
+                )
+                return result
 
             if failure_classification == "permanent" and not (
                 self._allow_permanent_invalid_override and override_permanent_invalid
             ):
-                return self._insert_audit_row(
+                result = self._insert_audit_row(
                     dlq_id=dlq_id,
                     source_outbox_id=source_outbox_id,
                     replay_outbox_id=None,
@@ -132,6 +167,15 @@ class NotificationDlqReplayService:
                     outcome="ineligible",
                     outcome_detail="permanent_failure_requires_policy_override",
                 )
+                self._emit_replay_observability(
+                    result=result,
+                    city_id=city_id,
+                    source_id=source_id,
+                    meeting_id=meeting_id,
+                    run_id=run_id,
+                    notification_type=notification_type,
+                )
+                return result
 
             source_outbox = self._connection.execute(
                 """
@@ -204,7 +248,7 @@ class NotificationDlqReplayService:
                 ),
             )
 
-            return self._insert_audit_row(
+            result = self._insert_audit_row(
                 dlq_id=dlq_id,
                 source_outbox_id=source_outbox_id,
                 replay_outbox_id=replay_outbox_id,
@@ -215,6 +259,118 @@ class NotificationDlqReplayService:
                 outcome="requeued",
                 outcome_detail=None,
             )
+            self._emit_replay_observability(
+                result=result,
+                city_id=city_id,
+                source_id=source_id,
+                meeting_id=meeting_id,
+                run_id=run_id,
+                notification_type=notification_type,
+            )
+            return result
+
+    def _emit_replay_observability(
+        self,
+        *,
+        result: NotificationDlqReplayResult,
+        city_id: str,
+        source_id: str | None,
+        meeting_id: str,
+        run_id: str,
+        notification_type: str,
+    ) -> None:
+        self._emit_metric(
+            name=_NOTIFY_REPLAY_COUNTER,
+            stage=_NOTIFY_REPLAY_STAGE,
+            outcome=result.outcome,
+            value=1.0,
+        )
+        if result.outcome == "duplicate":
+            self._emit_metric(
+                name=_NOTIFY_REPLAY_DUPLICATE_HITS,
+                stage=_NOTIFY_REPLAY_STAGE,
+                outcome="duplicate",
+                value=1.0,
+            )
+
+        backlog_count, oldest_age_seconds = self._dlq_backlog_snapshot()
+        self._emit_metric(
+            name=_NOTIFY_DLQ_BACKLOG_COUNT,
+            stage=_NOTIFY_DLQ_STAGE,
+            outcome="backlog",
+            value=float(backlog_count),
+        )
+        self._emit_metric(
+            name=_NOTIFY_DLQ_OLDEST_AGE_SECONDS,
+            stage=_NOTIFY_DLQ_STAGE,
+            outcome="oldest_age",
+            value=oldest_age_seconds,
+        )
+
+        logger.info(
+            "notification_dlq_replay_attempt",
+            extra={
+                "event": {
+                    "event_name": "notification_dlq_replay_attempt",
+                    "city_id": city_id,
+                    "meeting_id": meeting_id,
+                    "run_id": run_id,
+                    "dedupe_key": result.replay_idempotency_key,
+                    "stage": _NOTIFY_REPLAY_STAGE,
+                    "outcome": result.outcome,
+                    "source_id": source_id,
+                    "channel": notification_type,
+                    "outcome_detail": result.outcome_detail,
+                    "requeue_correlation_id": result.requeue_correlation_id,
+                }
+            },
+        )
+        logger.info(
+            "notification_dlq_backlog_snapshot",
+            extra={
+                "event": {
+                    "event_name": "notification_dlq_backlog_snapshot",
+                    "city_id": city_id,
+                    "meeting_id": meeting_id,
+                    "run_id": run_id,
+                    "dedupe_key": result.replay_idempotency_key,
+                    "stage": _NOTIFY_DLQ_STAGE,
+                    "outcome": "snapshot",
+                    "source_id": source_id,
+                    "channel": notification_type,
+                    "backlog_count": backlog_count,
+                    "oldest_age_seconds": oldest_age_seconds,
+                }
+            },
+        )
+
+    def _dlq_backlog_snapshot(self) -> tuple[int, float]:
+        row = self._connection.execute(
+            """
+            SELECT COUNT(*), MIN(terminal_transitioned_at)
+            FROM notification_delivery_dlq
+            WHERE replayed_at IS NULL
+            """
+        ).fetchone()
+        if row is None:
+            return 0, 0.0
+
+        backlog_count = int(row[0])
+        oldest_raw = row[1]
+        if oldest_raw is None:
+            return backlog_count, 0.0
+
+        now = self._now_provider().astimezone(UTC)
+        parsed = datetime.fromisoformat(str(oldest_raw))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        oldest_age_seconds = max((now - parsed.astimezone(UTC)).total_seconds(), 0.0)
+        return backlog_count, oldest_age_seconds
+
+    def _emit_metric(self, *, name: str, stage: str, outcome: str, value: float) -> None:
+        if self._metric_emitter is None:
+            return
+        self._metric_emitter(name, stage, outcome, value)
 
     def _insert_audit_row(
         self,

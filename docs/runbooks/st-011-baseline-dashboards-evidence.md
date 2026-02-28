@@ -6,7 +6,7 @@ Generated from deterministic fixture data in `backend/tests/fixtures/st011_dashb
 
 - Environment filter: `local`
 - Default dashboard time window: `PT6H`
-- Scope: ingestion pipeline, notification enqueue/delivery, and source freshness/failure snapshot.
+- Scope: ingestion pipeline, notification enqueue/delivery, DLQ/replay hardening metrics, and source freshness/failure snapshot.
 
 ## Panel Evidence
 
@@ -45,3 +45,26 @@ Flagged rows from fixture:
 | --- | --- | --- | ---: | ---: | --- |
 | city-eagle-mountain-ut | source-eagle-mountain-ut-minutes-primary | failing | 3 | 56.0 | http_500 |
 | city-riverton-ut | source-riverton-ut-agenda-primary | degraded | 1 | 30.0 | parser_timeout |
+
+### `notification-dlq-inflow`
+
+- notify_dlq/transient = 4
+- notify_dlq/permanent = 1
+
+### `notification-dlq-backlog-count`
+
+- notify_dlq/backlog = 6
+
+### `notification-dlq-oldest-age-seconds`
+
+- notify_dlq/oldest_age sample = 7200s
+
+### `notification-dlq-replay-outcomes`
+
+- notify_dlq_replay/requeued = 3
+- notify_dlq_replay/ineligible = 1
+- notify_dlq_replay/duplicate = 2
+
+### `notification-dlq-replay-duplicate-prevention-hits`
+
+- notify_dlq_replay/duplicate = 2
