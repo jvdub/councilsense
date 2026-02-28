@@ -156,6 +156,32 @@ describe("MeetingsPage", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("renders limited-confidence label for low-confidence meetings", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-lc-1",
+          city_id: "seattle-wa",
+          meeting_uid: "uid-lc-1",
+          title: "Public Safety Committee",
+          created_at: "2026-02-24 17:00:00",
+          updated_at: "2026-02-24 18:00:00",
+          status: "limited_confidence",
+          confidence_label: "limited_confidence",
+          reader_low_confidence: true,
+        },
+      ],
+      next_cursor: null,
+      limit: 20,
+    });
+
+    render(await MeetingsPage());
+
+    expect(
+      screen.getByText("Status: limited_confidence · Confidence: limited_confidence"),
+    ).toBeInTheDocument();
+  });
+
   it("renders an empty state when no meetings are returned", async () => {
     fetchCityMeetingsMock.mockResolvedValueOnce({
       items: [],

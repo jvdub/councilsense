@@ -9,7 +9,7 @@
 - [x] [TASK-ST-007-02](TASK-ST-007-02.md) — Meetings List Page
 - [x] [TASK-ST-007-03](TASK-ST-007-03.md) — Meeting Detail Page with Evidence and Confidence
 - [x] [TASK-ST-007-04](TASK-ST-007-04.md) — Notification Deep-Link Routing to Meeting Detail
-- [ ] [TASK-ST-007-05](TASK-ST-007-05.md) — ST-007 Reader UX Smoke Coverage
+- [x] [TASK-ST-007-05](TASK-ST-007-05.md) — ST-007 Reader UX Smoke Coverage
 
 ## Dependency Chain
 

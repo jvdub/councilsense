@@ -152,6 +152,9 @@ describe("MeetingDetailPage", () => {
 
     expect(screen.getByRole("alert", { name: "Confidence warning" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Limited confidence" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Status: limited_confidence · Confidence: limited_confidence"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Summary is not available yet.")).toBeInTheDocument();
     expect(screen.getByText("No key decisions available.")).toBeInTheDocument();
     expect(screen.getByText("No key actions available.")).toBeInTheDocument();
