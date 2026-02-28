@@ -50,6 +50,16 @@ Last updated: 2026-02-27
 | TASK-ST-004-04 | ✅ Done | c890594 |
 | TASK-ST-004-05 | ✅ Done | 2ca8017 |
 
+### ST-005 — Evidence-Grounded Summarization + Quality Gate
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-005-01 | ✅ Done | 5d8ef77 |
+| TASK-ST-005-02 | ⏳ Pending | — |
+| TASK-ST-005-03 | ⏳ Pending | — |
+| TASK-ST-005-04 | ⏳ Pending | — |
+| TASK-ST-005-05 | ⏳ Pending | — |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -58,6 +68,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. ST-005 (`TASK-ST-005-01` → `TASK-ST-005-05`)
+1. Continue ST-005 (`TASK-ST-005-02` → `TASK-ST-005-05`)
 2. Then unblock ST-006 and ST-010
 3. After ST-006, start ST-007 and ST-008 branch
