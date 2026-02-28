@@ -291,6 +291,7 @@ class NotificationDeliveryWorker:
                 attempted_at=attempted_at,
                 attempt_number=attempt_number,
                 outcome="permanent_failure",
+                failure_classification="transient",
                 error_code=error.error_code,
                 provider_response_summary=error.provider_response_summary,
             )
@@ -367,6 +368,7 @@ class NotificationDeliveryWorker:
             attempted_at=self._now_provider().astimezone(UTC),
             attempt_number=record.attempt_count + 1,
             outcome="permanent_failure",
+            failure_classification="permanent",
             error_code=error.error_code,
             provider_response_summary=error.provider_response_summary,
         )
@@ -451,18 +453,21 @@ class NotificationDeliveryWorker:
         attempted_at: datetime,
         attempt_number: int,
         outcome: Literal["permanent_failure"],
+        failure_classification: Literal["transient", "permanent", "unknown"],
         error_code: str,
         provider_response_summary: str,
     ) -> None:
-        if not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sending", next_status="failed"):
-            raise ValueError("Invalid transition from sending to failed")
+        if not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sending", next_status="dlq"):
+            raise ValueError("Invalid transition from sending to dlq")
 
         payload_json = self._updated_payload_json(
             existing_payload_json=record.payload_json,
-            next_status="failed",
+            next_status="dlq",
             attempt_count=attempt_number,
             error_code=error_code,
         )
+        run_id = _extract_optional_run_id(payload=json.loads(record.payload_json))
+        source_id = _extract_optional_source_id(payload=json.loads(record.payload_json))
 
         with self._connection:
             self._connection.execute(
@@ -477,6 +482,7 @@ class NotificationDeliveryWorker:
                     attempted_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(outbox_id, attempt_number) DO NOTHING
                 """,
                 (
                     record.id,
@@ -485,6 +491,47 @@ class NotificationDeliveryWorker:
                     error_code,
                     provider_response_summary,
                     None,
+                    attempted_at.isoformat(),
+                ),
+            )
+
+            self._connection.execute(
+                """
+                INSERT INTO notification_delivery_dlq (
+                    outbox_id,
+                    notification_id,
+                    message_id,
+                    city_id,
+                    source_id,
+                    run_id,
+                    meeting_id,
+                    user_id,
+                    notification_type,
+                    failure_classification,
+                    failure_reason_code,
+                    failure_reason_summary,
+                    terminal_attempt_number,
+                    terminal_attempted_at,
+                    terminal_transitioned_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(outbox_id) DO NOTHING
+                """,
+                (
+                    record.id,
+                    record.id,
+                    record.dedupe_key,
+                    record.city_id,
+                    source_id,
+                    run_id,
+                    record.meeting_id,
+                    record.user_id,
+                    record.notification_type,
+                    failure_classification,
+                    error_code,
+                    provider_response_summary,
+                    attempt_number,
+                    attempted_at.isoformat(),
                     attempted_at.isoformat(),
                 ),
             )
@@ -500,7 +547,7 @@ class NotificationDeliveryWorker:
                 """
                 UPDATE notification_outbox
                 SET
-                    status = 'failed',
+                    status = 'dlq',
                     attempt_count = ?,
                     payload_json = ?,
                     last_attempt_at = ?,
@@ -586,6 +633,9 @@ class NotificationDeliveryWorker:
         run_id = _extract_optional_run_id(parsed_raw)
         if run_id is not None:
             validated_payload["run_id"] = run_id
+        source_id = _extract_optional_source_id(parsed_raw)
+        if source_id is not None:
+            validated_payload["source_id"] = source_id
         return json.dumps(validated_payload, ensure_ascii=False, separators=(",", ":"))
 
     def _emit_delivery_outcome(
@@ -675,6 +725,16 @@ def _normalize_error_summary(raw_summary: str | None) -> str | None:
 
 def _extract_optional_run_id(payload: dict[str, object]) -> str | None:
     raw_value = payload.get("run_id")
+    if not isinstance(raw_value, str):
+        return None
+    normalized = raw_value.strip()
+    if not normalized:
+        return None
+    return normalized
+
+
+def _extract_optional_source_id(payload: dict[str, object]) -> str | None:
+    raw_value = payload.get("source_id")
     if not isinstance(raw_value, str):
         return None
     normalized = raw_value.strip()

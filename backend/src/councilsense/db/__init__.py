@@ -39,7 +39,9 @@ from councilsense.db.operator_view import (
 )
 from councilsense.db.notifications import (
 	NotificationAttemptOutcome,
+	NotificationDeliveryDlqRecord,
 	NotificationDeliveryAttemptRecord,
+	NotificationDlqFailureClassification,
 	NotificationOutboxRecord,
 	NotificationOutboxStatus,
 )
@@ -79,7 +81,9 @@ __all__ = [
 	"MeetingWriteRepository",
 	"MissingMeetingCityError",
 	"NotificationAttemptOutcome",
+	"NotificationDeliveryDlqRecord",
 	"NotificationDeliveryAttemptRecord",
+	"NotificationDlqFailureClassification",
 	"NotificationOutboxRecord",
 	"NotificationOutboxStatus",
 	"GOVERNANCE_DELETION_REQUEST_STATUS_MODEL",

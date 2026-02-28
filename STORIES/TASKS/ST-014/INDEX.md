@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-014-01](TASK-ST-014-01-dlq-schema-and-terminal-failure-transition.md) — DLQ Schema and Terminal Failure Transition
+- [x] [TASK-ST-014-01](TASK-ST-014-01-dlq-schema-and-terminal-failure-transition.md) — DLQ Schema and Terminal Failure Transition
 - [ ] [TASK-ST-014-02](TASK-ST-014-02-retry-policy-configuration-and-exhaustion-rules.md) — Retry Policy Configuration and Exhaustion Rules
 - [ ] [TASK-ST-014-03](TASK-ST-014-03-operator-replay-api-and-authorization.md) — Operator Replay API and Authorization
 - [ ] [TASK-ST-014-04](TASK-ST-014-04-dlq-replay-observability-and-audit-metrics.md) — DLQ and Replay Observability with Measurable Outputs

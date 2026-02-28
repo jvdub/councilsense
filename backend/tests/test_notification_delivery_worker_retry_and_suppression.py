@@ -155,7 +155,35 @@ def test_delivery_worker_retries_transient_failures_until_terminal_failure() -> 
             """,
             ("outbox-retry",),
         ).fetchone()
-        assert outbox_row == ("failed", 3, "provider_timeout", "provider timed out")
+        assert outbox_row == ("dlq", 3, "provider_timeout", "provider timed out")
+
+        dlq_row = connection.execute(
+            """
+            SELECT
+                outbox_id,
+                notification_id,
+                message_id,
+                failure_classification,
+                failure_reason_code,
+                terminal_attempt_number
+            FROM notification_delivery_dlq
+            WHERE outbox_id = ?
+            """,
+            ("outbox-retry",),
+        ).fetchone()
+        outbox_message_id = connection.execute(
+            "SELECT dedupe_key FROM notification_outbox WHERE id = ?",
+            ("outbox-retry",),
+        ).fetchone()
+        assert outbox_message_id is not None
+        assert dlq_row == (
+            "outbox-retry",
+            "outbox-retry",
+            str(outbox_message_id[0]),
+            "transient",
+            "provider_timeout",
+            3,
+        )
 
         attempt_rows = connection.execute(
             """
@@ -353,3 +381,207 @@ def test_delivery_worker_claiming_is_safe_with_two_concurrent_workers(tmp_path: 
         assert sender_calls["count"] == 1
     finally:
         verify_connection.close()
+
+
+def test_terminal_transition_to_dlq_is_idempotent_for_repeated_calls() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        _base_seed(connection, meeting_id="meeting-delivery-idempotent")
+        _insert_outbox_row(
+            connection,
+            outbox_id="outbox-idempotent",
+            user_id="user-idempotent",
+            meeting_id="meeting-delivery-idempotent",
+            city_id=PILOT_CITY_ID,
+            subscription_id="sub-idempotent",
+            max_attempts=2,
+        )
+        connection.execute(
+            "UPDATE notification_outbox SET status = 'sending', attempt_count = 1 WHERE id = ?",
+            ("outbox-idempotent",),
+        )
+
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                meeting_id,
+                city_id,
+                notification_type,
+                dedupe_key,
+                payload_json,
+                status,
+                attempt_count,
+                max_attempts,
+                next_retry_at,
+                last_attempt_at,
+                error_code,
+                provider_response_summary,
+                subscription_id,
+                sent_at,
+                created_at,
+                updated_at
+            FROM notification_outbox
+            WHERE id = ?
+            """,
+            ("outbox-idempotent",),
+        ).fetchone()
+        assert row is not None
+
+        record = NotificationDeliveryWorker._row_to_outbox_record(row=row)
+        worker = NotificationDeliveryWorker(
+            connection=connection,
+            sender=lambda _: None,
+            now_provider=lambda: datetime(2026, 2, 27, 14, 0, tzinfo=UTC),
+        )
+
+        terminal_time = datetime(2026, 2, 27, 14, 0, tzinfo=UTC)
+        worker._record_terminal_failure(
+            record=record,
+            attempted_at=terminal_time,
+            attempt_number=2,
+            outcome="permanent_failure",
+            failure_classification="transient",
+            error_code="provider_timeout",
+            provider_response_summary="provider timed out",
+        )
+        worker._record_terminal_failure(
+            record=record,
+            attempted_at=terminal_time,
+            attempt_number=2,
+            outcome="permanent_failure",
+            failure_classification="transient",
+            error_code="provider_timeout",
+            provider_response_summary="provider timed out",
+        )
+
+        attempt_count = connection.execute(
+            "SELECT COUNT(*) FROM notification_delivery_attempts WHERE outbox_id = ?",
+            ("outbox-idempotent",),
+        ).fetchone()
+        assert attempt_count is not None
+        assert int(attempt_count[0]) == 1
+
+        dlq_count = connection.execute(
+            "SELECT COUNT(*) FROM notification_delivery_dlq WHERE outbox_id = ?",
+            ("outbox-idempotent",),
+        ).fetchone()
+        assert dlq_count is not None
+        assert int(dlq_count[0]) == 1
+    finally:
+        connection.close()
+
+
+def test_dlq_records_are_queryable_by_city_source_run_and_message_identifiers() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        _base_seed(connection, meeting_id="meeting-delivery-dlq-query")
+        payload = produce_notification_event_payload(
+            user_id="user-dlq-query",
+            meeting_id="meeting-delivery-dlq-query",
+            notification_type="meeting_published",
+            enqueued_at=datetime(2026, 2, 27, 15, 0, tzinfo=UTC),
+            subscription_id="sub-dlq-query",
+        )
+        payload["run_id"] = "run-dlq-query-1"
+        payload["source_id"] = "source-notifications-1"
+
+        connection.execute(
+            """
+            INSERT INTO notification_outbox (
+                id,
+                user_id,
+                meeting_id,
+                city_id,
+                notification_type,
+                dedupe_key,
+                payload_json,
+                status,
+                attempt_count,
+                max_attempts,
+                next_retry_at,
+                subscription_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "outbox-dlq-query",
+                "user-dlq-query",
+                "meeting-delivery-dlq-query",
+                PILOT_CITY_ID,
+                "meeting_published",
+                str(payload["dedupe_key"]),
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                "sending",
+                1,
+                2,
+                "2026-02-27T15:00:00+00:00",
+                "sub-dlq-query",
+            ),
+        )
+
+        record_row = connection.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                meeting_id,
+                city_id,
+                notification_type,
+                dedupe_key,
+                payload_json,
+                status,
+                attempt_count,
+                max_attempts,
+                next_retry_at,
+                last_attempt_at,
+                error_code,
+                provider_response_summary,
+                subscription_id,
+                sent_at,
+                created_at,
+                updated_at
+            FROM notification_outbox
+            WHERE id = ?
+            """,
+            ("outbox-dlq-query",),
+        ).fetchone()
+        assert record_row is not None
+
+        worker = NotificationDeliveryWorker(
+            connection=connection,
+            sender=lambda _: None,
+            now_provider=lambda: datetime(2026, 2, 27, 15, 1, tzinfo=UTC),
+        )
+        worker._record_terminal_failure(
+            record=NotificationDeliveryWorker._row_to_outbox_record(row=record_row),
+            attempted_at=datetime(2026, 2, 27, 15, 1, tzinfo=UTC),
+            attempt_number=2,
+            outcome="permanent_failure",
+            failure_classification="transient",
+            error_code="provider_timeout",
+            provider_response_summary="provider timed out",
+        )
+
+        matched = connection.execute(
+            """
+            SELECT outbox_id
+            FROM notification_delivery_dlq
+            WHERE city_id = ?
+              AND source_id = ?
+              AND run_id = ?
+              AND message_id = ?
+            """,
+            (
+                PILOT_CITY_ID,
+                "source-notifications-1",
+                "run-dlq-query-1",
+                str(payload["dedupe_key"]),
+            ),
+        ).fetchall()
+        assert matched == [("outbox-dlq-query",)]
+    finally:
+        connection.close()

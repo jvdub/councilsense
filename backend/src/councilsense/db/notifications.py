@@ -9,6 +9,7 @@ NotificationOutboxStatus = Literal[
     "sending",
     "sent",
     "failed",
+    "dlq",
     "suppressed",
     "invalid_subscription",
     "expired_subscription",
@@ -57,3 +58,32 @@ class NotificationDeliveryAttemptRecord:
     next_retry_at: str | None
     attempted_at: str
     created_at: str
+
+
+NotificationDlqFailureClassification = Literal[
+    "transient",
+    "permanent",
+    "unknown",
+]
+
+
+@dataclass(frozen=True)
+class NotificationDeliveryDlqRecord:
+    id: int
+    outbox_id: str
+    notification_id: str
+    message_id: str
+    city_id: str
+    source_id: str | None
+    run_id: str | None
+    meeting_id: str
+    user_id: str
+    notification_type: str
+    failure_classification: NotificationDlqFailureClassification
+    failure_reason_code: str | None
+    failure_reason_summary: str | None
+    terminal_attempt_number: int
+    terminal_attempted_at: str
+    terminal_transitioned_at: str
+    created_at: str
+    updated_at: str

@@ -98,6 +98,7 @@ NOTIFICATION_DELIVERY_STATUS_MODEL = NotificationDeliveryStatusModel(
         "sending": (
             "sent",
             "failed",
+            "dlq",
             "suppressed",
             "invalid_subscription",
             "expired_subscription",
@@ -108,6 +109,7 @@ NOTIFICATION_DELIVERY_STATUS_MODEL = NotificationDeliveryStatusModel(
             "invalid_subscription",
             "expired_subscription",
         ),
+        "dlq": (),
         "sent": (),
         "suppressed": (),
         "invalid_subscription": (),

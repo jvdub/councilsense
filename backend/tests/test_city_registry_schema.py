@@ -32,6 +32,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0010_notification_outbox_and_attempt_schema.sql" in before.pending
     assert "0011_governance_request_data_model.sql" in before.pending
     assert "0012_governance_export_artifacts.sql" in before.pending
+    assert "0013_notification_dlq_schema_and_terminal_state.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -47,6 +48,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0010_notification_outbox_and_attempt_schema.sql",
         "0011_governance_request_data_model.sql",
         "0012_governance_export_artifacts.sql",
+        "0013_notification_dlq_schema_and_terminal_state.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -77,6 +79,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "claim_evidence_pointers",
         "notification_outbox",
         "notification_delivery_attempts",
+        "notification_delivery_dlq",
         "governance_export_artifacts",
         "schema_migrations",
     }.issubset(table_names)
@@ -106,6 +109,10 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_notification_outbox_user_created" in index_names
     assert "idx_notification_delivery_attempts_outbox_attempted" in index_names
     assert "idx_notification_delivery_attempts_outcome_attempted" in index_names
+    assert "idx_notification_delivery_dlq_city" in index_names
+    assert "idx_notification_delivery_dlq_source" in index_names
+    assert "idx_notification_delivery_dlq_run" in index_names
+    assert "idx_notification_delivery_dlq_message" in index_names
     assert "idx_governance_export_artifacts_user_created" in index_names
 
 

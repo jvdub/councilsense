@@ -62,6 +62,8 @@ def test_notification_contract_accepts_valid_payload_and_rejects_invalid_payload
 def test_notification_delivery_status_transitions_are_unambiguous() -> None:
     assert NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="queued", next_status="sending")
     assert NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sending", next_status="sent")
+    assert NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sending", next_status="dlq")
     assert NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="failed", next_status="sending")
     assert not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="sent", next_status="sending")
+    assert not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="dlq", next_status="sending")
     assert not NOTIFICATION_DELIVERY_STATUS_MODEL.can_transition(current="invalid_subscription", next_status="sending")
