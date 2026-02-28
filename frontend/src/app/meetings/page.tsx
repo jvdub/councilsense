@@ -13,6 +13,7 @@ type SearchParams = {
   cursor?: string | string[];
   prev?: string | string[];
   limit?: string | string[];
+  meeting_id?: string | string[];
 };
 
 type MeetingsPageProps = {
@@ -77,6 +78,12 @@ export default async function MeetingsPage({ searchParams }: MeetingsPageProps =
   }
 
   const resolvedParams = (await searchParams) ?? {};
+  const meetingId = getSingleValue(resolvedParams.meeting_id)?.trim() ?? "";
+
+  if (meetingId) {
+    redirect(`/meetings/${encodeURIComponent(meetingId)}`);
+  }
+
   const cursor = getSingleValue(resolvedParams.cursor);
   const prevCursor = getSingleValue(resolvedParams.prev);
   const limit = parseLimit(getSingleValue(resolvedParams.limit));

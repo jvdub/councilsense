@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MeetingsPage from "./page";
 
@@ -56,6 +56,10 @@ describe("MeetingsPage", () => {
     getOnboardingRedirectPathMock.mockReturnValue(null);
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it("redirects unauthenticated users to sign-in", async () => {
     getAuthTokenFromCookieMock.mockResolvedValueOnce(null);
 
@@ -81,6 +85,40 @@ describe("MeetingsPage", () => {
       "/meetings",
     );
     expect(fetchCityMeetingsMock).not.toHaveBeenCalled();
+  });
+
+  it("redirects to meeting detail when meeting_id deep-link is present", async () => {
+    await expect(
+      MeetingsPage({
+        searchParams: Promise.resolve({
+          meeting_id: "meeting-42",
+        }),
+      }),
+    ).rejects.toThrow("REDIRECT:/meetings/meeting-42");
+
+    expect(fetchCityMeetingsMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps meetings list flow when meeting_id deep-link is blank", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [],
+      next_cursor: null,
+      limit: 20,
+    });
+
+    render(
+      await MeetingsPage({
+        searchParams: Promise.resolve({
+          meeting_id: "   ",
+        }),
+      }),
+    );
+
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
+      cursor: undefined,
+      limit: 20,
+    });
+    expect(screen.getByText("No meetings found for your city yet.")).toBeInTheDocument();
   });
 
   it("renders meetings list rows with status and confidence metadata", async () => {
