@@ -1,0 +1,191 @@
+{
+  "baseline_version": "st-016-alert-threshold-baseline-v1",
+  "story_task": "TASK-ST-016-01",
+  "review_cycle": {
+    "status": "provisional",
+    "initial_review_due_date": "2026-03-31",
+    "reason": "Initial hardening thresholds; tune after first month of production signal collection."
+  },
+  "triage_metadata_requirements": {
+    "required_structured_fields": [
+      "alert_class",
+      "alert_id",
+      "city_id",
+      "source_id",
+      "run_id",
+      "meeting_id",
+      "stage",
+      "outcome",
+      "environment",
+      "observed_value",
+      "threshold_value",
+      "evaluation_window",
+      "triggered_at_utc"
+    ],
+    "required_context_note": "city_id, source_id, and run_id are mandatory for actionable triage handoff."
+  },
+  "alert_classes": [
+    {
+      "alert_class": "ingestion_failures",
+      "metric": "councilsense_pipeline_stage_events_total",
+      "signal": "failure_rate",
+      "stage_filter": "ingest",
+      "thresholds": {
+        "warning": {
+          "operator": ">=",
+          "value": 0.05,
+          "unit": "ratio",
+          "for": "PT15M",
+          "evaluation_window": "PT15M"
+        },
+        "critical": {
+          "operator": ">=",
+          "value": 0.1,
+          "unit": "ratio",
+          "for": "PT15M",
+          "evaluation_window": "PT15M"
+        }
+      },
+      "severity_mapping": {
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "ownership": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "false_positive_tolerance": "<=2 warning pages per 7 days",
+      "rationale": "Ingestion is the first user-impacting choke point; sustained failure rate above 5% indicates likely source or parser instability."
+    },
+    {
+      "alert_class": "pipeline_latency",
+      "metric": "councilsense_pipeline_stage_duration_seconds",
+      "signal": "p95_duration_seconds",
+      "stage_filter": "publish",
+      "thresholds": {
+        "warning": {
+          "operator": ">=",
+          "value": 1800,
+          "unit": "seconds",
+          "for": "PT20M",
+          "evaluation_window": "PT30M"
+        },
+        "critical": {
+          "operator": ">=",
+          "value": 3600,
+          "unit": "seconds",
+          "for": "PT20M",
+          "evaluation_window": "PT30M"
+        }
+      },
+      "severity_mapping": {
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "ownership": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "false_positive_tolerance": "<=1 critical page per 14 days",
+      "rationale": "P95 publish latency above 30 minutes signals backlog growth risk before freshness breaches occur."
+    },
+    {
+      "alert_class": "notification_errors",
+      "metric": "councilsense_notifications_delivery_events_total",
+      "signal": "error_rate",
+      "stage_filter": "notify_deliver",
+      "thresholds": {
+        "warning": {
+          "operator": ">=",
+          "value": 0.03,
+          "unit": "ratio",
+          "for": "PT15M",
+          "evaluation_window": "PT15M"
+        },
+        "critical": {
+          "operator": ">=",
+          "value": 0.07,
+          "unit": "ratio",
+          "for": "PT15M",
+          "evaluation_window": "PT15M"
+        }
+      },
+      "severity_mapping": {
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "ownership": {
+        "primary_role": "ops-notifications-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "false_positive_tolerance": "<=3 warning pages per 7 days",
+      "rationale": "Delivery errors above 3% sustained interval indicate provider, credential, or payload failure requiring fast containment."
+    },
+    {
+      "alert_class": "source_freshness",
+      "metric": "councilsense_source_last_success_age_hours",
+      "signal": "last_success_age_hours",
+      "stage_filter": "ingest",
+      "thresholds": {
+        "warning": {
+          "operator": ">=",
+          "value": 24,
+          "unit": "hours",
+          "for": "PT30M",
+          "evaluation_window": "PT1H"
+        },
+        "critical": {
+          "operator": ">=",
+          "value": 48,
+          "unit": "hours",
+          "for": "PT30M",
+          "evaluation_window": "PT1H"
+        }
+      },
+      "severity_mapping": {
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "ownership": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT60M"
+      },
+      "false_positive_tolerance": "<=1 warning per source per 14 days",
+      "rationale": "Freshness age crossing one day predicts stale user content before trust impact broadens."
+    }
+  ],
+  "operational_unknowns": [
+    {
+      "unknown_id": "st016-unknown-001",
+      "topic": "Normal overnight freshness gap variance by city source cadence",
+      "impact": "May over-page low-frequency sources if cadence classes are not segmented.",
+      "owner_role": "ops-ingestion-oncall",
+      "due_date": "2026-03-21",
+      "status": "open"
+    },
+    {
+      "unknown_id": "st016-unknown-002",
+      "topic": "Provider-side push error mix baseline by channel",
+      "impact": "Could mask true incident if warning threshold is too tolerant for specific provider failures.",
+      "owner_role": "ops-notifications-oncall",
+      "due_date": "2026-03-21",
+      "status": "open"
+    },
+    {
+      "unknown_id": "st016-unknown-003",
+      "topic": "Publish stage p95 sensitivity under peak council agenda weeks",
+      "impact": "Potential false critical spikes if static threshold is not seasonality-aware.",
+      "owner_role": "ops-pipeline-oncall",
+      "due_date": "2026-03-28",
+      "status": "open"
+    }
+  ]
+}
