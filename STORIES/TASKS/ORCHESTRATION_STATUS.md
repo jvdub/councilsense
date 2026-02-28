@@ -1,6 +1,6 @@
 # Orchestration Status
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 
 ## Execution Policies
 
@@ -120,6 +120,26 @@ Last updated: 2026-02-27
 | TASK-ST-011-04 | ✅ Done | 89a01b5 |
 | TASK-ST-011-05 | ✅ Done | 3d9b2ba |
 
+### ST-012 — Local-First + AWS Portable Runtime
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-012-01 | ✅ Done | bb640fb |
+| TASK-ST-012-02 | ✅ Done | 93869d6 |
+| TASK-ST-012-03 | ✅ Done | bad1ea1 |
+| TASK-ST-012-04 | ✅ Done | e297275 |
+| TASK-ST-012-05 | ✅ Done | 1d31295 |
+
+### ST-013 — Governance, Retention, Export, Deletion
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| TASK-ST-013-01 | ✅ Done | d97ce9e |
+| TASK-ST-013-02 | ✅ Done | 1e5a3dc |
+| TASK-ST-013-03 | ✅ Done | af07d9c |
+| TASK-ST-013-04 | ✅ Done | 3f6c795 |
+| TASK-ST-013-05 | ✅ Done | 120b861 |
+
 ## Current Repository State
 
 - Working tree: clean
@@ -128,6 +148,5 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Run ST-012 and ST-013 in parallel
-2. Then run ST-014 and ST-015 in parallel
-3. Finish with ST-016
+1. Run ST-014 and ST-015 in parallel
+2. Finish with ST-016
