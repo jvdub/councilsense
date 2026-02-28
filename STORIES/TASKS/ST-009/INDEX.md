@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-009-01](TASK-ST-009-01-notification-contract-and-dedupe-key.md) — Notification Contract and Dedupe Key
+- [x] [TASK-ST-009-01](TASK-ST-009-01-notification-contract-and-dedupe-key.md) — Notification Contract and Dedupe Key
 - [ ] [TASK-ST-009-02](TASK-ST-009-02-outbox-and-attempt-schema.md) — Outbox and Attempt Schema
 - [ ] [TASK-ST-009-03](TASK-ST-009-03-publish-transaction-fanout.md) — Publish Transaction Fan-Out
 - [ ] [TASK-ST-009-04](TASK-ST-009-04-delivery-worker-retry-and-suppression.md) — Delivery Worker Retry and Suppression
