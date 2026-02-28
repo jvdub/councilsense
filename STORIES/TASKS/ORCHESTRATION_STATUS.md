@@ -55,10 +55,10 @@ Last updated: 2026-02-27
 | Task | Status | Commit |
 | --- | --- | --- |
 | TASK-ST-005-01 | ✅ Done | 5d8ef77 |
-| TASK-ST-005-02 | ⏳ Pending | — |
-| TASK-ST-005-03 | ⏳ Pending | — |
-| TASK-ST-005-04 | ⏳ Pending | — |
-| TASK-ST-005-05 | ⏳ Pending | — |
+| TASK-ST-005-02 | ✅ Done | 9d5376c |
+| TASK-ST-005-03 | ✅ Done | b596eae |
+| TASK-ST-005-04 | ✅ Done | 13d4290 |
+| TASK-ST-005-05 | ✅ Done | 39f072d |
 
 ## Current Repository State
 
@@ -68,6 +68,6 @@ Last updated: 2026-02-27
 
 ## Next Queue (Dependency-Safe)
 
-1. Continue ST-005 (`TASK-ST-005-02` → `TASK-ST-005-05`)
-2. Then unblock ST-006 and ST-010
+1. Start ST-006 (`TASK-ST-006-01` → `TASK-ST-006-05`)
+2. Run ST-010 in parallel (`TASK-ST-010-01` → `TASK-ST-010-05`)
 3. After ST-006, start ST-007 and ST-008 branch
