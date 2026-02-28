@@ -9,7 +9,7 @@
 - [x] [TASK-ST-011-02](TASK-ST-011-02-pipeline-structured-logs.md) — Pipeline Structured Logs
 - [x] [TASK-ST-011-03](TASK-ST-011-03-notification-metrics-and-logs.md) — Notification Metrics and Logs
 - [x] [TASK-ST-011-04](TASK-ST-011-04-baseline-dashboards.md) — Baseline Dashboards
-- [ ] [TASK-ST-011-05](TASK-ST-011-05-smoke-validation-and-triage-runbook.md) — Smoke Validation and Triage Runbook
+- [x] [TASK-ST-011-05](TASK-ST-011-05-smoke-validation-and-triage-runbook.md) — Smoke Validation and Triage Runbook
 
 ## Dependency Chain
 
