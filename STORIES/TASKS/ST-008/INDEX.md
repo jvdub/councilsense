@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-008-01](TASK-ST-008-01.md) — Push Capability and Contract Discovery
+- [x] [TASK-ST-008-01](TASK-ST-008-01.md) — Push Capability and Contract Discovery
 - [ ] [TASK-ST-008-02](TASK-ST-008-02.md) — Notification Settings Toggles and Persistence
 - [ ] [TASK-ST-008-03](TASK-ST-008-03.md) — Push Subscribe/Unsubscribe UX
 - [ ] [TASK-ST-008-04](TASK-ST-008-04.md) — Subscription API Wiring and Recovery State Mapping
