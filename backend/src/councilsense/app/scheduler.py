@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from councilsense.app.ecr_audit_job import EcrAuditRunResult, WeeklyEcrAuditJob
+from councilsense.app.reviewer_queue import ReviewerQueueService
 from councilsense.db import CityRegistryRepository, ConfiguredCitySelectionService, ProcessingRunRepository
 
 
@@ -114,4 +115,7 @@ def run_weekly_ecr_audit_cycle(
     scheduler_triggered_at_utc: datetime | None = None,
 ) -> EcrAuditRunResult:
     job = WeeklyEcrAuditJob(connection=connection)
-    return job.run_scheduled_weekly_audit(scheduler_triggered_at_utc=scheduler_triggered_at_utc)
+    result = job.run_scheduled_weekly_audit(scheduler_triggered_at_utc=scheduler_triggered_at_utc)
+    if result.status == "completed":
+        ReviewerQueueService(connection=connection).seed_from_ecr_audit_run(run_id=result.run_id)
+    return result

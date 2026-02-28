@@ -45,6 +45,11 @@ from councilsense.db.notifications import (
 	NotificationOutboxRecord,
 	NotificationOutboxStatus,
 )
+from councilsense.db.reviewer_queue import (
+	ReviewerQueueEventRecord,
+	ReviewerQueueItemRecord,
+	ReviewerQueueRepository,
+)
 from councilsense.db.governance import (
 	GOVERNANCE_DELETION_REQUEST_STATUS_MODEL,
 	GOVERNANCE_EXPORT_REQUEST_STATUS_MODEL,
@@ -86,6 +91,9 @@ __all__ = [
 	"NotificationDlqFailureClassification",
 	"NotificationOutboxRecord",
 	"NotificationOutboxStatus",
+	"ReviewerQueueEventRecord",
+	"ReviewerQueueItemRecord",
+	"ReviewerQueueRepository",
 	"GOVERNANCE_DELETION_REQUEST_STATUS_MODEL",
 	"GOVERNANCE_EXPORT_REQUEST_STATUS_MODEL",
 	"GovernanceAuditEventRecord",
