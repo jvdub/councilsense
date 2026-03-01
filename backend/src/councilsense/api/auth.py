@@ -91,6 +91,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._settings = settings
 
     async def dispatch(self, request: Request, call_next):
+        if self._settings.disable_auth_guard:
+            request.state.auth_user = AuthenticatedUser(user_id=self._settings.local_dev_auth_user_id)
+            return await call_next(request)
+
         auth_header = request.headers.get("authorization", "")
         if not auth_header.startswith("Bearer "):
             request.state.auth_user = None

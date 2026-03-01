@@ -42,6 +42,8 @@ class Settings:
     manual_review_confidence_threshold: float
     warn_confidence_threshold: float
     notification_retry_policy: NotificationRetryPolicySettings
+    disable_auth_guard: bool
+    local_dev_auth_user_id: str
     notification_replay_operator_user_ids: tuple[str, ...]
     notification_replay_allow_permanent_invalid_override: bool
 
@@ -73,6 +75,13 @@ def _parse_string_list(raw: str | None) -> tuple[str, ...]:
     if raw is None:
         return ()
     return tuple(value.strip() for value in raw.split(",") if value.strip())
+
+
+def _parse_optional_str(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    value = raw.strip()
+    return value or None
 
 
 def _parse_bool(*, raw: str | None, default: bool, env_name: str) -> bool:
@@ -266,4 +275,11 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
             default=False,
             env_name="NOTIFICATION_REPLAY_ALLOW_PERMANENT_INVALID_OVERRIDE",
         ),
+        disable_auth_guard=_parse_bool(
+            raw=os.getenv("COUNCILSENSE_DISABLE_AUTH_GUARD"),
+            default=False,
+            env_name="COUNCILSENSE_DISABLE_AUTH_GUARD",
+        ),
+        local_dev_auth_user_id=_parse_optional_str(os.getenv("COUNCILSENSE_LOCAL_DEV_AUTH_USER_ID"))
+        or "local-dev-user",
     )

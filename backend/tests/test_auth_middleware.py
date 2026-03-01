@@ -77,3 +77,16 @@ def test_injects_authenticated_identity_into_protected_routes(monkeypatch):
     }
     assert bootstrap_response.status_code == 200
     assert bootstrap_response.json()["user_id"] == "user-abc"
+
+
+def test_allows_requests_when_auth_guard_disabled(monkeypatch):
+    monkeypatch.setenv("COUNCILSENSE_DISABLE_AUTH_GUARD", "true")
+    monkeypatch.setenv("COUNCILSENSE_LOCAL_DEV_AUTH_USER_ID", "local-dev-user")
+    client = _client_with_secret(monkeypatch, "test-secret")
+
+    me_response = client.get("/v1/me")
+    bootstrap_response = client.get("/v1/me/bootstrap")
+
+    assert me_response.status_code == 200
+    assert bootstrap_response.status_code == 200
+    assert bootstrap_response.json()["user_id"] == "local-dev-user"
