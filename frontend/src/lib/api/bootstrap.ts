@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./baseUrl";
 
 export type BootstrapResponse = {
   user_id: string;
@@ -27,7 +27,7 @@ export class ApiError extends Error {
 }
 
 export async function fetchBootstrap(authToken: string): Promise<BootstrapResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/bootstrap`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/bootstrap`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${authToken}`
@@ -43,7 +43,7 @@ export async function fetchBootstrap(authToken: string): Promise<BootstrapRespon
 }
 
 export async function submitHomeCitySelection(authToken: string, homeCityId: string): Promise<BootstrapResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/bootstrap`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/bootstrap`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

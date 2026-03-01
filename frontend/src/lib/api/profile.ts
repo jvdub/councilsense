@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./baseUrl";
 
 export type ProfileResponse = {
   email: string | null;
@@ -33,7 +33,7 @@ export class ApiError extends Error {
 }
 
 export async function fetchProfile(authToken: string): Promise<ProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${authToken}`,
@@ -52,7 +52,7 @@ export async function patchProfile(
   authToken: string,
   payload: PatchProfilePayload,
 ): Promise<ProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

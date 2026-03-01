@@ -2,6 +2,7 @@ import sqlite3
 import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from councilsense.api.auth import AuthMiddleware, UNAUTHORIZED_BODY, UnauthorizedError
@@ -26,6 +27,14 @@ from councilsense.app.settings import get_settings
 def create_app() -> FastAPI:
     app = FastAPI(title="CouncilSense API")
     settings = get_settings()
+    if settings.runtime_env == "local":
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     db_path = os.getenv("COUNCILSENSE_SQLITE_PATH", ":memory:")
     connection = sqlite3.connect(db_path, check_same_thread=False)
     connection.execute("PRAGMA foreign_keys = ON")

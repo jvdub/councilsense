@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./baseUrl";
 
 type ApiErrorPayload = {
   error?: {
@@ -66,7 +66,7 @@ export async function createExportRequest(
   authToken: string,
   payload: CreateExportRequestPayload,
 ): Promise<ExportRequestRecord> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/exports`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/exports`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -83,7 +83,7 @@ export async function createExportRequest(
 }
 
 export async function getExportRequest(authToken: string, requestId: string): Promise<ExportRequestRecord> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/exports/${encodeURIComponent(requestId)}`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/exports/${encodeURIComponent(requestId)}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${authToken}`,
@@ -102,7 +102,7 @@ export async function createDeletionRequest(
   authToken: string,
   payload: CreateDeletionRequestPayload,
 ): Promise<DeletionRequestRecord> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/deletions`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/deletions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -119,7 +119,7 @@ export async function createDeletionRequest(
 }
 
 export async function getDeletionRequest(authToken: string, requestId: string): Promise<DeletionRequestRecord> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/deletions/${encodeURIComponent(requestId)}`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/deletions/${encodeURIComponent(requestId)}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${authToken}`,

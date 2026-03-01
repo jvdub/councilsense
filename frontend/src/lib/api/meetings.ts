@@ -4,8 +4,7 @@ import {
   type MeetingDetailResponse,
   type MeetingListFilters,
 } from "../models/meetings";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./baseUrl";
 
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 const MAX_ATTEMPTS = 2;
@@ -68,7 +67,7 @@ async function fetchJsonWithRetry<T>(path: string, authToken: string, fallbackMe
 
   while (attempt < MAX_ATTEMPTS) {
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await fetch(`${getApiBaseUrl()}${path}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${authToken}`,

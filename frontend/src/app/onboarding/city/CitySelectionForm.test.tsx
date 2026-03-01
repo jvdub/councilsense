@@ -6,13 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, submitHomeCitySelection } from "../../../lib/api/bootstrap";
 import { CitySelectionForm } from "./CitySelectionForm";
 
-const pushMock = vi.fn();
-const refreshMock = vi.fn();
+const replaceMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: pushMock,
-    refresh: refreshMock,
+    replace: replaceMock,
   }),
 }));
 
@@ -48,8 +46,8 @@ describe("CitySelectionForm", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(submitHomeCitySelection).toHaveBeenCalledWith("token-abc", "portland-or");
-    expect(pushMock).toHaveBeenCalledWith("/meetings");
-    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/^\/meetings\?refresh=\d+$/));
     expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
       "href",
       "https://www.councilsense.org/privacy",
@@ -71,6 +69,6 @@ describe("CitySelectionForm", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Selected city is not supported.");
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 });

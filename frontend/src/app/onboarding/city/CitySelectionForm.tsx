@@ -35,8 +35,7 @@ export function CitySelectionForm({ authToken, cityIds }: CitySelectionFormProps
 
     try {
       await submitHomeCitySelection(authToken, selectedCityId);
-      router.push("/meetings");
-      router.refresh();
+      router.replace(`/meetings?refresh=${Date.now()}`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 422) {
         setSubmitError("Selected city is not supported.");

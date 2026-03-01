@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./baseUrl";
 
 export type PushSubscriptionServerStatus = "active" | "invalid" | "expired" | "suppressed";
 
@@ -63,7 +63,7 @@ export class PushSubscriptionsApiError extends Error {
 }
 
 export async function listPushSubscriptions(authToken: string): Promise<ListPushSubscriptionsResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/push-subscriptions`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/push-subscriptions`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${authToken}`,
@@ -82,7 +82,7 @@ export async function createOrRefreshPushSubscription(
   authToken: string,
   payload: UpsertPushSubscriptionPayload,
 ): Promise<UpsertPushSubscriptionResponse> {
-  const response = await fetch(`${API_BASE_URL}/v1/me/push-subscriptions`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/me/push-subscriptions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -100,7 +100,7 @@ export async function createOrRefreshPushSubscription(
 
 export async function deletePushSubscription(authToken: string, subscriptionId: string): Promise<void> {
   const response = await fetch(
-    `${API_BASE_URL}/v1/me/push-subscriptions/${encodeURIComponent(subscriptionId)}`,
+    `${getApiBaseUrl()}/v1/me/push-subscriptions/${encodeURIComponent(subscriptionId)}`,
     {
       method: "DELETE",
       headers: {
