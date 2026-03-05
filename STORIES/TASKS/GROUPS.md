@@ -44,6 +44,25 @@ This file records the story grouping used to refine stories into task files.
 
 - ST-021 Phase 1.5: Quality Gates Enforcement, Rollout, and Rollback Controls
 
+## Group H — Agenda Program: Contract, Ingestion, and Data Foundations
+
+- ST-022 Agenda Plan v1 Contract, Schema, and Rollout Freeze
+- ST-023 Meeting Bundle Planner and Source-Scoped Ingestion
+- ST-024 Canonical Documents, Artifacts, and Spans Persistence
+
+## Group I — Agenda Program: Compose, Evidence, API, and Frontend
+
+- ST-025 Authority-Aware Multi-Document Compose and Limited Confidence
+- ST-026 Evidence v2 Linkage, Precision Ladder, and Deterministic Ordering
+- ST-027 Reader API Additive Planned/Outcomes and Mismatch Fields
+- ST-028 Frontend Meeting Detail Planned/Outcomes and Mismatch Rendering
+
+## Group J — Agenda Program: Hardening, Gates, and Operations
+
+- ST-029 Pipeline Retry Classification, DLQ, and Replay Audit
+- ST-030 Document-Aware Quality Gates and Authority Alignment Enforcement
+- ST-031 Multi-Document Observability, Alerts, and Runbook Completion
+
 ## Correlation Pattern
 
 - Every task belongs to exactly one story folder: `STORIES/TASKS/ST-###/`.
