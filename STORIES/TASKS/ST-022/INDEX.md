@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-022-01](TASK-ST-022-01-v1-contract-spec-and-fixtures.md) — v1 Contract Specification and Approval Fixtures
-- [ ] [TASK-ST-022-02](TASK-ST-022-02-additive-schema-migration-plan.md) — Additive Schema and Migration Sequence Plan
-- [ ] [TASK-ST-022-03](TASK-ST-022-03-idempotency-keys-and-stage-ownership-contract.md) — Idempotency Key Naming and Stage Ownership Contract
-- [ ] [TASK-ST-022-04](TASK-ST-022-04-rollout-flag-matrix-and-rollback-sequence.md) — Rollout Flag Matrix and Rollback Sequence
-- [ ] [TASK-ST-022-05](TASK-ST-022-05-compatibility-shim-scope-and-open-questions-log.md) — Compatibility Shim Scope and Open Questions Log
+- [x] [TASK-ST-022-01](TASK-ST-022-01-v1-contract-spec-and-fixtures.md) — v1 Contract Specification and Approval Fixtures
+- [x] [TASK-ST-022-02](TASK-ST-022-02-additive-schema-migration-plan.md) — Additive Schema and Migration Sequence Plan
+- [x] [TASK-ST-022-03](TASK-ST-022-03-idempotency-keys-and-stage-ownership-contract.md) — Idempotency Key Naming and Stage Ownership Contract
+- [x] [TASK-ST-022-04](TASK-ST-022-04-rollout-flag-matrix-and-rollback-sequence.md) — Rollout Flag Matrix and Rollback Sequence
+- [x] [TASK-ST-022-05](TASK-ST-022-05-compatibility-shim-scope-and-open-questions-log.md) — Compatibility Shim Scope and Open Questions Log
 
 ## Dependency Chain
 

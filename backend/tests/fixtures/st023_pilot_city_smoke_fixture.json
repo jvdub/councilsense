@@ -1,0 +1,114 @@
+{
+  "schema_version": "st023-pilot-city-smoke-fixture-v1",
+  "fixture_id": "st023-pilot-city-minutes-plus-agenda",
+  "city_id": "city-eagle-mountain-ut",
+  "meeting_candidates": [
+    {
+      "meeting_id": "meeting-2026-03-04-regular",
+      "title": "City Council Regular Meeting",
+      "candidate_url": "https://example.org/meetings/2026-03-04",
+      "meeting_date_iso": "2026-03-04",
+      "score": 10
+    }
+  ],
+  "source_registrations": [
+    {
+      "source_id": "src-minutes-primary",
+      "source_type": "minutes",
+      "source_url": "https://example.org/minutes"
+    },
+    {
+      "source_id": "src-agenda-primary",
+      "source_type": "agenda",
+      "source_url": "https://example.org/agenda"
+    }
+  ],
+  "runs": [
+    {
+      "run_label": "first_run",
+      "source_payload_candidates": [
+        {
+          "source_id": "src-minutes-primary",
+          "source_type": "minutes",
+          "source_url": "https://example.org/minutes",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:minutes-payload",
+          "artifact_uri": "s3://fixture/st023/minutes-primary.txt"
+        },
+        {
+          "source_id": "src-minutes-mirror",
+          "source_type": "minutes",
+          "source_url": "https://mirror.example.org/minutes",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:minutes-payload",
+          "artifact_uri": "s3://fixture/st023/minutes-mirror.txt"
+        },
+        {
+          "source_id": "src-agenda-primary",
+          "source_type": "agenda",
+          "source_url": "https://example.org/agenda",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:agenda-payload",
+          "artifact_uri": "s3://fixture/st023/agenda-primary.txt"
+        }
+      ],
+      "extract_outcomes": {
+        "minutes": "processed",
+        "agenda": "processed"
+      },
+      "expected": {
+        "accepted_count": 2,
+        "suppressed_count": 1,
+        "new_documents_count": 2,
+        "new_artifacts_count": 2,
+        "new_publications_count": 1,
+        "readiness": "ready",
+        "summary_outcome": "limited_confidence",
+        "reason_codes": ["supplemental_packet_missing_registration"]
+      }
+    },
+    {
+      "run_label": "rerun_same_window",
+      "source_payload_candidates": [
+        {
+          "source_id": "src-minutes-primary",
+          "source_type": "minutes",
+          "source_url": "https://example.org/minutes",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:minutes-payload",
+          "artifact_uri": "s3://fixture/st023/minutes-primary.txt"
+        },
+        {
+          "source_id": "src-minutes-mirror",
+          "source_type": "minutes",
+          "source_url": "https://mirror.example.org/minutes",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:minutes-payload",
+          "artifact_uri": "s3://fixture/st023/minutes-mirror.txt"
+        },
+        {
+          "source_id": "src-agenda-primary",
+          "source_type": "agenda",
+          "source_url": "https://example.org/agenda",
+          "source_revision": "rev-2026-03-04",
+          "source_checksum": "sha256:agenda-payload",
+          "artifact_uri": "s3://fixture/st023/agenda-primary.txt"
+        }
+      ],
+      "extract_outcomes": {
+        "minutes": "processed",
+        "agenda": "processed"
+      },
+      "expected": {
+        "accepted_count": 2,
+        "suppressed_count": 1,
+        "new_documents_count": 0,
+        "new_artifacts_count": 0,
+        "new_publications_count": 0,
+        "readiness": "ready",
+        "summary_outcome": "limited_confidence",
+        "reason_codes": ["supplemental_packet_missing_registration"]
+      }
+    }
+  ]
+}

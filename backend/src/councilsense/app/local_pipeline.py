@@ -24,6 +24,8 @@ from councilsense.app.quality_gate_rollout import (
     evaluate_shadow_gates,
     resolve_rollout_config,
 )
+from councilsense.app.canonical_persistence import EvidenceSpanInput, persist_pipeline_canonical_records
+from councilsense.app.multi_document_compose import assemble_summarize_compose_input
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
     QualityGateEnforcementOverride,
@@ -231,7 +233,7 @@ class LocalPipelineOrchestrator:
         stage_outcomes: list[dict[str, object]] = []
         warnings: list[str] = []
         resolved_meeting_id: str | None = None
-        source_id, source_url = self._resolve_source(city_id=city_id)
+        source_id, source_type, source_url = self._resolve_source(city_id=city_id)
         cycle_id = _now_iso_utc()
         self._run_repository.create_pending_run(run_id=run_id, city_id=city_id, cycle_id=cycle_id)
 
@@ -265,6 +267,7 @@ class LocalPipelineOrchestrator:
                 city_id=city_id,
                 meeting=meeting,
                 source_id=source_id,
+                source_type=source_type,
                 source_url=source_url,
             )
             stage_outcomes.append(
@@ -282,6 +285,7 @@ class LocalPipelineOrchestrator:
                 city_id=city_id,
                 meeting_id=meeting.meeting_id,
                 source_id=source_id,
+                source_type=source_type,
                 extracted=extract_payload,
                 rollout_config=rollout_config,
                 llm_provider=llm_provider,
@@ -304,6 +308,22 @@ class LocalPipelineOrchestrator:
                     "status": summarize_status,
                     "metadata": summarize_metadata,
                 }
+            )
+
+            persist_pipeline_canonical_records(
+                self._connection,
+                meeting_id=meeting.meeting_id,
+                source_id=source_id,
+                source_url=source_url,
+                extracted_text=extract_payload.text,
+                extraction_status=extract_status,
+                extraction_confidence=(0.95 if extract_status == "processed" else 0.6),
+                artifact_storage_uri=(
+                    str(extract_payload.metadata.get("artifact_path"))
+                    if isinstance(extract_payload.metadata.get("artifact_path"), str)
+                    else None
+                ),
+                evidence_spans=_evidence_spans_from_output(summarize_payload.output),
             )
 
             publish_stage = self._publish_stage(
@@ -416,7 +436,7 @@ class LocalPipelineOrchestrator:
             )
         return _MeetingContext(meeting_id=str(row[0]), title=str(row[1]))
 
-    def _resolve_source(self, *, city_id: str) -> tuple[str | None, str | None]:
+    def _resolve_source(self, *, city_id: str) -> tuple[str | None, str | None, str | None]:
         rows = self._connection.execute(
             """
             SELECT id, source_type, source_url
@@ -428,9 +448,9 @@ class LocalPipelineOrchestrator:
             (city_id,),
         ).fetchall()
         if not rows:
-            return None, None
+            return None, None, None
         first = rows[0]
-        return str(first[0]), str(first[2])
+        return str(first[0]), str(first[1]), str(first[2])
 
     def _extract_stage(
         self,
@@ -439,6 +459,7 @@ class LocalPipelineOrchestrator:
         city_id: str,
         meeting: _MeetingContext,
         source_id: str | None,
+        source_type: str | None,
         source_url: str | None,
     ) -> tuple[_ExtractedPayload, str]:
         started_at = _now_iso_utc()
@@ -455,6 +476,7 @@ class LocalPipelineOrchestrator:
                 section_ref=section_ref,
                 metadata={
                     "source_id": source_id,
+                    "source_type": source_type,
                     "artifact_path": str(artifact_path),
                     "extract_mode": extract_mode,
                 },
@@ -474,6 +496,7 @@ class LocalPipelineOrchestrator:
                 section_ref="meeting.metadata",
                 metadata={
                     "source_id": source_id,
+                    "source_type": source_type,
                     "artifact_path": None,
                     "extract_mode": "metadata_fallback",
                 },
@@ -500,6 +523,7 @@ class LocalPipelineOrchestrator:
         city_id: str,
         meeting_id: str,
         source_id: str | None,
+        source_type: str | None,
         extracted: _ExtractedPayload,
         rollout_config: QualityGateRolloutConfig,
         llm_provider: str,
@@ -510,13 +534,21 @@ class LocalPipelineOrchestrator:
         started_at = _now_iso_utc()
         provider_used = "deterministic"
         fallback_reason: str | None = None
+        compose_input = assemble_summarize_compose_input(
+            connection=self._connection,
+            meeting_id=meeting_id,
+            fallback_source_type=source_type,
+            fallback_text=extracted.text,
+        )
+        summarize_text = compose_input.composed_text
+        compose_section_ref = "compose.multi_document"
 
         if llm_provider == "ollama":
             try:
                 output = _summarize_with_ollama(
-                    text=extracted.text,
+                    text=summarize_text,
                     artifact_id=extracted.artifact_id,
-                    section_ref=extracted.section_ref,
+                    section_ref=compose_section_ref,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                     specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                     evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -528,9 +560,9 @@ class LocalPipelineOrchestrator:
                 status = "processed"
             except Exception as exc:
                 output = _deterministic_summarize(
-                    text=extracted.text,
+                    text=summarize_text,
                     artifact_id=extracted.artifact_id,
-                    section_ref=extracted.section_ref,
+                    section_ref=compose_section_ref,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                     specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                     evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -540,9 +572,9 @@ class LocalPipelineOrchestrator:
                 status = "limited_confidence"
         elif llm_provider == "none":
             output = _deterministic_summarize(
-                text=extracted.text,
+                text=summarize_text,
                 artifact_id=extracted.artifact_id,
-                section_ref=extracted.section_ref,
+                section_ref=compose_section_ref,
                 topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                 specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                 evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -558,8 +590,10 @@ class LocalPipelineOrchestrator:
         finished_at = _now_iso_utc()
         metadata: dict[str, object] = {
             "source_id": source_id,
+            "source_type": source_type,
             "provider_used": provider_used,
             "claim_count": len(output.claims),
+            "compose": compose_input.to_stage_metadata_payload(),
         }
         if fallback_reason is not None:
             metadata["fallback_reason"] = fallback_reason
@@ -1464,6 +1498,23 @@ def _split_sentences_with_offsets(text: str) -> list[tuple[str, int, int, int]]:
         spans.append((sentence, sentence_index, match.start(), match.end()))
         sentence_index += 1
     return spans
+
+
+def _evidence_spans_from_output(output: SummarizationOutput) -> tuple[EvidenceSpanInput, ...]:
+    spans: list[EvidenceSpanInput] = []
+    for claim_index, claim in enumerate(output.claims, start=1):
+        for evidence_index, pointer in enumerate(claim.evidence, start=1):
+            spans.append(
+                EvidenceSpanInput(
+                    stable_section_path=pointer.section_ref,
+                    line_index=claim_index - 1,
+                    start_char_offset=pointer.char_start,
+                    end_char_offset=pointer.char_end,
+                    source_chunk_id=f"claim-{claim_index}-evidence-{evidence_index}",
+                    span_text=pointer.excerpt,
+                )
+            )
+    return tuple(spans)
 
 
 def _enforce_anchor_carry_through(

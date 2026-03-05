@@ -5,6 +5,7 @@ import {
   fetchMeetingDetail,
   MeetingsApiError,
 } from "./meetings";
+import st022ContractFixtures from "./fixtures/st022_v1_contract_approval_fixtures.json";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -64,6 +65,11 @@ describe("meetings api client", () => {
   });
 
   it("fetches meeting detail including evidence pointers contract shape", async () => {
+    const nominalFixture = st022ContractFixtures.fixtures.find(
+      (fixture) => fixture.fixture_id === "st022-nominal-multi-source",
+    );
+    expect(nominalFixture).toBeDefined();
+
     const fixture = {
       id: "meeting-detail-1",
       city_id: "salt-lake-city-ut",
@@ -97,6 +103,9 @@ describe("meetings api client", () => {
           ],
         },
       ],
+      planned: nominalFixture?.planned,
+      outcomes: nominalFixture?.outcomes,
+      planned_outcome_mismatches: nominalFixture?.planned_outcome_mismatches,
     };
 
     fetchMock.mockResolvedValueOnce(
@@ -110,6 +119,9 @@ describe("meetings api client", () => {
 
     expect(result).toEqual(fixture);
     expect(result.claims[0]?.evidence[0]?.artifact_id).toBe("artifact-minutes-1");
+    expect(result.planned?.source_coverage.packet).toBe("present");
+    expect(result.outcomes?.authority_source).toBe("minutes");
+    expect(result.planned_outcome_mismatches?.summary.total).toBe(1);
   });
 
   it("surfaces API error code/message/details for UI handling", async () => {

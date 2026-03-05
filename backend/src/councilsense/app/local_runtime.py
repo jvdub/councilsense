@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from councilsense.app.canonical_persistence import run_pilot_canonical_backfill
 from councilsense.app.local_latest_fetch import LatestFetchError, fetch_latest_meeting
 from councilsense.app.local_pipeline import LocalPipelineOrchestrator
 from councilsense.app.notification_delivery_worker import NotificationDeliveryWorker
@@ -267,6 +268,13 @@ def _parse_args() -> argparse.Namespace:
     run_latest.add_argument("--ollama-model", default=None)
     run_latest.add_argument("--ollama-timeout-seconds", type=float, default=20.0)
 
+    canonical_backfill = subparsers.add_parser("canonical-backfill")
+    canonical_backfill.add_argument("--city-id", default=PILOT_CITY_ID)
+    canonical_backfill.add_argument("--from-date", default=None)
+    canonical_backfill.add_argument("--to-date", default=None)
+    canonical_backfill.add_argument("--limit", type=int, default=50)
+    canonical_backfill.add_argument("--dry-run", action="store_true")
+
     return parser.parse_args()
 
 
@@ -467,6 +475,27 @@ def main() -> None:
                 error_summary=process_result.error_summary,
             )
             print(json.dumps(envelope, separators=(",", ":")))
+            return
+
+        if args.command == "canonical-backfill":
+            initialize_local_runtime_db(connection)
+            result = run_pilot_canonical_backfill(
+                connection,
+                city_id=args.city_id,
+                start_date=args.from_date,
+                end_date=args.to_date,
+                limit=args.limit,
+                dry_run=bool(args.dry_run),
+            )
+            print(
+                json.dumps(
+                    {
+                        "command": "canonical-backfill",
+                        "result": result.to_payload(),
+                    },
+                    separators=(",", ":"),
+                )
+            )
             return
 
         state = get_smoke_state(connection)

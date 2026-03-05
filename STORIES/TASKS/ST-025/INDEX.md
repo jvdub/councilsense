@@ -5,7 +5,7 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-025-01](TASK-ST-025-01-deterministic-multi-document-compose-assembly.md) — Deterministic Multi-Document Compose Assembly
+- [x] [TASK-ST-025-01](TASK-ST-025-01-deterministic-multi-document-compose-assembly.md) — Deterministic Multi-Document Compose Assembly
 - [ ] [TASK-ST-025-02](TASK-ST-025-02-authority-aware-outcomes-decision-policy.md) — Authority-Aware Outcomes Decision Policy
 - [ ] [TASK-ST-025-03](TASK-ST-025-03-limited-confidence-reason-codes-and-publish-wiring.md) — Limited-Confidence Reason Codes and Publish Wiring
 - [ ] [TASK-ST-025-04](TASK-ST-025-04-source-conflict-and-partial-coverage-fixtures.md) — Source Conflict and Partial-Coverage Fixtures

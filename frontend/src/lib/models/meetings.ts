@@ -32,6 +32,75 @@ export type MeetingClaim = {
   evidence: MeetingEvidencePointer[];
 };
 
+export type MeetingEvidenceReferenceV2 = {
+  evidence_id: string;
+  document_id: string;
+  document_kind: "minutes" | "agenda" | "packet";
+  artifact_id: string;
+  section_path: string;
+  page_start: number | null;
+  page_end: number | null;
+  char_start: number | null;
+  char_end: number | null;
+  precision: "offset" | "span" | "section" | "file";
+  confidence: "high" | "medium" | "low";
+  excerpt: string;
+};
+
+export type MeetingPlannedItem = {
+  planned_id: string;
+  title: string;
+  category: string;
+  status: string;
+  confidence: "high" | "medium" | "low";
+  evidence_references_v2: MeetingEvidenceReferenceV2[];
+};
+
+export type MeetingPlannedBlock = {
+  generated_at: string;
+  source_coverage: {
+    minutes: "present" | "missing";
+    agenda: "present" | "missing";
+    packet: "present" | "missing";
+  };
+  items: MeetingPlannedItem[];
+};
+
+export type MeetingOutcomeItem = {
+  outcome_id: string;
+  title: string;
+  result: string;
+  confidence: "high" | "medium" | "low";
+  evidence_references_v2: MeetingEvidenceReferenceV2[];
+};
+
+export type MeetingOutcomesBlock = {
+  generated_at: string;
+  authority_source: "minutes";
+  items: MeetingOutcomeItem[];
+};
+
+export type MeetingPlannedOutcomeMismatchItem = {
+  mismatch_id: string;
+  planned_id: string;
+  outcome_id: string | null;
+  severity: "high" | "medium" | "low";
+  mismatch_type: string;
+  description: string;
+  reason_codes: string[];
+  evidence_references_v2: MeetingEvidenceReferenceV2[];
+};
+
+export type MeetingPlannedOutcomeMismatchesBlock = {
+  summary: {
+    total: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  items: MeetingPlannedOutcomeMismatchItem[];
+};
+
 export type MeetingDetailResponse = {
   id: string;
   city_id: string;
@@ -49,6 +118,9 @@ export type MeetingDetailResponse = {
   key_actions: string[];
   notable_topics: string[];
   claims: MeetingClaim[];
+  planned?: MeetingPlannedBlock;
+  outcomes?: MeetingOutcomesBlock;
+  planned_outcome_mismatches?: MeetingPlannedOutcomeMismatchesBlock;
 };
 
 export type MeetingListFilters = {

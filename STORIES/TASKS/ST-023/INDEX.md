@@ -5,10 +5,10 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-023-01](TASK-ST-023-01-meeting-bundle-planner-rules-and-candidate-resolution.md) — Meeting Bundle Planner Rules and Candidate Resolution
-- [ ] [TASK-ST-023-02](TASK-ST-023-02-source-scoped-idempotency-and-checksum-dedupe.md) — Source-Scoped Idempotency and Checksum Dedupe
-- [ ] [TASK-ST-023-03](TASK-ST-023-03-bundle-state-tracking-and-source-outcome-wiring.md) — Bundle State Tracking and Source Outcome Wiring
-- [ ] [TASK-ST-023-04](TASK-ST-023-04-deterministic-rerun-and-duplicate-prevention-tests.md) — Deterministic Rerun and Duplicate Prevention Tests
+- [x] [TASK-ST-023-01](TASK-ST-023-01-meeting-bundle-planner-rules-and-candidate-resolution.md) — Meeting Bundle Planner Rules and Candidate Resolution
+- [x] [TASK-ST-023-02](TASK-ST-023-02-source-scoped-idempotency-and-checksum-dedupe.md) — Source-Scoped Idempotency and Checksum Dedupe
+- [x] [TASK-ST-023-03](TASK-ST-023-03-bundle-state-tracking-and-source-outcome-wiring.md) — Bundle State Tracking and Source Outcome Wiring
+- [x] [TASK-ST-023-04](TASK-ST-023-04-deterministic-rerun-and-duplicate-prevention-tests.md) — Deterministic Rerun and Duplicate Prevention Tests
 - [ ] [TASK-ST-023-05](TASK-ST-023-05-pilot-city-minutes-plus-supplemental-smoke-fixture.md) — Pilot-City Minutes Plus Supplemental Smoke Fixture
 
 ## Dependency Chain

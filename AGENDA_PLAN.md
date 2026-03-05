@@ -245,8 +245,10 @@ This plan prioritizes:
 
 ## Open questions
 
-1. Should packet table extraction be modeled at row-level in MVP or deferred to hardening?
-2. What exact threshold defines high-severity mismatch notifications?
-3. Should mismatch comparison be limited to decisions/actions initially or include full claim graph?
-4. What pilot backfill window is required (for example, last 12 vs 24 months)?
-5. Which source-specific latency/error budgets are acceptable before automatic rollback triggers?
+| ID          | Question                                                                                          | Owner                               | Due Date   | Status | Blocker Status | Rollout Control Link                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------- | ------ | -------------- | --------------------------------------------------------------------------------- |
+| ST022-OQ-01 | Should packet table extraction be modeled at row-level in MVP or deferred to hardening?           | Backend Lead (Pipeline)             | 2026-03-11 | Open   | non-blocking   | Keep `st022_gate_mode=report_only` until decision ratified                        |
+| ST022-OQ-02 | What exact threshold defines high-severity mismatch notifications?                                | Product Owner + Notifications Owner | 2026-03-12 | Open   | non-blocking   | `st022_notifications_mismatch_enabled` remains off in staging/prod until approved |
+| ST022-OQ-03 | Should mismatch comparison be limited to decisions/actions initially or include full claim graph? | Product Owner + Backend Lead        | 2026-03-13 | Open   | non-blocking   | Restrict `st022_ui_mismatch_signals_enabled` rollout to internal/pilot scope      |
+| ST022-OQ-04 | What pilot backfill window is required (for example, last 12 vs 24 months)?                       | Data Platform Owner                 | 2026-03-14 | Open   | non-blocking   | Gate broad cohort expansion tied to `st022_schema_additive_writes_enabled`        |
+| ST022-OQ-05 | Which source-specific latency/error budgets are acceptable before automatic rollback triggers?    | SRE / Release Owner                 | 2026-03-15 | Open   | non-blocking   | Promotion/rollback thresholds bound to `st022_gate_mode` controls                 |

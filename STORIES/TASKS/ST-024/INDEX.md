@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-024-01](TASK-ST-024-01-canonical-document-schema-and-authority-metadata.md) — Canonical Document Schema and Authority Metadata
-- [ ] [TASK-ST-024-02](TASK-ST-024-02-artifact-lineage-and-checksum-persistence.md) — Artifact Lineage and Checksum Persistence
-- [ ] [TASK-ST-024-03](TASK-ST-024-03-span-persistence-and-stable-section-locators.md) — Span Persistence and Stable Section Locators
-- [ ] [TASK-ST-024-04](TASK-ST-024-04-pipeline-write-path-and-pilot-backfill-hooks.md) — Pipeline Write Path and Pilot Backfill Hooks
-- [ ] [TASK-ST-024-05](TASK-ST-024-05-referential-integrity-integration-tests-and-lineage-validation.md) — Referential Integrity Integration Tests and Lineage Validation
+- [x] [TASK-ST-024-01](TASK-ST-024-01-canonical-document-schema-and-authority-metadata.md) — Canonical Document Schema and Authority Metadata
+- [x] [TASK-ST-024-02](TASK-ST-024-02-artifact-lineage-and-checksum-persistence.md) — Artifact Lineage and Checksum Persistence
+- [x] [TASK-ST-024-03](TASK-ST-024-03-span-persistence-and-stable-section-locators.md) — Span Persistence and Stable Section Locators
+- [x] [TASK-ST-024-04](TASK-ST-024-04-pipeline-write-path-and-pilot-backfill-hooks.md) — Pipeline Write Path and Pilot Backfill Hooks
+- [x] [TASK-ST-024-05](TASK-ST-024-05-referential-integrity-integration-tests-and-lineage-validation.md) — Referential Integrity Integration Tests and Lineage Validation
 
 ## Dependency Chain
 

@@ -6,6 +6,19 @@ from councilsense.db.city_registry import (
     EnabledCityConfig,
 	SourceHealthRepository,
 )
+from councilsense.db.canonical_documents import (
+	AuthorityLevel,
+	CanonicalDocumentRecord,
+	CanonicalDocumentRepository,
+	CanonicalDocumentSpanRecord,
+	DocumentKind,
+	ExtractionStatus,
+)
+from councilsense.db.canonical_document_artifacts import (
+	ArtifactKind,
+	CanonicalDocumentArtifactRecord,
+	CanonicalDocumentArtifactRepository,
+)
 from councilsense.db.confidence_calibration import (
 	ConfidenceCalibrationPolicyRecord,
 	ConfidenceCalibrationPolicyRepository,
@@ -82,6 +95,15 @@ __all__ = [
 	"ConfiguredCitySelectionService",
 	"EnabledCityConfig",
 	"SourceHealthRepository",
+	"AuthorityLevel",
+	"ArtifactKind",
+	"CanonicalDocumentArtifactRecord",
+	"CanonicalDocumentArtifactRepository",
+	"CanonicalDocumentRecord",
+	"CanonicalDocumentRepository",
+	"CanonicalDocumentSpanRecord",
+	"DocumentKind",
+	"ExtractionStatus",
 	"ClaimEvidencePointerRecord",
 	"ConfidenceLabel",
 	"InvalidMeetingCityError",

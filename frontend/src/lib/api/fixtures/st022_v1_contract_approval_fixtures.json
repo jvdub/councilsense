@@ -1,0 +1,206 @@
+{
+  "schema_version": "st022-v1-contract-approval-fixtures-v1",
+  "contract_version": "st-022-meeting-detail-v1",
+  "approval": {
+    "status": "approved",
+    "approved_at": "2026-03-04",
+    "reviewers": [
+      {
+        "role": "backend_owner",
+        "name": "Backend Owner",
+        "status": "approved"
+      },
+      {
+        "role": "frontend_owner",
+        "name": "Frontend Owner",
+        "status": "approved"
+      },
+      {
+        "role": "product_platform_owner",
+        "name": "Product Platform Owner",
+        "status": "approved"
+      }
+    ]
+  },
+  "fixtures": [
+    {
+      "fixture_id": "st022-nominal-multi-source",
+      "publication_status": "processed",
+      "scenario": "nominal",
+      "planned": {
+        "generated_at": "2026-03-04T09:30:00Z",
+        "source_coverage": {
+          "minutes": "present",
+          "agenda": "present",
+          "packet": "present"
+        },
+        "items": [
+          {
+            "planned_id": "planned-001",
+            "title": "Public hearing on downtown parking amendments",
+            "category": "hearing",
+            "status": "planned",
+            "confidence": "high",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev2-plan-001",
+                "document_id": "doc-agenda-001",
+                "document_kind": "agenda",
+                "artifact_id": "artifact-agenda-001",
+                "section_path": "agenda.items.4",
+                "page_start": 2,
+                "page_end": 2,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "high",
+                "excerpt": "Item 4: Public hearing on downtown parking amendments."
+              }
+            ]
+          }
+        ]
+      },
+      "outcomes": {
+        "generated_at": "2026-03-04T09:35:00Z",
+        "authority_source": "minutes",
+        "items": [
+          {
+            "outcome_id": "outcome-001",
+            "title": "Downtown parking amendments approved with changes",
+            "result": "approved_with_amendments",
+            "confidence": "high",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev2-outcome-001",
+                "document_id": "doc-minutes-001",
+                "document_kind": "minutes",
+                "artifact_id": "artifact-minutes-001",
+                "section_path": "minutes.section.7.vote",
+                "page_start": 6,
+                "page_end": 6,
+                "char_start": 422,
+                "char_end": 548,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council voted 5-2 to approve with commercial-zone amendments."
+              }
+            ]
+          }
+        ]
+      },
+      "planned_outcome_mismatches": {
+        "summary": {
+          "total": 1,
+          "high": 0,
+          "medium": 1,
+          "low": 0
+        },
+        "items": [
+          {
+            "mismatch_id": "mismatch-001",
+            "planned_id": "planned-001",
+            "outcome_id": "outcome-001",
+            "severity": "medium",
+            "mismatch_type": "scope_change",
+            "description": "Outcome narrowed hearing scope to commercial zones only.",
+            "reason_codes": ["textual_delta"],
+            "evidence_references_v2": []
+          }
+        ]
+      }
+    },
+    {
+      "fixture_id": "st022-partial-source",
+      "publication_status": "processed",
+      "scenario": "partial_source",
+      "planned": {
+        "generated_at": "2026-03-04T10:10:00Z",
+        "source_coverage": {
+          "minutes": "present",
+          "agenda": "present",
+          "packet": "missing"
+        },
+        "items": [
+          {
+            "planned_id": "planned-010",
+            "title": "Transit shelter maintenance contract",
+            "category": "procurement",
+            "status": "planned",
+            "confidence": "medium",
+            "evidence_references_v2": []
+          }
+        ]
+      },
+      "outcomes": {
+        "generated_at": "2026-03-04T10:15:00Z",
+        "authority_source": "minutes",
+        "items": [
+          {
+            "outcome_id": "outcome-010",
+            "title": "Transit shelter maintenance contract deferred",
+            "result": "deferred",
+            "confidence": "high",
+            "evidence_references_v2": []
+          }
+        ]
+      },
+      "planned_outcome_mismatches": {
+        "summary": {
+          "total": 1,
+          "high": 1,
+          "medium": 0,
+          "low": 0
+        },
+        "items": [
+          {
+            "mismatch_id": "mismatch-010",
+            "planned_id": "planned-010",
+            "outcome_id": "outcome-010",
+            "severity": "high",
+            "mismatch_type": "disposition_change",
+            "description": "Agenda planned approval but recorded outcome is deferment.",
+            "reason_codes": ["outcome_changed"],
+            "evidence_references_v2": []
+          }
+        ]
+      }
+    },
+    {
+      "fixture_id": "st022-limited-confidence",
+      "publication_status": "limited_confidence",
+      "scenario": "limited_confidence",
+      "planned": {
+        "generated_at": "2026-03-04T11:00:00Z",
+        "source_coverage": {
+          "minutes": "missing",
+          "agenda": "present",
+          "packet": "present"
+        },
+        "items": [
+          {
+            "planned_id": "planned-020",
+            "title": "Water rate adjustment resolution",
+            "category": "ordinance",
+            "status": "planned",
+            "confidence": "medium",
+            "evidence_references_v2": []
+          }
+        ]
+      },
+      "outcomes": {
+        "generated_at": "2026-03-04T11:05:00Z",
+        "authority_source": "minutes",
+        "items": []
+      },
+      "planned_outcome_mismatches": {
+        "summary": {
+          "total": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "items": []
+      }
+    }
+  ]
+}
