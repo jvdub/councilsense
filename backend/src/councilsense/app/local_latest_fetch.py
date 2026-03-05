@@ -1,0 +1,548 @@
+from __future__ import annotations
+
+import json
+import hashlib
+import os
+import re
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from html import unescape
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Callable
+from urllib.parse import urljoin, urlparse
+from urllib.request import Request, urlopen
+
+from councilsense.db import CityRegistryRepository, MeetingWriteRepository, PILOT_CITY_ID
+
+
+_DEFAULT_TIMEOUT_SECONDS = 12.0
+_DEFAULT_ARTIFACT_ROOT = "/tmp/councilsense-local-latest-artifacts"
+
+
+class LatestFetchError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class LatestCandidate:
+    title: str
+    candidate_url: str
+    meeting_date_iso: str | None
+    score: int
+
+
+@dataclass(frozen=True)
+class LatestFetchResult:
+    city_id: str
+    source_id: str
+    source_url: str
+    meeting_id: str
+    meeting_uid: str
+    fingerprint: str
+    artifact_path: str
+    candidate_url: str
+    candidate_title: str
+    candidate_meeting_date: str | None
+    stage_outcomes: tuple[dict[str, object], ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _Anchor:
+    href: str
+    text: str
+
+
+class _AnchorCollector(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.anchors: list[_Anchor] = []
+        self._current_href: str | None = None
+        self._current_text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a":
+            return
+        href = ""
+        for name, value in attrs:
+            if name.lower() == "href" and value is not None:
+                href = value.strip()
+                break
+        if not href:
+            return
+        self._current_href = href
+        self._current_text_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_href is None:
+            return
+        if data.strip():
+            self._current_text_parts.append(data.strip())
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() != "a" or self._current_href is None:
+            return
+        text = " ".join(self._current_text_parts).strip()
+        if text:
+            self.anchors.append(_Anchor(href=self._current_href, text=text))
+        self._current_href = None
+        self._current_text_parts = []
+
+
+def fetch_latest_meeting(
+    connection: sqlite3.Connection,
+    *,
+    city_id: str = PILOT_CITY_ID,
+    source_id: str | None = None,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+    artifact_root: str | None = None,
+    fetch_url: Callable[[str, float], bytes] | None = None,
+) -> LatestFetchResult:
+    registry = CityRegistryRepository(connection)
+    selected_source_id, source_url = _resolve_source(
+        connection=connection,
+        registry=registry,
+        city_id=city_id,
+        source_id=source_id,
+    )
+
+    timeout = max(timeout_seconds, 1.0)
+    fetcher = fetch_url or _fetch_url_bytes
+    download_warning: str | None = None
+    artifact_suffix = ".html"
+    if _is_civicclerk_portal_url(source_url):
+        candidate, artifact_bytes, artifact_suffix, download_warning = _fetch_latest_candidate_from_civicclerk(
+            source_url=source_url,
+            timeout_seconds=timeout,
+            fetch_url=fetcher,
+        )
+    else:
+        artifact_bytes = fetcher(source_url, timeout)
+        html_text = artifact_bytes.decode("utf-8", errors="replace")
+        candidate = extract_latest_candidate(
+            html=html_text,
+            source_url=source_url,
+        )
+    fingerprint = _build_fingerprint(
+        city_id=city_id,
+        source_id=selected_source_id,
+        candidate=candidate,
+    )
+    meeting_uid = f"latest-{fingerprint[:24]}"
+    meeting_id = f"meeting-{fingerprint[:16]}"
+    artifact_path = _persist_artifact(
+        city_id=city_id,
+        source_id=selected_source_id,
+        artifact_root=(artifact_root or os.getenv("COUNCILSENSE_LOCAL_ARTIFACT_ROOT") or _DEFAULT_ARTIFACT_ROOT),
+        fingerprint=fingerprint,
+        artifact_bytes=artifact_bytes,
+        artifact_suffix=artifact_suffix,
+    )
+
+    meeting = MeetingWriteRepository(connection).upsert_meeting(
+        meeting_id=meeting_id,
+        meeting_uid=meeting_uid,
+        city_id=city_id,
+        title=candidate.title,
+    )
+
+    stage_outcome = {
+        "stage": "ingest",
+        "status": "processed",
+        "metadata": {
+            "source_id": selected_source_id,
+            "source_url": source_url,
+            "artifact_path": artifact_path,
+            "candidate_url": candidate.candidate_url,
+            "meeting_date": candidate.meeting_date_iso,
+            "fingerprint": fingerprint,
+        },
+    }
+
+    warnings: tuple[str, ...] = ()
+    warning_items: list[str] = []
+    if candidate.meeting_date_iso is None:
+        warning_items.append("candidate_meeting_date_not_detected")
+    if download_warning is not None:
+        warning_items.append(download_warning)
+    warnings = tuple(warning_items)
+
+    return LatestFetchResult(
+        city_id=city_id,
+        source_id=selected_source_id,
+        source_url=source_url,
+        meeting_id=meeting.id,
+        meeting_uid=meeting_uid,
+        fingerprint=fingerprint,
+        artifact_path=artifact_path,
+        candidate_url=candidate.candidate_url,
+        candidate_title=candidate.title,
+        candidate_meeting_date=candidate.meeting_date_iso,
+        stage_outcomes=(stage_outcome,),
+        warnings=warnings,
+    )
+
+
+def extract_latest_candidate(*, html: str, source_url: str) -> LatestCandidate:
+    collector = _AnchorCollector()
+    collector.feed(html)
+
+    candidates: list[tuple[date, int, str, LatestCandidate]] = []
+    for anchor in collector.anchors:
+        normalized_url = urljoin(source_url, anchor.href)
+        score = _score_candidate(anchor.text, normalized_url)
+        if score <= 0:
+            continue
+
+        parsed_date = _parse_date_from_text(f"{anchor.text} {normalized_url}")
+        normalized_date = parsed_date or date(1970, 1, 1)
+        title = _normalize_space(unescape(anchor.text))
+        candidate = LatestCandidate(
+            title=title,
+            candidate_url=normalized_url,
+            meeting_date_iso=parsed_date.isoformat() if parsed_date is not None else None,
+            score=score,
+        )
+        candidates.append((normalized_date, score, normalized_url, candidate))
+
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+        return candidates[0][3]
+
+    fallback_title = _extract_title_tag(html) or "Latest meeting source"
+    return LatestCandidate(
+        title=_normalize_space(fallback_title),
+        candidate_url=source_url,
+        meeting_date_iso=None,
+        score=0,
+    )
+
+
+def _resolve_source(
+    *,
+    connection: sqlite3.Connection,
+    registry: CityRegistryRepository,
+    city_id: str,
+    source_id: str | None,
+) -> tuple[str, str]:
+    sources = registry.list_enabled_sources_for_city(city_id)
+    if not sources:
+        raise LatestFetchError(f"No enabled sources configured for city_id={city_id}")
+
+    if source_id is not None:
+        for source in sources:
+            if source.id == source_id:
+                return (source.id, source.source_url)
+        raise LatestFetchError(f"Configured source not found for city_id={city_id}: source_id={source_id}")
+
+    minutes_source = next((source for source in sources if source.source_type == "minutes"), None)
+    selected = minutes_source or sources[0]
+
+    existing_city = connection.execute(
+        "SELECT 1 FROM cities WHERE id = ? AND enabled = 1",
+        (city_id,),
+    ).fetchone()
+    if existing_city is None:
+        raise LatestFetchError(f"Enabled city not found: city_id={city_id}")
+
+    return (selected.id, selected.source_url)
+
+
+def _fetch_url_bytes(url: str, timeout_seconds: float) -> bytes:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "councilsense-local-runtime/1.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    )
+    with urlopen(request, timeout=timeout_seconds) as response:
+        return response.read()
+
+
+def _is_civicclerk_portal_url(source_url: str) -> bool:
+    parsed = urlparse(source_url)
+    return parsed.netloc.endswith("portal.civicclerk.com")
+
+
+def _fetch_latest_candidate_from_civicclerk(
+    *, source_url: str, timeout_seconds: float, fetch_url: Callable[[str, float], bytes] | None = None
+) -> tuple[LatestCandidate, bytes, str, str | None]:
+    parsed = urlparse(source_url)
+    tenant = parsed.netloc.split(".")[0]
+    if not tenant:
+        raise LatestFetchError(f"Unable to resolve CivicClerk tenant from source URL: {source_url}")
+
+    api_base_url = f"https://{tenant}.api.civicclerk.com/v1"
+    events_url = f"{api_base_url}/events"
+    fetcher = fetch_url or _fetch_url_bytes
+    raw = fetcher(events_url, timeout_seconds)
+
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise LatestFetchError("Unable to parse CivicClerk events JSON payload") from exc
+
+    items = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or not items:
+        raise LatestFetchError("CivicClerk events payload did not include any events")
+
+    council_events = [item for item in items if _is_city_council_event(item)]
+    if not council_events:
+        raise LatestFetchError("No City Council events were found in CivicClerk events payload")
+
+    council_events.sort(key=_event_sort_key, reverse=True)
+
+    selected_event = council_events[0]
+    selected_file = _select_published_file(event=selected_event, preferred_type="minutes")
+    if selected_file is None:
+        selected_file = _select_published_file(event=selected_event, preferred_type="agenda")
+
+    if selected_file is None:
+        raise LatestFetchError("No published minutes or agenda file was found for the latest City Council events")
+
+    event_date_iso = _parse_event_date_iso(selected_event)
+    event_name = str(selected_event.get("eventName") or "City Council Meeting")
+    file_type = str(selected_file.get("type") or "Agenda")
+    file_name = str(selected_file.get("name") or "Published Document")
+    file_url_raw = str(selected_file.get("url") or "").strip()
+    file_id_value = selected_file.get("fileId")
+    file_id: int | None = None
+    try:
+        if file_id_value is not None:
+            file_id = int(file_id_value)
+    except (TypeError, ValueError):
+        file_id = None
+
+    if file_id is not None:
+        candidate_url = _resolve_civicclerk_blob_uri(
+            api_base_url=api_base_url,
+            file_id=file_id,
+            plain_text=False,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+    elif file_url_raw:
+        if file_url_raw.startswith("http://") or file_url_raw.startswith("https://"):
+            candidate_url = file_url_raw
+        else:
+            candidate_url = f"{api_base_url}/{file_url_raw.lstrip('/')}"
+    else:
+        raise LatestFetchError("Selected CivicClerk event file did not include a fileId or URL")
+
+    candidate_title = _normalize_space(f"{event_name} {event_date_iso or 'unknown-date'} {file_type} {file_name}")
+    candidate = LatestCandidate(
+        title=candidate_title,
+        candidate_url=candidate_url,
+        meeting_date_iso=event_date_iso,
+        score=10,
+    )
+
+    artifact_payload = {
+        "source": "civicclerk_events",
+        "events_url": events_url,
+        "selected_event_id": selected_event.get("id"),
+        "selected_event_name": event_name,
+        "selected_event_date": event_date_iso,
+        "selected_file": selected_file,
+    }
+    metadata_bytes = json.dumps(artifact_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    if file_id is not None:
+        try:
+            plain_text_url = _resolve_civicclerk_blob_uri(
+                api_base_url=api_base_url,
+                file_id=file_id,
+                plain_text=True,
+                timeout_seconds=timeout_seconds,
+                fetcher=fetcher,
+            )
+            plain_text_bytes = fetcher(plain_text_url, timeout_seconds)
+            if plain_text_bytes.strip():
+                return candidate, plain_text_bytes, ".txt", None
+        except Exception:
+            pass
+
+    try:
+        document_bytes = fetcher(candidate_url, timeout_seconds)
+        suffix = _infer_artifact_suffix(candidate_url=candidate_url, content_bytes=document_bytes)
+        return candidate, document_bytes, suffix, None
+    except Exception:
+        return candidate, metadata_bytes, ".json", "candidate_document_download_failed"
+
+
+def _is_city_council_event(event: object) -> bool:
+    if not isinstance(event, dict):
+        return False
+    event_name = str(event.get("eventName") or "").lower()
+    return "city council" in event_name
+
+
+def _event_sort_key(event: dict[str, object]) -> tuple[str, int]:
+    date_value = str(event.get("eventDate") or event.get("startDateTime") or "")
+    event_id = int(event.get("id") or 0)
+    return (date_value, event_id)
+
+
+def _select_published_file(*, event: dict[str, object], preferred_type: str) -> dict[str, object] | None:
+    published_files = event.get("publishedFiles")
+    if not isinstance(published_files, list):
+        return None
+
+    preferred = preferred_type.lower()
+    for item in published_files:
+        if not isinstance(item, dict):
+            continue
+        file_type = str(item.get("type") or "").lower()
+        if file_type == preferred:
+            return item
+
+    for item in published_files:
+        if not isinstance(item, dict):
+            continue
+        file_type = str(item.get("type") or "").lower()
+        if file_type in {"minutes", "agenda"}:
+            return item
+    return None
+
+
+def _parse_event_date_iso(event: dict[str, object]) -> str | None:
+    raw = str(event.get("eventDate") or event.get("startDateTime") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.date().isoformat()
+    except ValueError:
+        return None
+
+
+def _persist_artifact(
+    *,
+    city_id: str,
+    source_id: str,
+    artifact_root: str,
+    fingerprint: str,
+    artifact_bytes: bytes,
+    artifact_suffix: str,
+) -> str:
+    artifact_dir = Path(artifact_root) / city_id / source_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    normalized_suffix = artifact_suffix if artifact_suffix.startswith(".") else f".{artifact_suffix}"
+    artifact_path = artifact_dir / f"{fingerprint}{normalized_suffix}"
+    artifact_path.write_bytes(artifact_bytes)
+    return str(artifact_path)
+
+
+def _infer_artifact_suffix(*, candidate_url: str, content_bytes: bytes) -> str:
+    parsed = urlparse(candidate_url)
+    ext = Path(parsed.path).suffix.lower()
+    if ext in {".pdf", ".txt", ".html", ".htm", ".json"}:
+        return ext
+    if content_bytes.startswith(b"%PDF"):
+        return ".pdf"
+    if content_bytes.lstrip().startswith((b"{", b"[")):
+        return ".json"
+    return ".bin"
+
+
+def _resolve_civicclerk_blob_uri(
+    *,
+    api_base_url: str,
+    file_id: int,
+    plain_text: bool,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> str:
+    endpoint = (
+        f"{api_base_url}/Meetings/GetMeetingFile"
+        f"(fileId={file_id},plainText={'true' if plain_text else 'false'})"
+    )
+    raw = fetcher(endpoint, timeout_seconds)
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise LatestFetchError("CivicClerk GetMeetingFile response was not valid JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise LatestFetchError("CivicClerk GetMeetingFile response was not an object")
+    blob_uri = str(payload.get("blobUri") or "").strip()
+    if not blob_uri:
+        raise LatestFetchError("CivicClerk GetMeetingFile response did not include blobUri")
+    return blob_uri
+
+
+def _build_fingerprint(*, city_id: str, source_id: str, candidate: LatestCandidate) -> str:
+    digest_input = "|".join(
+        (
+            city_id.strip(),
+            source_id.strip(),
+            candidate.candidate_url.strip().lower(),
+            (candidate.meeting_date_iso or "unknown-date"),
+            _normalize_space(candidate.title).lower(),
+        )
+    )
+    return hashlib.sha256(digest_input.encode("utf-8")).hexdigest()
+
+
+def _score_candidate(text: str, url: str) -> int:
+    haystack = f"{text} {url}".lower()
+    score = 0
+    if "minute" in haystack or "agenda" in haystack:
+        score += 3
+    if "council" in haystack or "meeting" in haystack:
+        score += 2
+    if any(token in haystack for token in ("/agenda", "/minutes", "agenda-center", ".pdf", ".doc")):
+        score += 2
+    if _parse_date_from_text(haystack) is not None:
+        score += 4
+    return score
+
+
+def _extract_title_tag(html: str) -> str | None:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    if match is None:
+        return None
+    return _normalize_space(unescape(match.group(1)))
+
+
+def _parse_date_from_text(value: str) -> date | None:
+    mmddyyyy_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b", value)
+    if mmddyyyy_match is not None:
+        try:
+            month, day, year = (int(mmddyyyy_match.group(1)), int(mmddyyyy_match.group(2)), int(mmddyyyy_match.group(3)))
+            return date(year, month, day)
+        except ValueError:
+            pass
+
+    yyyymmdd_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", value)
+    if yyyymmdd_match is not None:
+        try:
+            year, month, day = (
+                int(yyyymmdd_match.group(1)),
+                int(yyyymmdd_match.group(2)),
+                int(yyyymmdd_match.group(3)),
+            )
+            return date(year, month, day)
+        except ValueError:
+            pass
+
+    month_name_match = re.search(
+        r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})\b",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if month_name_match is not None:
+        try:
+            parsed = datetime.strptime(month_name_match.group(0), "%B %d, %Y").replace(tzinfo=UTC)
+            return parsed.date()
+        except ValueError:
+            return None
+
+    return None
+
+
+def _normalize_space(value: str) -> str:
+    return " ".join(value.split())

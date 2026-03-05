@@ -1,0 +1,98 @@
+{
+  "schema_version": "st-018-evidence-references-contract-fixtures-v1",
+  "fixtures": [
+    {
+      "fixture_id": "st018-evidence-present",
+      "evidence_mode": "present",
+      "meeting": {
+        "id": "meeting-st018-present",
+        "uid": "uid-st018-present",
+        "title": "ST-018 Evidence Present Meeting",
+        "created_at": "2026-03-03 09:00:00"
+      },
+      "publication": {
+        "id": "pub-st018-present",
+        "status": "processed",
+        "confidence_label": "high",
+        "summary": "Council approved a stormwater utility adjustment.",
+        "key_decisions": ["Approved stormwater utility adjustment"],
+        "key_actions": ["Staff to publish ordinance redline"],
+        "notable_topics": ["Stormwater", "Budget"],
+        "published_at": "2026-03-03 10:00:00"
+      },
+      "claims": [
+        {
+          "id": "claim-st018-present-1",
+          "claim_order": 1,
+          "claim_text": "Council approved a stormwater utility adjustment.",
+          "evidence": [
+            {
+              "id": "ptr-st018-present-1",
+              "artifact_id": "artifact-st018-minutes",
+              "section_ref": "minutes.section.5",
+              "char_start": 210,
+              "char_end": 280,
+              "excerpt": "Council voted 5-2 to approve the stormwater utility adjustment."
+            },
+            {
+              "id": "ptr-st018-present-2",
+              "artifact_id": "artifact-st018-minutes",
+              "section_ref": "minutes.section.5",
+              "char_start": 210,
+              "char_end": 280,
+              "excerpt": "Council voted 5-2 to approve the stormwater utility adjustment."
+            }
+          ]
+        },
+        {
+          "id": "claim-st018-present-2",
+          "claim_order": 2,
+          "claim_text": "Staff will publish an ordinance redline by Friday.",
+          "evidence": [
+            {
+              "id": "ptr-st018-present-3",
+              "artifact_id": "artifact-st018-action",
+              "section_ref": "minutes.section.7",
+              "char_start": 410,
+              "char_end": 470,
+              "excerpt": "Public works staff committed to publish the ordinance redline by Friday."
+            }
+          ]
+        }
+      ],
+      "expected_evidence_references": [
+        "Council voted 5-2 to approve the stormwater utility adjustment. | artifact-st018-minutes#minutes.section.5:210-280",
+        "Public works staff committed to publish the ordinance redline by Friday. | artifact-st018-action#minutes.section.7:410-470"
+      ]
+    },
+    {
+      "fixture_id": "st018-evidence-sparse",
+      "evidence_mode": "sparse",
+      "meeting": {
+        "id": "meeting-st018-sparse",
+        "uid": "uid-st018-sparse",
+        "title": "ST-018 Evidence Sparse Meeting",
+        "created_at": "2026-03-03 11:00:00"
+      },
+      "publication": {
+        "id": "pub-st018-sparse",
+        "status": "limited_confidence",
+        "confidence_label": "limited_confidence",
+        "summary": "Summary published with limited confidence due to sparse citations.",
+        "key_decisions": [],
+        "key_actions": [],
+        "notable_topics": ["Follow-up"],
+        "published_at": "2026-03-03 12:00:00"
+      },
+      "claims": [
+        {
+          "id": "claim-st018-sparse-1",
+          "claim_order": 1,
+          "claim_text": "Potential grant timeline was discussed.",
+          "evidence": []
+        }
+      ],
+      "expected_evidence_references": []
+    }
+  ]
+}

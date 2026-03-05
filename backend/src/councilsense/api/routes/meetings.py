@@ -43,6 +43,7 @@ class CityMeetingsListResponse(BaseModel):
 class MeetingEvidencePointerResponse(BaseModel):
     id: str
     artifact_id: str
+    source_document_url: str | None
     section_ref: str | None
     char_start: int | None
     char_end: int | None
@@ -72,7 +73,89 @@ class MeetingDetailResponse(BaseModel):
     key_decisions: list[str]
     key_actions: list[str]
     notable_topics: list[str]
+    evidence_references: list[str]
     claims: list[MeetingClaimResponse]
+
+
+def _serialize_evidence_reference(evidence: MeetingEvidencePointerResponse) -> str:
+    section = evidence.section_ref if evidence.section_ref is not None else "no-section"
+    char_start = str(evidence.char_start) if evidence.char_start is not None else "?"
+    char_end = str(evidence.char_end) if evidence.char_end is not None else "?"
+    return f"{evidence.excerpt} | {evidence.artifact_id}#{section}:{char_start}-{char_end}"
+
+
+def _normalize_reference_text(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
+def _is_file_level_section(section_ref: str | None) -> bool:
+    return (section_ref or "").strip().lower() in {"", "artifact.html", "artifact.pdf", "meeting.metadata"}
+
+
+def _precision_rank(evidence: MeetingEvidencePointerResponse) -> int:
+    has_offsets = evidence.char_start is not None and evidence.char_end is not None
+    if has_offsets:
+        return 0
+    if not _is_file_level_section(evidence.section_ref):
+        return 1
+    return 2
+
+
+def _equivalence_key(evidence: MeetingEvidencePointerResponse) -> tuple[str, str]:
+    return (evidence.artifact_id, _normalize_reference_text(evidence.excerpt))
+
+
+def _prefer_evidence_pointer(
+    *,
+    current: MeetingEvidencePointerResponse,
+    challenger: MeetingEvidencePointerResponse,
+) -> MeetingEvidencePointerResponse:
+    current_rank = _precision_rank(current)
+    challenger_rank = _precision_rank(challenger)
+    if challenger_rank < current_rank:
+        return challenger
+    if challenger_rank > current_rank:
+        return current
+
+    current_span = (
+        current.char_start if current.char_start is not None else 10**9,
+        current.char_end if current.char_end is not None else 10**9,
+    )
+    challenger_span = (
+        challenger.char_start if challenger.char_start is not None else 10**9,
+        challenger.char_end if challenger.char_end is not None else 10**9,
+    )
+    if challenger_span < current_span:
+        return challenger
+    return current
+
+
+def _build_evidence_references(claims: list[MeetingClaimResponse]) -> list[str]:
+    deduped_references: dict[tuple[str, str], tuple[MeetingEvidencePointerResponse, int]] = {}
+    for claim_index, claim in enumerate(claims):
+        for evidence_index, evidence in enumerate(claim.evidence):
+            key = _equivalence_key(evidence)
+            seen = deduped_references.get(key)
+            sequence = claim_index * 1000 + evidence_index
+            if seen is None:
+                deduped_references[key] = (evidence, sequence)
+                continue
+
+            selected = _prefer_evidence_pointer(current=seen[0], challenger=evidence)
+            deduped_references[key] = (selected, seen[1])
+
+    ordered = sorted(
+        deduped_references.values(),
+        key=lambda item: (
+            _precision_rank(item[0]),
+            item[1],
+            item[0].artifact_id,
+            item[0].section_ref or "",
+            item[0].char_start if item[0].char_start is not None else 10**9,
+            _normalize_reference_text(item[0].excerpt),
+        ),
+    )
+    return [_serialize_evidence_reference(evidence) for evidence, _ in ordered]
 
 
 def get_profile_service(request: Request) -> UserProfileService:
@@ -174,6 +257,27 @@ def get_meeting_detail(
     if detail is None:
         return _meeting_not_found_response(meeting_id)
 
+    claims = [
+        MeetingClaimResponse(
+            id=claim.id,
+            claim_order=claim.claim_order,
+            claim_text=claim.claim_text,
+            evidence=[
+                MeetingEvidencePointerResponse(
+                    id=evidence.id,
+                    artifact_id=evidence.artifact_id,
+                    source_document_url=evidence.source_document_url,
+                    section_ref=evidence.section_ref,
+                    char_start=evidence.char_start,
+                    char_end=evidence.char_end,
+                    excerpt=evidence.excerpt,
+                )
+                for evidence in claim.evidence
+            ],
+        )
+        for claim in detail.claims
+    ]
+
     return MeetingDetailResponse(
         id=detail.id,
         city_id=detail.city_id,
@@ -190,23 +294,6 @@ def get_meeting_detail(
         key_decisions=list(detail.key_decisions),
         key_actions=list(detail.key_actions),
         notable_topics=list(detail.notable_topics),
-        claims=[
-            MeetingClaimResponse(
-                id=claim.id,
-                claim_order=claim.claim_order,
-                claim_text=claim.claim_text,
-                evidence=[
-                    MeetingEvidencePointerResponse(
-                        id=evidence.id,
-                        artifact_id=evidence.artifact_id,
-                        section_ref=evidence.section_ref,
-                        char_start=evidence.char_start,
-                        char_end=evidence.char_end,
-                        excerpt=evidence.excerpt,
-                    )
-                    for evidence in claim.evidence
-                ],
-            )
-            for claim in detail.claims
-        ],
+        evidence_references=_build_evidence_references(claims),
+        claims=claims,
     )

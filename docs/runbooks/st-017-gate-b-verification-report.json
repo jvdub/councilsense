@@ -1,0 +1,193 @@
+{
+  "schema_version": "st-017-gate-b-verification-v1",
+  "rubric_version": "st-017-rubric-v1",
+  "generated_at_utc": "2026-03-03T10:15:00+00:00",
+  "baseline_manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "rerun_manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "gate_b_passed": true,
+  "fixtures": [
+    {
+      "fixture_id": "st017-eagle-mountain-2024-12-03",
+      "status": "ok",
+      "dimensions": [
+        {
+          "dimension": "section_completeness",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "topic_semantics",
+          "baseline_score": 0.6667,
+          "rerun_score": 0.6667,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "specificity_retention",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "grounding_coverage",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "evidence_count_precision",
+          "baseline_score": 0.5,
+          "rerun_score": 0.5,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        }
+      ]
+    },
+    {
+      "fixture_id": "st017-highland-work-session-2025-02-10",
+      "status": "ok",
+      "dimensions": [
+        {
+          "dimension": "section_completeness",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "topic_semantics",
+          "baseline_score": 0.6667,
+          "rerun_score": 0.6667,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "specificity_retention",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "grounding_coverage",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "evidence_count_precision",
+          "baseline_score": 0.5,
+          "rerun_score": 0.5,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        }
+      ]
+    },
+    {
+      "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15",
+      "status": "ok",
+      "dimensions": [
+        {
+          "dimension": "section_completeness",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "topic_semantics",
+          "baseline_score": 0.6667,
+          "rerun_score": 0.6667,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "specificity_retention",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "grounding_coverage",
+          "baseline_score": 1.0,
+          "rerun_score": 1.0,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        },
+        {
+          "dimension": "evidence_count_precision",
+          "baseline_score": 0.5,
+          "rerun_score": 0.5,
+          "delta": 0.0,
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "rerun_passed": true,
+          "pass_fail_flip": false,
+          "stable": true
+        }
+      ]
+    }
+  ]
+}

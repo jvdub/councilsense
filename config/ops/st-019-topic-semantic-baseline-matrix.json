@@ -1,0 +1,65 @@
+{
+  "category_totals": {
+    "generic_token": 0,
+    "missing_topic_evidence_mapping": 0,
+    "weak_concept_phrase": 0
+  },
+  "fixture_count": 3,
+  "fixtures": [
+    {
+      "failure_categories": {
+        "generic_token": {
+          "count": 0,
+          "examples": []
+        },
+        "missing_topic_evidence_mapping": {
+          "count": 0,
+          "examples": []
+        },
+        "weak_concept_phrase": {
+          "count": 0,
+          "examples": []
+        }
+      },
+      "fixture_id": "st017-eagle-mountain-2024-12-03"
+    },
+    {
+      "failure_categories": {
+        "generic_token": {
+          "count": 0,
+          "examples": []
+        },
+        "missing_topic_evidence_mapping": {
+          "count": 0,
+          "examples": []
+        },
+        "weak_concept_phrase": {
+          "count": 0,
+          "examples": []
+        }
+      },
+      "fixture_id": "st017-highland-work-session-2025-02-10"
+    },
+    {
+      "failure_categories": {
+        "generic_token": {
+          "count": 0,
+          "examples": []
+        },
+        "missing_topic_evidence_mapping": {
+          "count": 0,
+          "examples": []
+        },
+        "weak_concept_phrase": {
+          "count": 0,
+          "examples": []
+        }
+      },
+      "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15"
+    }
+  ],
+  "generated_at_utc": "2026-03-04T00:00:00+00:00",
+  "manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "rubric_version": "st-017-rubric-v1",
+  "schema_version": "st-019-topic-gap-matrix-v1"
+}

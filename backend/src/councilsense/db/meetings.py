@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class MeetingDetailEvidencePointer:
     id: str
     artifact_id: str
+    source_document_url: str | None
     section_ref: str | None
     char_start: int | None
     char_end: int | None
@@ -347,6 +348,7 @@ class MeetingReadRepository:
             return None
 
         publication_id = str(meeting_row[6]) if meeting_row[6] is not None else None
+        source_document_url = self._lookup_source_document_url(meeting_id=meeting_id)
         claims: tuple[MeetingDetailClaim, ...] = ()
         if publication_id is not None:
             claim_rows = self._connection.execute(
@@ -381,6 +383,7 @@ class MeetingReadRepository:
                     MeetingDetailEvidencePointer(
                         id=str(evidence_row[0]),
                         artifact_id=str(evidence_row[1]),
+                        source_document_url=source_document_url,
                         section_ref=str(evidence_row[2]) if evidence_row[2] is not None else None,
                         char_start=int(evidence_row[3]) if evidence_row[3] is not None else None,
                         char_end=int(evidence_row[4]) if evidence_row[4] is not None else None,
@@ -416,6 +419,34 @@ class MeetingReadRepository:
             published_at=str(meeting_row[14]) if meeting_row[14] is not None else None,
             claims=claims,
         )
+
+    def _lookup_source_document_url(self, *, meeting_id: str) -> str | None:
+        rows = self._connection.execute(
+            """
+            SELECT metadata_json
+            FROM processing_stage_outcomes
+            WHERE meeting_id = ?
+              AND stage_name = 'ingest'
+            ORDER BY COALESCE(finished_at, updated_at, created_at) DESC, id DESC
+            """,
+            (meeting_id,),
+        ).fetchall()
+
+        for row in rows:
+            raw_metadata = row[0]
+            if raw_metadata is None:
+                continue
+            try:
+                parsed = json.loads(str(raw_metadata))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            candidate_url = parsed.get("candidate_url")
+            if isinstance(candidate_url, str) and candidate_url.strip():
+                return candidate_url.strip()
+
+        return None
 
     def _parse_string_list(self, value: object) -> tuple[str, ...]:
         if value is None:

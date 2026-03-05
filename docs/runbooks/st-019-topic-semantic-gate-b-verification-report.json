@@ -1,0 +1,193 @@
+{
+  "baseline_manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "fixtures": [
+    {
+      "dimensions": [
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.5,
+          "delta": 0.0,
+          "dimension": "evidence_count_precision",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.5,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "grounding_coverage",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "section_completeness",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "specificity_retention",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.6667,
+          "delta": 0.0,
+          "dimension": "topic_semantics",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.6667,
+          "stable": true
+        }
+      ],
+      "fixture_id": "st017-eagle-mountain-2024-12-03",
+      "status": "ok"
+    },
+    {
+      "dimensions": [
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.5,
+          "delta": 0.0,
+          "dimension": "evidence_count_precision",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.5,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "grounding_coverage",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "section_completeness",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "specificity_retention",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.6667,
+          "delta": 0.0,
+          "dimension": "topic_semantics",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.6667,
+          "stable": true
+        }
+      ],
+      "fixture_id": "st017-highland-work-session-2025-02-10",
+      "status": "ok"
+    },
+    {
+      "dimensions": [
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.5,
+          "delta": 0.0,
+          "dimension": "evidence_count_precision",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.5,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "grounding_coverage",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "section_completeness",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 1.0,
+          "delta": 0.0,
+          "dimension": "specificity_retention",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 1.0,
+          "stable": true
+        },
+        {
+          "allowed_delta": 0.0,
+          "baseline_passed": true,
+          "baseline_score": 0.6667,
+          "delta": 0.0,
+          "dimension": "topic_semantics",
+          "pass_fail_flip": false,
+          "rerun_passed": true,
+          "rerun_score": 0.6667,
+          "stable": true
+        }
+      ],
+      "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15",
+      "status": "ok"
+    }
+  ],
+  "gate_b_passed": true,
+  "generated_at_utc": "2026-03-04T00:05:00+00:00",
+  "rerun_manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "rubric_version": "st-017-rubric-v1",
+  "schema_version": "st-017-gate-b-verification-v1"
+}

@@ -43,6 +43,70 @@ Smoke flow validates:
 4. Notification delivery status reaches `sent`.
 5. Re-running fixture preserves idempotent behavior (`sent` count remains stable).
 
+## Local latest ingestion commands
+
+Run from the `api` container to use the seeded city/source registry and local DB wiring.
+
+### 1) Fetch latest meeting source (`fetch-latest`)
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+  python -m councilsense.app.local_runtime fetch-latest \
+  --city-id city-eagle-mountain-ut
+```
+
+Fetches/parses the latest candidate from the enabled city source and persists a local HTML artifact + meeting row.
+
+### 2) Process latest meeting (`process-latest`)
+
+Deterministic (default):
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+  python -m councilsense.app.local_runtime process-latest \
+  --city-id city-eagle-mountain-ut \
+  --llm-provider none
+```
+
+Optional Ollama provider:
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+  python -m councilsense.app.local_runtime process-latest \
+  --city-id city-eagle-mountain-ut \
+  --llm-provider ollama \
+  --ollama-endpoint http://host.docker.internal:11434 \
+  --ollama-model llama3.2:3b \
+  --ollama-timeout-seconds 20
+```
+
+Processes the latest (or specified) meeting through extract → summarize → publish, emitting a JSON envelope.
+
+### 3) Fetch + process in one command (`run-latest`)
+
+Deterministic:
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+  python -m councilsense.app.local_runtime run-latest \
+  --city-id city-eagle-mountain-ut \
+  --llm-provider none
+```
+
+Optional Ollama:
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+  python -m councilsense.app.local_runtime run-latest \
+  --city-id city-eagle-mountain-ut \
+  --llm-provider ollama \
+  --ollama-endpoint http://host.docker.internal:11434 \
+  --ollama-model llama3.2:3b \
+  --ollama-timeout-seconds 20
+```
+
+Runs ingest + processing stages in sequence and returns a single JSON envelope.
+
 ## Shutdown
 
 ```bash

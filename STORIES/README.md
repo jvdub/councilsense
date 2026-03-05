@@ -27,6 +27,11 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 | 14    | ST-014   | Phase 1.5: Notification DLQ + Replay Hardening        | Phase 1.5 | FR-5 hardening, NFR-4, Phase 1.5 (§9)         | ST-009, ST-011                 |
 | 15    | ST-015   | Phase 1.5: Quality Operations + ECR Audits            | Phase 1.5 | FR-4, NFR-4, Success Metrics §8 (ECR)         | ST-005, ST-010, ST-011         |
 | 16    | ST-016   | Phase 1.5: Alert Thresholds + Parser Drift Monitoring | Phase 1.5 | FR-7(2), NFR-4 hardening, Phase 1.5 (§9)      | ST-010, ST-011, ST-015         |
+| 17    | ST-017   | Phase 1.5: Rubric Freeze + Fixture Scorecard          | Phase 1.5 | GAP_PLAN §Parity Targets, §Fixture + Scorecard | ST-005, ST-011, ST-012         |
+| 18    | ST-018   | Phase 1.5: Additive evidence_references Contract      | Phase 1.5 | GAP_PLAN §Phase 1, §Gate A, FR-6              | ST-006, ST-017                 |
+| 19    | ST-019   | Phase 1.5: Topic Semantic Hardening                   | Phase 1.5 | GAP_PLAN §Phase 2, §Gate B, FR-4              | ST-005, ST-017, ST-018         |
+| 20    | ST-020   | Phase 1.5: Specificity + Evidence Locator Precision Hardening | Phase 1.5 | GAP_PLAN §Phase 3, §Gate B, FR-4      | ST-017, ST-018, ST-019         |
+| 21    | ST-021   | Phase 1.5: Quality Gates Enforcement, Rollout, and Rollback Controls | Phase 1.5 | GAP_PLAN §Phase 4, §Gate Matrix, §Rollback | ST-014, ST-016, ST-017, ST-018, ST-019, ST-020 |
 
 ## Dependency Summary
 
@@ -34,12 +39,15 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 - **Source operations branch:** ST-003 → ST-004 → ST-010 → ST-011.
 - **Platform/governance branch:** ST-001/ST-004/ST-007/ST-009 → ST-012 and ST-002/ST-009/ST-011 → ST-013.
 - **Hardening branch:** ST-009/ST-011 → ST-014, and ST-005/ST-010/ST-011 → ST-015 → ST-016.
+- **Gap-plan quality hardening chain:** ST-017 → ST-018 → ST-019 → ST-020 → ST-021.
+- **Gate enablement dependency:** ST-014/ST-016 and ST-017 through ST-020 converge at ST-021 for shadow-to-enforced rollout and rollback control.
 
 ## Notes on Scope Boundaries
 
 - Backlog intentionally excludes items explicitly out of MVP scope: multi-city following per user, SMS, real-time alerts, advanced personalization, public API, and meeting Q&A/chat UI.
 - Phase 1 includes baseline reliability/quality/source visibility controls required by MVP exit criteria.
 - Phase 1.5 stories capture required hardening boundaries: DLQ/replay, audited ECR operations, parser drift monitoring, and alert thresholds.
+- Additional Phase 1.5 stories ST-017 through ST-021 execute GAP_PLAN parity closure: rubric freeze, additive evidence contract safety, topic semantics, specificity/evidence precision, and controlled gate enforcement/rollback.
 
 ## Review Outcome
 

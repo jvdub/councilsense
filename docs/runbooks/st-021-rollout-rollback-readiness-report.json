@@ -1,0 +1,28 @@
+{
+  "schema_version": "st-021-quality-gate-rollout-v1",
+  "generated_at_utc": "2026-03-04T19:50:00+00:00",
+  "rollout": {
+    "sequence": [
+      "report_only_shadow_gates",
+      "promotion_check_two_consecutive_green_runs",
+      "selective_enforced_mode_by_environment_and_cohort"
+    ],
+    "enforcement_policies": [
+      "downgrade",
+      "block"
+    ]
+  },
+  "rollback": {
+    "required_reverse_order": [
+      "specificity_retention_enabled",
+      "evidence_projection_enabled",
+      "topic_hardening_enabled",
+      "gate_mode_report_only"
+    ],
+    "validated": true
+  },
+  "notes": [
+    "Non-enforced cohorts remain on existing publish behavior.",
+    "Diagnostics artifacts are emitted without publish blocking in report-only mode."
+  ]
+}

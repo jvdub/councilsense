@@ -8,10 +8,11 @@ describe("LandingPage", () => {
   it("renders a link to the meetings flow", () => {
     render(<LandingPage />);
 
-    expect(screen.getByRole("heading", { name: "CouncilSense" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to meetings" })).toHaveAttribute(
-      "href",
-      "/meetings",
-    );
+    expect(
+      screen.getByRole("heading", { name: "CouncilSense" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Go to meetings" }),
+    ).toHaveAttribute("href", "/meetings");
   });
 });

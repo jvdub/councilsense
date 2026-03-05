@@ -280,6 +280,13 @@ class PublishedSummarizationResult:
     notification_enqueue: NotificationEnqueueResult | None = None
 
 
+@dataclass(frozen=True)
+class QualityGateEnforcementOverride:
+    publication_status: PublicationStatus
+    confidence_label: ConfidenceLabel
+    reason_codes: tuple[str, ...]
+
+
 def evaluate_quality_gate(
     *,
     output: SummarizationOutput,
@@ -464,6 +471,7 @@ def publish_summarization_output(
     confidence_score: float | None = None,
     calibration_policy_version: str | None = None,
     notification_targets: Sequence[NotificationSubscriptionTarget] = (),
+    enforcement_override: QualityGateEnforcementOverride | None = None,
 ) -> PublishedSummarizationResult:
     active_policy_config, active_policy_version = _resolve_calibration_policy(
         repository=repository,
@@ -477,6 +485,23 @@ def publish_summarization_output(
         confidence_score=confidence_score,
         calibration_policy_version=active_policy_version,
     )
+    if enforcement_override is not None:
+        merged_reason_codes: list[str] = []
+        for reason_code in [*quality_gate.reason_codes, *enforcement_override.reason_codes]:
+            if reason_code not in merged_reason_codes:
+                merged_reason_codes.append(reason_code)
+        quality_gate = QualityGateDecision(
+            publication_status=enforcement_override.publication_status,
+            confidence_label=enforcement_override.confidence_label,
+            calibration_policy_version=quality_gate.calibration_policy_version,
+            reason_codes=tuple(merged_reason_codes),
+            claim_count=quality_gate.claim_count,
+            claims_with_evidence=quality_gate.claims_with_evidence,
+            total_evidence_pointers=quality_gate.total_evidence_pointers,
+            evidence_coverage_rate=quality_gate.evidence_coverage_rate,
+            confidence_score=quality_gate.confidence_score,
+            min_confidence_score=quality_gate.min_confidence_score,
+        )
     with repository.connection:
         publication = repository.create_publication_in_transaction(
             publication_id=publication_id,

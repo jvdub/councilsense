@@ -1,0 +1,86 @@
+{
+  "category_totals": {
+    "fixtures_below_majority_precise_locators": 0,
+    "fixtures_with_missing_anchor_carry_through": 0,
+    "fixtures_with_nonzero_grounding_gap": 0
+  },
+  "fixture_count": 3,
+  "fixtures": [
+    {
+      "anchor_metrics": {
+        "anchor_breakdown": {
+          "date": 3,
+          "entity": 18,
+          "quantitative": 3
+        },
+        "anchor_count": 24,
+        "missing_anchor_carry_through": false,
+        "retained_anchor_count": 1
+      },
+      "evidence_locator_metrics": {
+        "evidence_pointer_count": 1,
+        "majority_precise_locators": true,
+        "precise_pointer_count": 1,
+        "precision_ratio": 1.0
+      },
+      "fixture_id": "st017-eagle-mountain-2024-12-03",
+      "grounding_metrics": {
+        "covered_findings": 2,
+        "finding_count": 2,
+        "full_grounding_coverage": true
+      }
+    },
+    {
+      "anchor_metrics": {
+        "anchor_breakdown": {
+          "date": 6,
+          "entity": 7,
+          "quantitative": 3
+        },
+        "anchor_count": 16,
+        "missing_anchor_carry_through": false,
+        "retained_anchor_count": 1
+      },
+      "evidence_locator_metrics": {
+        "evidence_pointer_count": 1,
+        "majority_precise_locators": true,
+        "precise_pointer_count": 1,
+        "precision_ratio": 1.0
+      },
+      "fixture_id": "st017-highland-work-session-2025-02-10",
+      "grounding_metrics": {
+        "covered_findings": 2,
+        "finding_count": 2,
+        "full_grounding_coverage": true
+      }
+    },
+    {
+      "anchor_metrics": {
+        "anchor_breakdown": {
+          "date": 2,
+          "entity": 11,
+          "quantitative": 7
+        },
+        "anchor_count": 20,
+        "missing_anchor_carry_through": false,
+        "retained_anchor_count": 1
+      },
+      "evidence_locator_metrics": {
+        "evidence_pointer_count": 1,
+        "majority_precise_locators": true,
+        "precise_pointer_count": 1,
+        "precision_ratio": 1.0
+      },
+      "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15",
+      "grounding_metrics": {
+        "covered_findings": 2,
+        "finding_count": 2,
+        "full_grounding_coverage": true
+      }
+    }
+  ],
+  "generated_at_utc": "2026-03-04T12:05:00+00:00",
+  "manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "rubric_version": "st-017-rubric-v1",
+  "schema_version": "st-020-specificity-locator-gap-matrix-v1"
+}

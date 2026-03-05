@@ -160,6 +160,65 @@ def _insert_evidence_pointer(
     )
 
 
+def _insert_ingest_stage_outcome(
+    client: TestClient,
+    *,
+    outcome_id: str,
+    run_id: str,
+    city_id: str,
+    meeting_id: str,
+    candidate_url: str,
+) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT OR IGNORE INTO processing_runs (
+            id,
+            city_id,
+            cycle_id,
+            status,
+            parser_version,
+            source_version,
+            started_at
+        )
+        VALUES (?, ?, ?, 'processed', ?, ?, ?)
+        """,
+        (
+            run_id,
+            city_id,
+            f"cycle-{run_id}",
+            "v1",
+            "test-source",
+            "2026-02-20T12:00:00Z",
+        ),
+    )
+    app.state.db_connection.execute(
+        """
+        INSERT INTO processing_stage_outcomes (
+            id,
+            run_id,
+            city_id,
+            meeting_id,
+            stage_name,
+            status,
+            metadata_json,
+            started_at,
+            finished_at
+        )
+        VALUES (?, ?, ?, ?, 'ingest', 'processed', ?, ?, ?)
+        """,
+        (
+            outcome_id,
+            run_id,
+            city_id,
+            meeting_id,
+            json.dumps({"candidate_url": candidate_url}, separators=(",", ":")),
+            "2026-02-20T12:10:00Z",
+            "2026-02-20T12:11:00Z",
+        ),
+    )
+
+
 def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatch) -> None:
     client = _client_with_configured_cities(monkeypatch, secret="test-secret", supported_city_ids=PILOT_CITY_ID)
     token = _issue_token("user-detail", secret="test-secret", expires_in_seconds=300)
@@ -202,6 +261,34 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         char_end=170,
         excerpt="Council voted 6-1 to approve the annual safety plan.",
     )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-2",
+        claim_id="claim-detail-1",
+        artifact_id="artifact-minutes-1",
+        section_ref="minutes.section.3",
+        char_start=100,
+        char_end=170,
+        excerpt="Council voted 6-1 to approve the annual safety plan.",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-3",
+        claim_id="claim-detail-1",
+        artifact_id="artifact-minutes-2",
+        section_ref="minutes.section.4",
+        char_start=300,
+        char_end=360,
+        excerpt="Staff will publish the implementation memo by Friday.",
+    )
+    _insert_ingest_stage_outcome(
+        client,
+        outcome_id="outcome-ingest-detail-1",
+        run_id="run-detail-1",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-1",
+        candidate_url="https://example.org/minutes/meeting-detail-1.pdf",
+    )
 
     response = client.get("/v1/meetings/meeting-detail-1", headers=headers)
 
@@ -223,6 +310,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         "key_decisions",
         "key_actions",
         "notable_topics",
+        "evidence_references",
         "claims",
     }
     assert payload["id"] == "meeting-detail-1"
@@ -233,6 +321,10 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert payload["key_decisions"] == ["Approved annual safety plan"]
     assert payload["key_actions"] == ["Staff to publish implementation memo"]
     assert payload["notable_topics"] == ["Public safety", "Budget"]
+    assert payload["evidence_references"] == [
+        "Council voted 6-1 to approve the annual safety plan. | artifact-minutes-1#minutes.section.3:100-170",
+        "Staff will publish the implementation memo by Friday. | artifact-minutes-2#minutes.section.4:300-360",
+    ]
     assert payload["claims"] == [
         {
             "id": "claim-detail-1",
@@ -242,10 +334,29 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
                 {
                     "id": "ptr-detail-1",
                     "artifact_id": "artifact-minutes-1",
+                    "source_document_url": "https://example.org/minutes/meeting-detail-1.pdf",
                     "section_ref": "minutes.section.3",
                     "char_start": 100,
                     "char_end": 170,
                     "excerpt": "Council voted 6-1 to approve the annual safety plan.",
+                },
+                {
+                    "id": "ptr-detail-2",
+                    "artifact_id": "artifact-minutes-1",
+                    "source_document_url": "https://example.org/minutes/meeting-detail-1.pdf",
+                    "section_ref": "minutes.section.3",
+                    "char_start": 100,
+                    "char_end": 170,
+                    "excerpt": "Council voted 6-1 to approve the annual safety plan.",
+                },
+                {
+                    "id": "ptr-detail-3",
+                    "artifact_id": "artifact-minutes-2",
+                    "source_document_url": "https://example.org/minutes/meeting-detail-1.pdf",
+                    "section_ref": "minutes.section.4",
+                    "char_start": 300,
+                    "char_end": 360,
+                    "excerpt": "Staff will publish the implementation memo by Friday.",
                 }
             ],
         }
@@ -254,6 +365,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert set(first_evidence.keys()) == {
         "id",
         "artifact_id",
+        "source_document_url",
         "section_ref",
         "char_start",
         "char_end",
@@ -295,6 +407,7 @@ def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) 
     assert payload["confidence_label"] == "limited_confidence"
     assert payload["reader_low_confidence"] is True
     assert payload["notable_topics"] == ["Procurement"]
+    assert payload["evidence_references"] == []
     assert payload["claims"] == []
 
 

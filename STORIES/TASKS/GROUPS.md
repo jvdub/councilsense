@@ -30,6 +30,20 @@ This file records the story grouping used to refine stories into task files.
 - ST-015 Phase 1.5: Quality Operations + ECR Audits
 - ST-016 Phase 1.5: Alert Thresholds + Parser Drift Monitoring
 
+## Group E — Rubric Hardening + Additive Reader Contract
+
+- ST-017 Phase 1.5: Rubric Freeze + Fixture Scorecard
+- ST-018 Phase 1.5: Additive evidence_references Contract
+
+## Group F — Topic Semantic + Specificity and Evidence Precision Hardening
+
+- ST-019 Phase 1.5: Topic Semantic Hardening
+- ST-020 Phase 1.5: Specificity + Evidence Locator Precision Hardening
+
+## Group G — Quality Gates Enforcement, Rollout, and Rollback Controls
+
+- ST-021 Phase 1.5: Quality Gates Enforcement, Rollout, and Rollback Controls
+
 ## Correlation Pattern
 
 - Every task belongs to exactly one story folder: `STORIES/TASKS/ST-###/`.

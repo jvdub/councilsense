@@ -15,7 +15,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../../../lib/api/bootstrap", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../lib/api/bootstrap")>();
+  const actual =
+    await importOriginal<typeof import("../../../lib/api/bootstrap")>();
   return {
     ...actual,
     submitHomeCitySelection: vi.fn(),
@@ -40,22 +41,30 @@ describe("CitySelectionForm", () => {
       supported_city_ids: ["seattle-wa", "portland-or"],
     });
 
-    render(<CitySelectionForm authToken="token-abc" cityIds={["seattle-wa", "portland-or"]} />);
+    render(
+      <CitySelectionForm
+        authToken="token-abc"
+        cityIds={["seattle-wa", "portland-or"]}
+      />,
+    );
 
     await user.selectOptions(screen.getByLabelText("Home city"), "portland-or");
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(submitHomeCitySelection).toHaveBeenCalledWith("token-abc", "portland-or");
+    expect(submitHomeCitySelection).toHaveBeenCalledWith(
+      "token-abc",
+      "portland-or",
+    );
     expect(replaceMock).toHaveBeenCalledTimes(1);
-    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/^\/meetings\?refresh=\d+$/));
-    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
-      "href",
-      "https://www.councilsense.org/privacy",
+    expect(replaceMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/meetings\?refresh=\d+$/),
     );
-    expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
-      "href",
-      "https://www.councilsense.org/terms",
-    );
+    expect(
+      screen.getByRole("link", { name: "Privacy policy" }),
+    ).toHaveAttribute("href", "https://www.councilsense.org/privacy");
+    expect(
+      screen.getByRole("link", { name: "Terms of service" }),
+    ).toHaveAttribute("href", "https://www.councilsense.org/terms");
   });
 
   it("shows validation message when backend rejects city", async () => {
@@ -64,11 +73,15 @@ describe("CitySelectionForm", () => {
       new ApiError("Unsupported home_city_id", 422, "validation_error"),
     );
 
-    render(<CitySelectionForm authToken="token-abc" cityIds={["seattle-wa"]} />);
+    render(
+      <CitySelectionForm authToken="token-abc" cityIds={["seattle-wa"]} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Selected city is not supported.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Selected city is not supported.",
+    );
     expect(replaceMock).not.toHaveBeenCalled();
   });
 });

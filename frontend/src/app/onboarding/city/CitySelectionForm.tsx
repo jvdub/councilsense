@@ -11,7 +11,10 @@ type CitySelectionFormProps = {
   cityIds: string[];
 };
 
-export function CitySelectionForm({ authToken, cityIds }: CitySelectionFormProps) {
+export function CitySelectionForm({
+  authToken,
+  cityIds,
+}: CitySelectionFormProps) {
   const router = useRouter();
   const [selectedCityId, setSelectedCityId] = useState(cityIds[0] ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -1,0 +1,38 @@
+{
+  "manifest_version": "st-017-fixture-manifest-v1",
+  "fixtures": [
+    {
+      "fixture_id": "st017-eagle-mountain-2024-12-03",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-st017-eagle-2024-12-03",
+      "meeting_uid": "st017-eagle-2024-12-03",
+      "meeting_datetime_utc": "2024-12-03T00:00:00Z",
+      "source_locator": "baseline://meeting_minutes_baseline_2024-12-03.md",
+      "source_type": "minutes",
+      "structural_profile": "narrative-with-evidence-list",
+      "fixture_path": "meeting_minutes_baseline_2024-12-03.md"
+    },
+    {
+      "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-st017-riverton-2025-01-15",
+      "meeting_uid": "st017-riverton-2025-01-15",
+      "meeting_datetime_utc": "2025-01-15T00:00:00Z",
+      "source_locator": "fixture://backend/tests/fixtures/st017_riverton_zoning_public_hearing_2025_01_15.md",
+      "source_type": "minutes",
+      "structural_profile": "agenda-with-speaker-transcript",
+      "fixture_path": "backend/tests/fixtures/st017_riverton_zoning_public_hearing_2025_01_15.md"
+    },
+    {
+      "fixture_id": "st017-highland-work-session-2025-02-10",
+      "city_id": "city-eagle-mountain-ut",
+      "meeting_id": "meeting-st017-highland-2025-02-10",
+      "meeting_uid": "st017-highland-2025-02-10",
+      "meeting_datetime_utc": "2025-02-10T00:00:00Z",
+      "source_locator": "fixture://backend/tests/fixtures/st017_highland_work_session_2025_02_10.md",
+      "source_type": "minutes",
+      "structural_profile": "work-session-action-log",
+      "fixture_path": "backend/tests/fixtures/st017_highland_work_session_2025_02_10.md"
+    }
+  ]
+}

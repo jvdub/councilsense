@@ -1,0 +1,69 @@
+{
+  "schema_version": "st-017-fixture-baseline-v1",
+  "rubric_version": "st-017-rubric-v1",
+  "captured_at_utc": "2026-03-03T10:05:00+00:00",
+  "captured_by": "quality-owner",
+  "captured_from": "local-ci",
+  "manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+  "fixture_count": 3,
+  "scorecard": {
+    "schema_version": "st-017-fixture-scorecard-v1",
+    "rubric_version": "st-017-rubric-v1",
+    "manifest_path": "backend/tests/fixtures/st017_fixture_manifest.json",
+    "generated_at_utc": "2026-03-03T10:00:00+00:00",
+    "fixture_count": 3,
+    "fixtures": [
+      {
+        "fixture_id": "st017-eagle-mountain-2024-12-03",
+        "stable_fixture_key": "fx-95d2390f8f5c78cd",
+        "city_id": "city-eagle-mountain-ut",
+        "meeting_id": "meeting-st017-eagle-2024-12-03",
+        "meeting_datetime_utc": "2024-12-03T00:00:00Z",
+        "source_locator": "baseline://meeting_minutes_baseline_2024-12-03.md",
+        "structural_profile": "narrative-with-evidence-list",
+        "process_status": "processed",
+        "dimensions": {
+          "section_completeness": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {}},
+          "topic_semantics": {"score": 0.6667, "threshold": 0.5, "passed": true, "details": {"semantic_topics": 2, "total_topics": 3}},
+          "specificity_retention": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"anchor_count": 3, "retained_anchor_count": 2}},
+          "grounding_coverage": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"finding_count": 4, "covered_findings": 4}},
+          "evidence_count_precision": {"score": 0.5, "threshold": 0.5, "passed": true, "details": {"evidence_pointer_count": 4, "precision_ratio": 0.0, "precise_pointer_count": 0, "minimum_evidence_count": 3}}
+        }
+      },
+      {
+        "fixture_id": "st017-highland-work-session-2025-02-10",
+        "stable_fixture_key": "fx-a3833f2355ca423d",
+        "city_id": "city-eagle-mountain-ut",
+        "meeting_id": "meeting-st017-highland-2025-02-10",
+        "meeting_datetime_utc": "2025-02-10T00:00:00Z",
+        "source_locator": "fixture://backend/tests/fixtures/st017_highland_work_session_2025_02_10.md",
+        "structural_profile": "work-session-action-log",
+        "process_status": "processed",
+        "dimensions": {
+          "section_completeness": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {}},
+          "topic_semantics": {"score": 0.6667, "threshold": 0.5, "passed": true, "details": {"semantic_topics": 2, "total_topics": 3}},
+          "specificity_retention": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"anchor_count": 2, "retained_anchor_count": 1}},
+          "grounding_coverage": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"finding_count": 4, "covered_findings": 4}},
+          "evidence_count_precision": {"score": 0.5, "threshold": 0.5, "passed": true, "details": {"evidence_pointer_count": 4, "precision_ratio": 0.0, "precise_pointer_count": 0, "minimum_evidence_count": 3}}
+        }
+      },
+      {
+        "fixture_id": "st017-riverton-zoning-public-hearing-2025-01-15",
+        "stable_fixture_key": "fx-c77efce32cfd503f",
+        "city_id": "city-eagle-mountain-ut",
+        "meeting_id": "meeting-st017-riverton-2025-01-15",
+        "meeting_datetime_utc": "2025-01-15T00:00:00Z",
+        "source_locator": "fixture://backend/tests/fixtures/st017_riverton_zoning_public_hearing_2025_01_15.md",
+        "structural_profile": "agenda-with-speaker-transcript",
+        "process_status": "processed",
+        "dimensions": {
+          "section_completeness": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {}},
+          "topic_semantics": {"score": 0.6667, "threshold": 0.5, "passed": true, "details": {"semantic_topics": 2, "total_topics": 3}},
+          "specificity_retention": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"anchor_count": 4, "retained_anchor_count": 1}},
+          "grounding_coverage": {"score": 1.0, "threshold": 1.0, "passed": true, "details": {"finding_count": 4, "covered_findings": 4}},
+          "evidence_count_precision": {"score": 0.5, "threshold": 0.5, "passed": true, "details": {"evidence_pointer_count": 4, "precision_ratio": 0.0, "precise_pointer_count": 0, "minimum_evidence_count": 3}}
+        }
+      }
+    ]
+  }
+}
