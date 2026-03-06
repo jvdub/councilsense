@@ -9,10 +9,10 @@ from councilsense.app.local_latest_fetch import LatestFetchError
 
 
 def _stub_fetch(url: str, __: float) -> bytes:
-    if url.endswith("/events"):
+    if "/events?" in url or url.endswith("/events"):
         return (
-            '{"value":[{"id":20,"eventName":"City Council Meeting","eventDate":"2026-02-11T00:00:00Z",'
-            '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1305,"url":"stream/2026-02-11-minutes.pdf"}]}]}'
+            '{"value":[{"id":21,"eventName":"City Council Meeting","eventDate":"2026-01-08T00:00:00Z",'
+            '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1102,"url":"stream/fixture-minutes.pdf"}]}]}'
         ).encode("utf-8")
     if "GetMeetingFile(" in url and "plainText=true" in url:
         return b'{"blobUri":"https://blob.example/minutes.txt"}'

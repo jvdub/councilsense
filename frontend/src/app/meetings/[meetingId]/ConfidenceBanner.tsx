@@ -17,9 +17,13 @@ export function ConfidenceBanner({
   }
 
   return (
-    <section aria-label="Confidence warning" role="alert">
-      <h2>Limited confidence</h2>
-      <p>
+    <section
+      aria-label="Confidence warning"
+      role="alert"
+      className="rounded-3xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+    >
+      <h2 className="text-lg font-semibold">Limited confidence</h2>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
         This meeting includes low-confidence content. Verify details against the
         evidence references.
       </p>

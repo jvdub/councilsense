@@ -96,6 +96,25 @@ def test_st020_anchor_carry_through_enforcement_inserts_anchor_when_projection_i
     assert "412 units" in projection or "96 acres" in projection
 
 
+def test_st020_anchor_carry_through_ignores_low_value_time_anchor() -> None:
+    source = (
+        "Mayor Westmoreland was excused, and Councilmember Gray joined the meeting in-person as Mayor Pro Tempore at 4:20 PM. "
+        "Senior Planner presented a proposal for 893 units on 208 acres with open space requirements."
+    )
+
+    summary, key_decisions, key_actions = _enforce_anchor_carry_through(
+        source_text=source,
+        summary="The council reviewed the residential development proposal.",
+        key_decisions=("Approved a purchase agreement.",),
+        key_actions=("Directed staff to return with updates.",),
+    )
+
+    projection = " ".join((summary, *key_decisions, *key_actions)).lower()
+    assert "20 pm" not in projection
+    assert "mayor pro tempore" not in projection
+    assert "893 units" in projection or "208 acres" in projection
+
+
 def test_st020_evidence_projection_dedupes_equivalents_prefers_precise_locator_and_is_deterministic() -> None:
     claims = [
         MeetingClaimResponse(

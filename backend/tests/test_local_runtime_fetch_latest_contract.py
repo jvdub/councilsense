@@ -16,7 +16,7 @@ def test_fetch_latest_command_emits_expected_json_envelope(
 
     def _stub_fetch(url: str, timeout_seconds: float) -> bytes:
         assert timeout_seconds == 3.0
-        if url.endswith("/events"):
+        if "/events?" in url or url.endswith("/events"):
             return (
                 '{"value":[{"id":2,"eventName":"City Council Meeting","eventDate":"2026-02-11T00:00:00Z",'
                 '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1305,"url":"stream/new-minutes.pdf"}]}]}'

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from councilsense.app.local_pipeline import (
+    _build_grounded_summary,
     _build_claims_from_findings,
     _derive_grounded_sections,
     _focus_source_text,
@@ -47,6 +48,20 @@ def test_focus_source_text_removes_attendance_blocks() -> None:
     assert "ELECTED OFFICIALS PRESENT" not in focused
     assert "CITY STAFF PRESENT" not in focused
     assert "motion was approved" in focused.lower()
+
+
+def test_build_grounded_summary_prefers_substantive_outcomes_over_operations() -> None:
+    source_text = (
+        "Mayor Westmoreland was excused, and Councilmember Gray joined as Mayor Pro Tempore at 4:20 PM. "
+        "The Council approved a purchase agreement for right-of-way acquisition. "
+        "The Council approved the 2025 meeting schedule with additional November and December dates."
+    )
+
+    summary = _build_grounded_summary(source_text)
+
+    assert "joined as Mayor Pro Tempore" not in summary
+    assert "4:20 PM" not in summary
+    assert "approved a purchase agreement" in summary.lower()
 
 
 def test_derive_grounded_sections_excludes_city_name_topics() -> None:

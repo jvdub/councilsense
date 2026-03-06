@@ -37,7 +37,7 @@ def test_fetch_latest_meeting_is_idempotent_for_unchanged_source(tmp_path: Path)
     seed_city_registry(connection)
 
     def _stub_fetch(url: str, __: float) -> bytes:
-        if url.endswith("/events"):
+        if "/events?" in url or url.endswith("/events"):
             return (
                 '{"value":[{"id":10,"eventName":"City Council Meeting","eventDate":"2026-01-14T00:00:00Z",'
                 '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","url":"stream/2026-01-14-minutes.pdf"}]}]}'

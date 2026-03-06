@@ -64,6 +64,14 @@ export function SettingsPreferencesForm({
   initialProfile,
 }: SettingsPreferencesFormProps) {
   const router = useRouter();
+  const cardClass = "rounded-[2rem] border border-slate-200/80 bg-white/90 p-6 shadow-lg shadow-slate-200/60 backdrop-blur sm:p-8";
+  const sectionTitleClass = "text-2xl font-semibold tracking-tight text-slate-950";
+  const helperTextClass = "text-sm leading-6 text-slate-600";
+  const selectClass = "mt-2 block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-100";
+  const checkboxClass = "h-4 w-4 rounded border-slate-300 text-cyan-700 focus:ring-cyan-500";
+  const secondaryButtonClass = "inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400";
+  const primaryButtonClass = "inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400";
+  const infoRowClass = "rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700";
   const [homeCityId, setHomeCityId] = useState(initialProfile.home_city_id ?? "");
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialProfile.notifications_enabled);
   const [notificationsPausedUntil, setNotificationsPausedUntil] = useState<string | null>(
@@ -428,16 +436,31 @@ export function SettingsPreferencesForm({
   }
 
   return (
-    <main>
-      <h1>Settings</h1>
-      <form onSubmit={onSubmit}>
-        <label htmlFor="home-city">Home city</label>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:gap-8">
+      <section className="rounded-[2rem] border border-slate-200/80 bg-slate-950 px-6 py-8 text-white shadow-2xl shadow-slate-400/20 sm:px-8">
+        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-200">Resident controls</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Settings</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300 sm:text-base">
+          Manage your home city, alerts, push subscriptions, and data governance requests in one place.
+        </p>
+      </section>
+
+      <section className={cardClass}>
+        <div className="space-y-2">
+          <h2 className={sectionTitleClass}>Preferences</h2>
+          <p className={helperTextClass}>Choose your primary city and how CouncilSense should contact you.</p>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-8 space-y-6">
+          <div>
+            <label htmlFor="home-city" className="block text-sm font-medium text-slate-700">Home city</label>
         <select
           id="home-city"
           name="home-city"
           value={homeCityId}
           onChange={(event) => setHomeCityId(event.target.value)}
           disabled={isSubmitting}
+          className={selectClass}
         >
           <option value="">Select a city</option>
           {cityOptions.map((option) => (
@@ -446,171 +469,206 @@ export function SettingsPreferencesForm({
             </option>
           ))}
         </select>
+          </div>
 
-        <label htmlFor="notifications-enabled">
-          <input
+          <label htmlFor="notifications-enabled" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-700">
+            <input
             id="notifications-enabled"
             name="notifications-enabled"
             type="checkbox"
             checked={notificationsEnabled}
             onChange={(event) => setNotificationsEnabled(event.target.checked)}
             disabled={isSubmitting}
+            className={checkboxClass}
           />
           Enable notifications
-        </label>
+          </label>
 
-        <p>
+          <p className={infoRowClass}>
           Notifications paused until: {notificationsPausedUntil ?? "Not paused"}
-        </p>
+          </p>
 
-        <button type="button" onClick={onPauseFor24Hours} disabled={isSubmitting}>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={onPauseFor24Hours} disabled={isSubmitting} className={secondaryButtonClass}>
           Pause for 24 hours
-        </button>
-        <button
-          type="button"
-          onClick={onUnpause}
-          disabled={isSubmitting || notificationsPausedUntil === null}
-        >
+            </button>
+            <button
+              type="button"
+              onClick={onUnpause}
+              disabled={isSubmitting || notificationsPausedUntil === null}
+              className={secondaryButtonClass}
+            >
           Unpause
-        </button>
+            </button>
 
-        <button type="submit" disabled={isSubmitting}>
+            <button type="submit" disabled={isSubmitting} className={primaryButtonClass}>
           {isSubmitting ? "Saving..." : "Save preferences"}
-        </button>
-      </form>
+            </button>
+          </div>
+        </form>
+      </section>
 
-      <section aria-label="Push notifications">
-        <h2>Push notifications</h2>
+      <section aria-label="Push notifications" className={cardClass}>
+        <div className="space-y-2">
+          <h2 className={sectionTitleClass}>Push notifications</h2>
+          <p className={helperTextClass}>Manage browser-based alerts for the device you are using right now.</p>
+        </div>
         {pushCapabilityState === "unsupported" ? (
-          <p>Push is not supported in this browser. You can still manage notification preferences above.</p>
+          <p className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Push is not supported in this browser. You can still manage notification preferences above.</p>
         ) : (
-          <>
-            <p>Permission: {pushPermission ?? "default"}</p>
-            <p>Device subscription: {isPushSubscribed ? "Enabled" : "Not enabled"}</p>
-            <p>Server subscription state: {pushServerStatus ?? "none"}</p>
+          <div className="mt-6 space-y-4">
+            <p className={infoRowClass}>Permission: {pushPermission ?? "default"}</p>
+            <p className={infoRowClass}>Device subscription: {isPushSubscribed ? "Enabled" : "Not enabled"}</p>
+            <p className={infoRowClass}>Server subscription state: {pushServerStatus ?? "none"}</p>
             {pushCapabilityState === "permission_denied" ? (
-              <p>Push is blocked by browser permission. Enable notifications in browser settings, then retry.</p>
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">Push is blocked by browser permission. Enable notifications in browser settings, then retry.</p>
             ) : null}
             {pushRecoveryAction === "resubscribe" ? (
-              <p>This subscription is no longer deliverable. Recover it to continue push alerts.</p>
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">This subscription is no longer deliverable. Recover it to continue push alerts.</p>
             ) : null}
             {pushRecoveryAction === "reactivate" ? (
-              <p>This subscription is currently suppressed. Reactivate push to resume deliveries.</p>
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">This subscription is currently suppressed. Reactivate push to resume deliveries.</p>
             ) : null}
-            <button
-              type="button"
-              onClick={onSubscribePush}
-              disabled={isPushSubmitting || isPushSubscribed || pushCapabilityState === "permission_denied"}
-            >
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={onSubscribePush}
+                disabled={isPushSubmitting || isPushSubscribed || pushCapabilityState === "permission_denied"}
+                className={primaryButtonClass}
+              >
               {isPushSubmitting ? "Updating push..." : "Enable push on this device"}
-            </button>
-            <button
-              type="button"
-              onClick={onUnsubscribePush}
-              disabled={isPushSubmitting || !isPushSubscribed}
-            >
+              </button>
+              <button
+                type="button"
+                onClick={onUnsubscribePush}
+                disabled={isPushSubmitting || !isPushSubscribed}
+                className={secondaryButtonClass}
+              >
               Disable push on this device
-            </button>
+              </button>
             {pushRecoveryAction ? (
               <button
                 type="button"
                 onClick={onRecoverPush}
                 disabled={isPushSubmitting || pushCapabilityState !== "subscribable"}
+                className={secondaryButtonClass}
               >
                 {pushRecoveryAction === "reactivate" ? "Reactivate push" : "Recover push subscription"}
               </button>
             ) : null}
-          </>
+            </div>
+          </div>
         )}
       </section>
 
-      <section aria-label="Data governance">
-        <h2>Data governance</h2>
+      <section aria-label="Data governance" className={cardClass}>
+        <div className="space-y-2">
+          <h2 className={sectionTitleClass}>Data governance</h2>
+          <p className={helperTextClass}>Request exports and account deletion actions with clear status tracking.</p>
+        </div>
 
-        <section aria-label="Data export request">
-          <h3>Data export</h3>
-          <p>
+        <div className="mt-8 grid gap-6 xl:grid-cols-2">
+          <section aria-label="Data export request" className="rounded-3xl border border-slate-200 bg-slate-50/80 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Data export</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
             Request an export of your profile, preferences, and notification history.
-          </p>
-          <button type="button" onClick={onRequestExport} disabled={isGovernanceSubmitting}>
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={onRequestExport} disabled={isGovernanceSubmitting} className={primaryButtonClass}>
             {isGovernanceSubmitting ? "Submitting..." : "Request data export"}
-          </button>
-          <button
-            type="button"
-            onClick={onRefreshExportStatus}
-            disabled={isGovernanceSubmitting || !exportRequest}
-          >
+              </button>
+              <button
+                type="button"
+                onClick={onRefreshExportStatus}
+                disabled={isGovernanceSubmitting || !exportRequest}
+                className={secondaryButtonClass}
+              >
             Refresh export status
-          </button>
-          <p>
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <p className={infoRowClass}>
             Export request status: {exportRequest?.status ?? "not requested"}
-          </p>
-          {exportRequest?.completed_at ? <p>Export completed at: {exportRequest.completed_at}</p> : null}
-          {exportRequest?.artifact_uri ? <p>Export artifact: {exportRequest.artifact_uri}</p> : null}
-          {exportRequest?.error_code ? <p>Export error code: {exportRequest.error_code}</p> : null}
-        </section>
+              </p>
+              {exportRequest?.completed_at ? <p className={infoRowClass}>Export completed at: {exportRequest.completed_at}</p> : null}
+              {exportRequest?.artifact_uri ? <p className={infoRowClass}>Export artifact: {exportRequest.artifact_uri}</p> : null}
+              {exportRequest?.error_code ? <p className={infoRowClass}>Export error code: {exportRequest.error_code}</p> : null}
+            </div>
+          </section>
 
-        <section aria-label="Deletion request">
-          <h3>Deletion request</h3>
-          <p>Submit a deletion or anonymization request for your account data.</p>
+          <section aria-label="Deletion request" className="rounded-3xl border border-slate-200 bg-slate-50/80 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Deletion request</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Submit a deletion or anonymization request for your account data.</p>
 
-          <label htmlFor="deletion-mode">Request mode</label>
-          <select
-            id="deletion-mode"
-            name="deletion-mode"
-            value={deletionMode}
-            onChange={(event) => setDeletionMode(event.target.value as DeletionRequestMode)}
-            disabled={isGovernanceSubmitting}
-          >
-            <option value="anonymize">Anonymize profile data</option>
-            <option value="delete">Delete account data</option>
-          </select>
+            <div className="mt-4">
+              <label htmlFor="deletion-mode" className="block text-sm font-medium text-slate-700">Request mode</label>
+              <select
+                id="deletion-mode"
+                name="deletion-mode"
+                value={deletionMode}
+                onChange={(event) => setDeletionMode(event.target.value as DeletionRequestMode)}
+                disabled={isGovernanceSubmitting}
+                className={selectClass}
+              >
+                <option value="anonymize">Anonymize profile data</option>
+                <option value="delete">Delete account data</option>
+              </select>
+            </div>
 
-          <label htmlFor="deletion-confirm">
-            <input
+            <label htmlFor="deletion-confirm" className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+              <input
               id="deletion-confirm"
               name="deletion-confirm"
               type="checkbox"
               checked={deletionConfirmChecked}
               onChange={(event) => setDeletionConfirmChecked(event.target.checked)}
               disabled={isGovernanceSubmitting}
+              className={`${checkboxClass} mt-0.5`}
             />
             I understand this request can remove my personal data.
-          </label>
+            </label>
 
-          <button type="button" onClick={onRequestDeletion} disabled={isGovernanceSubmitting}>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={onRequestDeletion} disabled={isGovernanceSubmitting} className={primaryButtonClass}>
             {isGovernanceSubmitting ? "Submitting..." : "Request deletion"}
-          </button>
-          <button
-            type="button"
-            onClick={onRefreshDeletionStatus}
-            disabled={isGovernanceSubmitting || !deletionRequest}
-          >
+              </button>
+              <button
+                type="button"
+                onClick={onRefreshDeletionStatus}
+                disabled={isGovernanceSubmitting || !deletionRequest}
+                className={secondaryButtonClass}
+              >
             Refresh deletion status
-          </button>
-          <p>
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <p className={infoRowClass}>
             Deletion request status: {deletionRequest?.status ?? "not requested"}
-          </p>
-          <p>
+              </p>
+              <p className={infoRowClass}>
             Deletion mode: {deletionRequest?.mode ?? deletionMode}
-          </p>
-          {deletionRequest?.due_at ? <p>Deletion due at: {deletionRequest.due_at}</p> : null}
-          {deletionRequest?.completed_at ? <p>Deletion completed at: {deletionRequest.completed_at}</p> : null}
-          {deletionRequest?.error_code ? <p>Deletion error code: {deletionRequest.error_code}</p> : null}
-        </section>
+              </p>
+              {deletionRequest?.due_at ? <p className={infoRowClass}>Deletion due at: {deletionRequest.due_at}</p> : null}
+              {deletionRequest?.completed_at ? <p className={infoRowClass}>Deletion completed at: {deletionRequest.completed_at}</p> : null}
+              {deletionRequest?.error_code ? <p className={infoRowClass}>Deletion error code: {deletionRequest.error_code}</p> : null}
+            </div>
+          </section>
+        </div>
 
-        <LegalLinks label="Settings legal links" />
+        <div className="mt-8 border-t border-slate-200 pt-6">
+          <LegalLinks label="Settings legal links" />
+        </div>
       </section>
 
-      {successMessage ? <p role="status">{successMessage}</p> : null}
-      {errorMessage ? <p role="alert">{errorMessage}</p> : null}
-      {pushMessage ? <p role="status">{pushMessage}</p> : null}
-      {pushErrorMessage ? <p role="alert">{pushErrorMessage}</p> : null}
+      {successMessage ? <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{errorMessage}</p> : null}
+      {pushMessage ? <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">{pushMessage}</p> : null}
+      {pushErrorMessage ? <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{pushErrorMessage}</p> : null}
       {governanceMessage ? (
-        <p role="status">{governanceMessage}</p>
+        <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">{governanceMessage}</p>
       ) : null}
       {governanceErrorMessage ? (
-        <p role="alert">{governanceErrorMessage}</p>
+        <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{governanceErrorMessage}</p>
       ) : null}
     </main>
   );

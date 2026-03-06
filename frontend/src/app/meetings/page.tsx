@@ -59,7 +59,8 @@ function buildMeetingsHref(cursor: string | null, prev: string | null, limit: nu
   return suffix ? `/meetings?${suffix}` : "/meetings";
 }
 
-export default async function MeetingsPage({ searchParams }: MeetingsPageProps = {}) {
+export default async function MeetingsPage(props: MeetingsPageProps) {
+  const { searchParams } = props ?? {};
   const authToken = await getAuthTokenFromCookie();
 
   if (!authToken) {
@@ -104,38 +105,103 @@ export default async function MeetingsPage({ searchParams }: MeetingsPageProps =
   const nextCursor = listResponse?.next_cursor ?? null;
 
   return (
-    <main>
-      <h1>Meetings</h1>
-      {meetingsError ? <p role="alert">Unable to load meetings. {meetingsError}</p> : null}
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:gap-8">
+      <section className="rounded-[2rem] border border-slate-200/80 bg-slate-950 px-6 py-8 text-white shadow-2xl shadow-slate-400/20 sm:px-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-200">Civic briefings</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Meetings</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+              Review recent local government meetings, scan confidence levels, and open a meeting for a concise, evidence-backed summary.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              <span className="block text-xs uppercase tracking-[0.2em] text-slate-400">Home city</span>
+              <span className="mt-1 block font-semibold text-white">{bootstrap.home_city_id}</span>
+            </div>
+            <Link
+              href="/settings"
+              className="inline-flex items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-400/10 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
+            >
+              Manage alerts
+            </Link>
+          </div>
+        </div>
+      </section>
 
-      {!meetingsError && !hasMeetings ? <p>No meetings found for your city yet.</p> : null}
+      {meetingsError ? (
+        <p role="alert" className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm">
+          Unable to load meetings. {meetingsError}
+        </p>
+      ) : null}
+
+      {!meetingsError && !hasMeetings ? (
+        <section className="rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center shadow-sm">
+          <p className="text-base font-medium text-slate-800">No meetings found for your city yet.</p>
+          <p className="mt-2 text-sm text-slate-500">Check back after the next agenda packet or processing run.</p>
+        </section>
+      ) : null}
 
       {!meetingsError && hasMeetings ? (
-        <ul>
+        <ul className="grid gap-4 lg:grid-cols-2">
           {listResponse?.items.map((meeting) => (
-            <li key={meeting.id}>
-              <h2>
-                <Link href={`/meetings/${meeting.id}`}>{meeting.title}</Link>
-              </h2>
-              <p>
-                Status: {meeting.status ?? "unknown"} · Confidence: {meeting.confidence_label ?? "unknown"}
-              </p>
-              <time dateTime={meeting.created_at}>Created: {meeting.created_at}</time>
+            <li
+              key={meeting.id}
+              className="group rounded-[1.75rem] border border-slate-200/80 bg-white/90 p-6 shadow-lg shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-xl"
+            >
+              <div className="flex h-full flex-col justify-between gap-5">
+                <div className="space-y-3">
+                  <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                    {meeting.status ?? "unknown"}
+                  </div>
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-950">
+                    <Link href={`/meetings/${meeting.id}`} className="transition hover:text-cyan-700">
+                      {meeting.title}
+                    </Link>
+                  </h2>
+                  <p className="text-sm leading-6 text-slate-600">
+                    Status: {meeting.status ?? "unknown"} · Confidence: {meeting.confidence_label ?? "unknown"}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
+                  <time className="text-sm text-slate-500" dateTime={meeting.created_at}>
+                    Created: {meeting.created_at}
+                  </time>
+                  <Link
+                    href={`/meetings/${meeting.id}`}
+                    className="text-sm font-semibold text-cyan-700 transition group-hover:text-cyan-900"
+                  >
+                    View briefing →
+                  </Link>
+                </div>
+              </div>
             </li>
           ))}
         </ul>
       ) : null}
 
       {!meetingsError && (prevCursor || cursor) ? (
-        <p>
-          <Link href={buildMeetingsHref(prevCursor, null, limit)}>Load newer meetings</Link>
-        </p>
+        <div>
+          <Link
+            href={buildMeetingsHref(prevCursor, null, limit)}
+            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Load newer meetings
+          </Link>
+        </div>
       ) : null}
 
       {!meetingsError && nextCursor ? (
-        <p>
-          <Link href={buildMeetingsHref(nextCursor, cursor, limit)}>Load older meetings</Link>
-        </p>
+        <div>
+          <Link
+            href={buildMeetingsHref(nextCursor, cursor, limit)}
+            className="inline-flex items-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Load older meetings
+          </Link>
+        </div>
       ) : null}
     </main>
   );

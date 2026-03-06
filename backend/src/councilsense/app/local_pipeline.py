@@ -128,6 +128,19 @@ _TOPIC_FALLBACK_LABELS: tuple[tuple[str, str], ...] = (
     ("resolution", "Resolution Approval"),
 )
 
+_MEETING_OPERATIONS_MARKERS: tuple[str, ...] = (
+    "roll call",
+    "call to order",
+    "pledge of allegiance",
+    "present electronically",
+    "joined the meeting",
+    "was excused",
+    "mayor pro tempore",
+    "council chambers",
+    "city recorder",
+    "attendance",
+)
+
 
 def _load_topic_token_config(*, env_key: str, defaults: frozenset[str]) -> frozenset[str]:
     raw = os.getenv(env_key)
@@ -966,6 +979,8 @@ def _summarize_with_ollama(
     prompt = (
         "You are summarizing local government meeting materials. "
         "Use only facts present in the provided meeting text. "
+        "Prioritize what actually happened: decisions made, actions assigned, policy or project impacts. "
+        "Avoid procedural meeting operations unless they materially change an outcome (attendance, roll call, call to order, adjournment, schedule mechanics). "
         "Do not include chain-of-thought, reasoning traces, or meta commentary. "
         "Return ONLY valid JSON with keys: summary, claim. "
         "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
@@ -1305,9 +1320,16 @@ def _is_low_signal_sentence(sentence: str) -> bool:
     )
     if any(marker in lower for marker in low_signal_markers):
         return True
+    if _is_meeting_operations_sentence(sentence):
+        return True
     if len(sentence) > 220 and ";" in sentence:
         return True
     return False
+
+
+def _is_meeting_operations_sentence(sentence: str) -> bool:
+    lower = sentence.lower()
+    return any(marker in lower for marker in _MEETING_OPERATIONS_MARKERS)
 
 
 def _focus_source_text(text: str) -> str:
@@ -1322,10 +1344,32 @@ def _build_grounded_summary(text: str) -> str:
     sentences = _split_sentences(text)
     if not sentences:
         return "Meeting source text unavailable."
+    substantive_sentences = [
+        sentence
+        for sentence in sentences
+        if not _is_low_value_outcome(sentence) and not _is_meeting_operations_sentence(sentence)
+    ]
+    if substantive_sentences:
+        sentences = substantive_sentences
     prioritized = [
         sentence
         for sentence in sentences
-        if any(keyword in sentence.lower() for keyword in ("motion", "resolution", "approved", "adopt", "directed", "hearing"))
+        if any(
+            keyword in sentence.lower()
+            for keyword in (
+                "motion",
+                "resolution",
+                "approved",
+                "adopt",
+                "directed",
+                "hearing",
+                "agreement",
+                "contract",
+                "ordinance",
+                "budget",
+                "zoning",
+            )
+        )
     ]
     selected = (prioritized or sentences)[:3]
     summary = " ".join(selected)
@@ -1391,8 +1435,33 @@ def _is_low_value_outcome(sentence: str) -> bool:
         "recording of the discussion can be found",
         "joined the meeting",
         "was excused",
+        "roll call",
+        "call to order",
+        "pledge of allegiance",
+        "mayor pro tempore",
     )
     return any(marker in lower for marker in markers)
+
+
+def _is_low_value_anchor_text(anchor_text: str) -> bool:
+    normalized = _normalize_generated_text(anchor_text).lower()
+    if not normalized:
+        return True
+    if re.fullmatch(r"\d{1,2}(?::\d{2})?\s*(?:am|pm)", normalized):
+        return True
+    if any(
+        marker in normalized
+        for marker in (
+            "mayor",
+            "councilmember",
+            "pro tempore",
+            "roll call",
+            "call to order",
+            "pledge of allegiance",
+        )
+    ):
+        return True
+    return False
 
 
 def _build_claims_from_findings(
@@ -1524,7 +1593,7 @@ def _enforce_anchor_carry_through(
     key_decisions: tuple[str, ...],
     key_actions: tuple[str, ...],
 ) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
-    anchors = harvest_specificity_anchors(source_text)
+    anchors = tuple(anchor for anchor in harvest_specificity_anchors(source_text) if not _is_low_value_anchor_text(anchor.text))
     if not anchors:
         return summary, key_decisions, key_actions
 
@@ -1540,10 +1609,10 @@ def _enforce_anchor_carry_through(
     updated_summary = summary.strip()
     if updated_summary:
         if len(updated_summary) + len(anchor_text) + 20 <= 520:
-            updated_summary = f"{updated_summary} Specific detail: {anchor_text}."
+            updated_summary = f"{updated_summary.rstrip('.')} including {anchor_text}."
             return updated_summary, key_decisions, key_actions
     else:
-        updated_summary = f"Specific detail: {anchor_text}."
+        updated_summary = f"Included detail: {anchor_text}."
         return updated_summary, key_decisions, key_actions
 
     if key_decisions:

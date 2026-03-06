@@ -101,7 +101,7 @@ def fetch_latest_meeting(
     fetch_url: Callable[[str, float], bytes] | None = None,
 ) -> LatestFetchResult:
     registry = CityRegistryRepository(connection)
-    selected_source_id, source_url = _resolve_source(
+    selected_source_id, source_type, source_url = _resolve_source(
         connection=connection,
         registry=registry,
         city_id=city_id,
@@ -115,6 +115,7 @@ def fetch_latest_meeting(
     if _is_civicclerk_portal_url(source_url):
         candidate, artifact_bytes, artifact_suffix, download_warning = _fetch_latest_candidate_from_civicclerk(
             source_url=source_url,
+            preferred_file_type=source_type,
             timeout_seconds=timeout,
             fetch_url=fetcher,
         )
@@ -226,7 +227,7 @@ def _resolve_source(
     registry: CityRegistryRepository,
     city_id: str,
     source_id: str | None,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     sources = registry.list_enabled_sources_for_city(city_id)
     if not sources:
         raise LatestFetchError(f"No enabled sources configured for city_id={city_id}")
@@ -234,7 +235,7 @@ def _resolve_source(
     if source_id is not None:
         for source in sources:
             if source.id == source_id:
-                return (source.id, source.source_url)
+                return (source.id, source.source_type, source.source_url)
         raise LatestFetchError(f"Configured source not found for city_id={city_id}: source_id={source_id}")
 
     minutes_source = next((source for source in sources if source.source_type == "minutes"), None)
@@ -247,7 +248,7 @@ def _resolve_source(
     if existing_city is None:
         raise LatestFetchError(f"Enabled city not found: city_id={city_id}")
 
-    return (selected.id, selected.source_url)
+    return (selected.id, selected.source_type, selected.source_url)
 
 
 def _fetch_url_bytes(url: str, timeout_seconds: float) -> bytes:
@@ -268,7 +269,11 @@ def _is_civicclerk_portal_url(source_url: str) -> bool:
 
 
 def _fetch_latest_candidate_from_civicclerk(
-    *, source_url: str, timeout_seconds: float, fetch_url: Callable[[str, float], bytes] | None = None
+    *,
+    source_url: str,
+    preferred_file_type: str,
+    timeout_seconds: float,
+    fetch_url: Callable[[str, float], bytes] | None = None,
 ) -> tuple[LatestCandidate, bytes, str, str | None]:
     parsed = urlparse(source_url)
     tenant = parsed.netloc.split(".")[0]
@@ -276,32 +281,23 @@ def _fetch_latest_candidate_from_civicclerk(
         raise LatestFetchError(f"Unable to resolve CivicClerk tenant from source URL: {source_url}")
 
     api_base_url = f"https://{tenant}.api.civicclerk.com/v1"
-    events_url = f"{api_base_url}/events"
+    explicit_event_id = _extract_event_id_from_portal_url(source_url)
+    events_url = f"{api_base_url}/events?$orderby=eventDate%20desc,id%20desc&$top=200"
     fetcher = fetch_url or _fetch_url_bytes
-    raw = fetcher(events_url, timeout_seconds)
+    selected_event = _select_civicclerk_event(
+        api_base_url=api_base_url,
+        source_url=source_url,
+        events_url=events_url,
+        explicit_event_id=explicit_event_id,
+        preferred_file_type=preferred_file_type,
+        timeout_seconds=timeout_seconds,
+        fetcher=fetcher,
+    )
 
-    try:
-        payload = json.loads(raw.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError as exc:
-        raise LatestFetchError("Unable to parse CivicClerk events JSON payload") from exc
-
-    items = payload.get("value") if isinstance(payload, dict) else None
-    if not isinstance(items, list) or not items:
-        raise LatestFetchError("CivicClerk events payload did not include any events")
-
-    council_events = [item for item in items if _is_city_council_event(item)]
-    if not council_events:
-        raise LatestFetchError("No City Council events were found in CivicClerk events payload")
-
-    council_events.sort(key=_event_sort_key, reverse=True)
-
-    selected_event = council_events[0]
-    selected_file = _select_published_file(event=selected_event, preferred_type="minutes")
-    if selected_file is None:
-        selected_file = _select_published_file(event=selected_event, preferred_type="agenda")
+    selected_file = _select_published_file(event=selected_event, preferred_type=preferred_file_type)
 
     if selected_file is None:
-        raise LatestFetchError("No published minutes or agenda file was found for the latest City Council events")
+        raise LatestFetchError("No published minutes, agenda, or packet file was found for the latest City Council events")
 
     event_date_iso = _parse_event_date_iso(selected_event)
     event_name = str(selected_event.get("eventName") or "City Council Meeting")
@@ -391,21 +387,268 @@ def _select_published_file(*, event: dict[str, object], preferred_type: str) -> 
     if not isinstance(published_files, list):
         return None
 
-    preferred = preferred_type.lower()
-    for item in published_files:
-        if not isinstance(item, dict):
-            continue
-        file_type = str(item.get("type") or "").lower()
-        if file_type == preferred:
-            return item
+    preferred = preferred_type.strip().lower()
+    preferred_aliases = _preferred_type_aliases(preferred)
+    for alias in preferred_aliases:
+        for item in published_files:
+            if not isinstance(item, dict):
+                continue
+            file_type = str(item.get("type") or "").strip().lower()
+            if file_type == alias:
+                return item
 
     for item in published_files:
         if not isinstance(item, dict):
             continue
-        file_type = str(item.get("type") or "").lower()
-        if file_type in {"minutes", "agenda"}:
+        file_type = str(item.get("type") or "").strip().lower()
+        if file_type in {"minutes", "agenda", "agenda packet", "packet"}:
             return item
     return None
+
+
+def _preferred_type_aliases(preferred_type: str) -> tuple[str, ...]:
+    if preferred_type == "minutes":
+        return ("minutes",)
+    if preferred_type == "agenda":
+        return ("agenda",)
+    if preferred_type == "packet":
+        return ("agenda packet", "packet")
+    return (preferred_type,)
+
+
+def _extract_event_id_from_portal_url(source_url: str) -> int | None:
+    match = re.search(r"/event/(\d+)(?:/|$)", source_url)
+    if match is None:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _select_civicclerk_event(
+    *,
+    api_base_url: str,
+    source_url: str,
+    events_url: str,
+    explicit_event_id: int | None,
+    preferred_file_type: str,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> dict[str, object]:
+    if explicit_event_id is not None:
+        event = _fetch_civicclerk_event_by_id(
+            api_base_url=api_base_url,
+            event_id=explicit_event_id,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+        if event is not None:
+            return event
+
+    enriched_events: list[dict[str, object]] = []
+    feed_urls = _build_civicclerk_events_feed_urls(api_base_url=api_base_url, fallback_events_url=events_url)
+    for feed_url in feed_urls:
+        try:
+            raw = fetcher(feed_url, timeout_seconds)
+            payload = json.loads(raw.decode("utf-8", errors="replace"))
+            items = payload.get("value") if isinstance(payload, dict) else None
+            if not isinstance(items, list):
+                continue
+            enriched_events.extend(
+                _enrich_civicclerk_event(
+                    event=item,
+                    api_base_url=api_base_url,
+                    timeout_seconds=timeout_seconds,
+                    fetcher=fetcher,
+                )
+                for item in items
+                if isinstance(item, dict)
+            )
+        except Exception:
+            continue
+
+    known_ids: set[int] = set()
+    for event in enriched_events:
+        event_id_value = event.get("id")
+        try:
+            if event_id_value is not None:
+                known_ids.add(int(event_id_value))
+        except (TypeError, ValueError):
+            continue
+
+    portal_event_ids = _fetch_event_ids_from_portal(
+        source_url=source_url,
+        timeout_seconds=timeout_seconds,
+        fetcher=fetcher,
+    )
+    for event_id in portal_event_ids:
+        if event_id in known_ids:
+            continue
+        event = _fetch_civicclerk_event_by_id(
+            api_base_url=api_base_url,
+            event_id=event_id,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+        if event is None:
+            continue
+        enriched_events.append(event)
+        known_ids.add(event_id)
+
+    if not enriched_events:
+        raise LatestFetchError("Unable to retrieve CivicClerk events from API or portal")
+
+    council_events = [item for item in enriched_events if _is_city_council_event(item)]
+    if not council_events:
+        raise LatestFetchError("No City Council events were found in CivicClerk events payload")
+
+    normalized_preferred_type = preferred_file_type.strip().lower()
+    today_iso = datetime.now(tz=UTC).date().isoformat()
+
+    council_events.sort(key=_event_sort_key, reverse=True)
+
+    with_published_files = [
+        event
+        for event in council_events
+        if _select_published_file(event=event, preferred_type=normalized_preferred_type) is not None
+    ]
+    completed_with_preferred = [
+        event
+        for event in with_published_files
+        if _event_sort_key(event)[0] and _event_sort_key(event)[0] <= today_iso
+    ]
+
+    if completed_with_preferred:
+        completed_with_preferred.sort(key=_event_sort_key, reverse=True)
+        return completed_with_preferred[0]
+
+    if with_published_files:
+        return with_published_files[0]
+
+    with_any_supported_file = [
+        event
+        for event in council_events
+        if _select_published_file(event=event, preferred_type="") is not None
+    ]
+    completed_with_any_supported_file = [
+        event
+        for event in with_any_supported_file
+        if _event_sort_key(event)[0] and _event_sort_key(event)[0] <= today_iso
+    ]
+
+    if completed_with_any_supported_file:
+        completed_with_any_supported_file.sort(key=_event_sort_key, reverse=True)
+        return completed_with_any_supported_file[0]
+
+    if with_any_supported_file:
+        return with_any_supported_file[0]
+
+    return council_events[0]
+
+
+def _build_civicclerk_events_feed_urls(*, api_base_url: str, fallback_events_url: str) -> tuple[str, ...]:
+    today_iso = datetime.now(tz=UTC).date().isoformat()
+    return (
+        f"{api_base_url}/Events?$filter=startDateTime+lt+{today_iso}&$orderby=startDateTime+desc,+eventName+desc",
+        f"{api_base_url}/Events?$filter=startDateTime+ge+{today_iso}&$orderby=startDateTime+asc,+eventName+asc",
+        fallback_events_url,
+    )
+
+
+def _fetch_event_ids_from_portal(
+    *,
+    source_url: str,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> tuple[int, ...]:
+    try:
+        raw = fetcher(source_url, timeout_seconds)
+        html = raw.decode("utf-8", errors="replace")
+    except Exception:
+        return ()
+    return _extract_event_ids_from_html(html)
+
+
+def _extract_event_ids_from_html(html: str) -> tuple[int, ...]:
+    matches = re.findall(r"/event/(\d+)/media", html, flags=re.IGNORECASE)
+    seen: set[int] = set()
+    ids: list[int] = []
+    for raw in matches:
+        try:
+            event_id = int(raw)
+        except ValueError:
+            continue
+        if event_id in seen:
+            continue
+        seen.add(event_id)
+        ids.append(event_id)
+        if len(ids) >= 40:
+            break
+    return tuple(ids)
+
+
+def _fetch_civicclerk_event_by_id(
+    *,
+    api_base_url: str,
+    event_id: int,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> dict[str, object] | None:
+    event_url = f"{api_base_url}/Events/{event_id}"
+    try:
+        raw = fetcher(event_url, timeout_seconds)
+    except Exception:
+        return None
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return _enrich_civicclerk_event(
+        event=payload,
+        api_base_url=api_base_url,
+        timeout_seconds=timeout_seconds,
+        fetcher=fetcher,
+    )
+
+
+def _enrich_civicclerk_event(
+    *,
+    event: dict[str, object],
+    api_base_url: str,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> dict[str, object]:
+    agenda_id_value = event.get("agendaId")
+    meeting_id: int | None = None
+    try:
+        if agenda_id_value is not None:
+            meeting_id = int(agenda_id_value)
+    except (TypeError, ValueError):
+        meeting_id = None
+
+    if meeting_id is None or meeting_id <= 0:
+        return event
+
+    meeting_url = f"{api_base_url}/Meetings/{meeting_id}"
+    try:
+        raw = fetcher(meeting_url, timeout_seconds)
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        return event
+
+    if not isinstance(payload, dict):
+        return event
+
+    published_files = payload.get("publishedFiles")
+    if not isinstance(published_files, list):
+        return event
+
+    enriched = dict(event)
+    enriched["publishedFiles"] = published_files
+    return enriched
 
 
 def _parse_event_date_iso(event: dict[str, object]) -> str | None:
