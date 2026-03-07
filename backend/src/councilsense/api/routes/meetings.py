@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
@@ -82,6 +82,8 @@ class MeetingClaimResponse(BaseModel):
 
 
 class MeetingDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     id: str
     city_id: str
     meeting_uid: str
@@ -124,6 +126,14 @@ _PRECISION_RANKS = {
     "file": 3,
 }
 _ADDITIVE_BLOCK_FIELD_NAMES = ("planned", "outcomes", "planned_outcome_mismatches")
+_EVIDENCE_REFERENCE_V2_REQUIRED_STRING_FIELDS = (
+    "evidence_id",
+    "artifact_id",
+    "document_kind",
+    "section_path",
+    "precision",
+    "excerpt",
+)
 
 
 def _stable_section_locator(evidence: MeetingEvidencePointerResponse) -> str:
@@ -252,6 +262,101 @@ def _build_evidence_references_v2(claims: list[MeetingClaimResponse]) -> list[Me
     ]
 
 
+def _normalize_evidence_reference_v2_value(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    normalized: dict[str, Any] = {}
+    for field_name in _EVIDENCE_REFERENCE_V2_REQUIRED_STRING_FIELDS:
+        raw_value = value.get(field_name)
+        if not isinstance(raw_value, str):
+            return None
+        stripped = raw_value.strip()
+        if not stripped:
+            return None
+        normalized[field_name] = stripped
+
+    for field_name in ("document_id", "confidence"):
+        raw_value = value.get(field_name)
+        if raw_value is None:
+            normalized[field_name] = None
+            continue
+        if not isinstance(raw_value, str):
+            return None
+        stripped = raw_value.strip()
+        normalized[field_name] = stripped or None
+
+    for field_name in ("page_start", "page_end", "char_start", "char_end"):
+        raw_value = value.get(field_name)
+        if raw_value is None:
+            normalized[field_name] = None
+            continue
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+            return None
+        normalized[field_name] = raw_value
+
+    return normalized
+
+
+def _additive_evidence_v2_order_key(reference: Mapping[str, Any]) -> tuple[int, str, str, str, int, int, str, str]:
+    precision = str(reference["precision"])
+    return (
+        _PRECISION_RANKS.get(precision, 10**9),
+        str(reference["document_kind"]).strip().lower(),
+        str(reference["artifact_id"]),
+        str(reference["section_path"]),
+        reference["char_start"] if reference["char_start"] is not None else 10**9,
+        reference["char_end"] if reference["char_end"] is not None else 10**9,
+        _normalize_reference_text(str(reference["excerpt"])),
+        str(reference["evidence_id"]),
+    )
+
+
+def _normalize_additive_evidence_references_v2(value: object) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+
+    normalized = [
+        reference
+        for item in value
+        if (reference := _normalize_evidence_reference_v2_value(item)) is not None
+    ]
+    if normalized or not value:
+        return sorted(normalized, key=_additive_evidence_v2_order_key)
+    return None
+
+
+def _normalize_additive_item(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    normalized_item = {key: item_value for key, item_value in value.items() if key != "evidence_references_v2"}
+    if "evidence_references_v2" not in value:
+        return normalized_item
+
+    normalized_evidence = _normalize_additive_evidence_references_v2(value.get("evidence_references_v2"))
+    if normalized_evidence is not None:
+        normalized_item["evidence_references_v2"] = normalized_evidence
+    return normalized_item
+
+
+def _normalize_additive_block(*, block_name: str, block_value: object) -> dict[str, Any] | None:
+    if not isinstance(block_value, Mapping):
+        return None
+
+    raw_items = block_value.get("items")
+    if not isinstance(raw_items, list):
+        return None
+
+    normalized_block = {key: value for key, value in block_value.items() if key != "items"}
+    normalized_block["items"] = [
+        item
+        for raw_item in raw_items
+        if (item := _normalize_additive_item(raw_item)) is not None
+    ]
+    return normalized_block
+
+
 def _extract_additive_blocks(*, detail: object) -> dict[str, object]:
     blocks: dict[str, object] = {}
     additive_blocks = getattr(detail, "additive_blocks", None)
@@ -260,13 +365,15 @@ def _extract_additive_blocks(*, detail: object) -> dict[str, object]:
             raise ValueError("Meeting detail additive_blocks must be a mapping when provided")
         for block_name in _ADDITIVE_BLOCK_FIELD_NAMES:
             block_value = additive_blocks.get(block_name)
-            if block_value is not None:
-                blocks[block_name] = block_value
+            normalized = _normalize_additive_block(block_name=block_name, block_value=block_value)
+            if normalized is not None:
+                blocks[block_name] = normalized
 
     for block_name in _ADDITIVE_BLOCK_FIELD_NAMES:
         block_value = getattr(detail, block_name, None)
-        if block_value is not None:
-            blocks[block_name] = block_value
+        normalized = _normalize_additive_block(block_name=block_name, block_value=block_value)
+        if normalized is not None:
+            blocks[block_name] = normalized
 
     return blocks
 
@@ -403,6 +510,7 @@ def get_meeting_detail(
     detail = repository.get_meeting_detail_for_city(
         meeting_id=meeting_id,
         city_id=profile.home_city_id,
+        include_additive_blocks=settings.meeting_detail_additive_api.enabled,
     )
     if detail is None:
         return _meeting_not_found_response(meeting_id)

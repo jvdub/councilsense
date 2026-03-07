@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 
@@ -48,6 +49,7 @@ class MeetingDetail:
     notable_topics: tuple[str, ...]
     published_at: str | None
     claims: tuple[MeetingDetailClaim, ...]
+    additive_blocks: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -302,13 +304,29 @@ class MeetingReadRepository:
 
         return MeetingListPage(items=items, next_cursor=next_cursor)
 
-    def get_meeting_detail(self, *, meeting_id: str) -> MeetingDetail | None:
-        return self._get_meeting_detail(meeting_id=meeting_id)
+    def get_meeting_detail(self, *, meeting_id: str, include_additive_blocks: bool = False) -> MeetingDetail | None:
+        return self._get_meeting_detail(meeting_id=meeting_id, include_additive_blocks=include_additive_blocks)
 
-    def get_meeting_detail_for_city(self, *, meeting_id: str, city_id: str) -> MeetingDetail | None:
-        return self._get_meeting_detail(meeting_id=meeting_id, city_id=city_id)
+    def get_meeting_detail_for_city(
+        self,
+        *,
+        meeting_id: str,
+        city_id: str,
+        include_additive_blocks: bool = False,
+    ) -> MeetingDetail | None:
+        return self._get_meeting_detail(
+            meeting_id=meeting_id,
+            city_id=city_id,
+            include_additive_blocks=include_additive_blocks,
+        )
 
-    def _get_meeting_detail(self, *, meeting_id: str, city_id: str | None = None) -> MeetingDetail | None:
+    def _get_meeting_detail(
+        self,
+        *,
+        meeting_id: str,
+        city_id: str | None = None,
+        include_additive_blocks: bool = False,
+    ) -> MeetingDetail | None:
         where_sql = "WHERE m.id = ?"
         params: list[str] = [meeting_id]
         if city_id is not None:
@@ -335,7 +353,8 @@ class MeetingReadRepository:
                 sp.key_decisions_json,
                 sp.key_actions_json,
                 sp.notable_topics_json,
-                sp.published_at
+                                sp.published_at,
+                                sp.publish_stage_outcome_id
             FROM meetings m
             LEFT JOIN summary_publications sp
               ON sp.id = (
@@ -354,6 +373,7 @@ class MeetingReadRepository:
             return None
 
         publication_id = str(meeting_row[6]) if meeting_row[6] is not None else None
+        publish_stage_outcome_id = str(meeting_row[15]) if meeting_row[15] is not None else None
         source_document_url = self._lookup_source_document_url(meeting_id=meeting_id)
         claims: tuple[MeetingDetailClaim, ...] = ()
         if publication_id is not None:
@@ -419,6 +439,12 @@ class MeetingReadRepository:
                 )
             claims = tuple(claim_items)
 
+        additive_blocks = None
+        if include_additive_blocks and publish_stage_outcome_id is not None:
+            additive_blocks = self._lookup_additive_blocks(
+                publish_stage_outcome_id=publish_stage_outcome_id,
+            )
+
         return MeetingDetail(
             id=str(meeting_row[0]),
             city_id=str(meeting_row[1]),
@@ -436,7 +462,43 @@ class MeetingReadRepository:
             notable_topics=self._parse_string_list(meeting_row[13]),
             published_at=str(meeting_row[14]) if meeting_row[14] is not None else None,
             claims=claims,
+            additive_blocks=additive_blocks,
         )
+
+    def _lookup_additive_blocks(self, *, publish_stage_outcome_id: str) -> Mapping[str, object] | None:
+        row = self._connection.execute(
+            """
+            SELECT metadata_json
+            FROM processing_stage_outcomes
+            WHERE id = ?
+            """,
+            (publish_stage_outcome_id,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+
+        try:
+            parsed = json.loads(str(row[0]))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed, dict):
+            return None
+
+        candidate_blocks: dict[str, object] = {}
+        root_mapping = parsed if isinstance(parsed, Mapping) else {}
+        nested_blocks = root_mapping.get("additive_blocks")
+        if isinstance(nested_blocks, Mapping):
+            for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
+                block_value = nested_blocks.get(block_name)
+                if isinstance(block_value, Mapping):
+                    candidate_blocks[block_name] = dict(block_value)
+
+        for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
+            block_value = root_mapping.get(block_name)
+            if isinstance(block_value, Mapping):
+                candidate_blocks[block_name] = dict(block_value)
+
+        return candidate_blocks or None
 
     def _lookup_source_document_url(self, *, meeting_id: str) -> str | None:
         rows = self._connection.execute(

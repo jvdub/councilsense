@@ -101,6 +101,7 @@ def _insert_publication(
     key_actions_json: str,
     notable_topics_json: str,
     published_at: str,
+    publish_stage_outcome_id: str | None = None,
 ) -> None:
     app = cast(Any, client.app)
     app.state.db_connection.execute(
@@ -126,7 +127,7 @@ def _insert_publication(
             publication_id,
             meeting_id,
             None,
-            None,
+            publish_stage_outcome_id,
             1,
             publication_status,
             confidence_label,
@@ -360,6 +361,461 @@ def _insert_ingest_stage_outcome(
             "2026-02-20T12:11:00Z",
         ),
     )
+
+
+def _insert_publish_stage_outcome(
+    client: TestClient,
+    *,
+    outcome_id: str,
+    run_id: str,
+    city_id: str,
+    meeting_id: str,
+    metadata: dict[str, Any],
+) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT OR IGNORE INTO processing_runs (
+            id,
+            city_id,
+            cycle_id,
+            status,
+            parser_version,
+            source_version,
+            started_at
+        )
+        VALUES (?, ?, ?, 'processed', ?, ?, ?)
+        """,
+        (
+            run_id,
+            city_id,
+            f"cycle-{run_id}",
+            "v1",
+            "test-source",
+            "2026-03-07T09:00:00Z",
+        ),
+    )
+    app.state.db_connection.execute(
+        """
+        INSERT INTO processing_stage_outcomes (
+            id,
+            run_id,
+            city_id,
+            meeting_id,
+            stage_name,
+            status,
+            metadata_json,
+            started_at,
+            finished_at
+        )
+        VALUES (?, ?, ?, ?, 'publish', 'processed', ?, ?, ?)
+        """,
+        (
+            outcome_id,
+            run_id,
+            city_id,
+            meeting_id,
+            json.dumps(metadata, separators=(",", ":"), sort_keys=True),
+            "2026-03-07T09:05:00Z",
+            "2026-03-07T09:06:00Z",
+        ),
+    )
+
+
+def test_meeting_detail_additive_blocks_include_full_source_item_evidence_v2_when_flag_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    client = _client_with_configured_cities(monkeypatch, secret="additive-full-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-additive-full", secret="additive-full-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-additive-full",
+        meeting_uid="uid-detail-additive-full",
+        title="Additive Full Source Meeting",
+        created_at="2026-03-07 09:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-additive-full",
+        run_id="run-detail-additive-full",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-additive-full",
+        metadata={
+            "additive_blocks": {
+                "planned": {
+                    "generated_at": "2026-03-07T09:00:00Z",
+                    "source_coverage": {"minutes": "present", "agenda": "present", "packet": "present"},
+                    "items": [
+                        {
+                            "planned_id": "planned-1",
+                            "title": "Procurement contract approval",
+                            "category": "procurement",
+                            "status": "planned",
+                            "confidence": "high",
+                            "evidence_references_v2": [
+                                {
+                                    "evidence_id": "plan-ev-1",
+                                    "document_id": "doc-agenda-1",
+                                    "document_kind": "agenda",
+                                    "artifact_id": "artifact-agenda-1",
+                                    "section_path": "agenda.items.8",
+                                    "page_start": 5,
+                                    "page_end": 5,
+                                    "char_start": None,
+                                    "char_end": None,
+                                    "precision": "section",
+                                    "confidence": "high",
+                                    "excerpt": "Approve the procurement contract for fleet replacement.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "outcomes": {
+                    "generated_at": "2026-03-07T09:20:00Z",
+                    "authority_source": "minutes",
+                    "items": [
+                        {
+                            "outcome_id": "outcome-1",
+                            "title": "Procurement contract deferred",
+                            "result": "deferred",
+                            "confidence": "high",
+                            "evidence_references_v2": [
+                                {
+                                    "evidence_id": "outcome-ev-1",
+                                    "document_id": "doc-minutes-1",
+                                    "document_kind": "minutes",
+                                    "artifact_id": "artifact-minutes-1",
+                                    "section_path": "minutes.section.8.vote",
+                                    "page_start": 7,
+                                    "page_end": 7,
+                                    "char_start": 141,
+                                    "char_end": 224,
+                                    "precision": "offset",
+                                    "confidence": "high",
+                                    "excerpt": "Council deferred the procurement contract pending revised terms.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "planned_outcome_mismatches": {
+                    "summary": {"total": 1, "high": 1, "medium": 0, "low": 0},
+                    "items": [
+                        {
+                            "mismatch_id": "mismatch-1",
+                            "planned_id": "planned-1",
+                            "outcome_id": "outcome-1",
+                            "severity": "high",
+                            "mismatch_type": "disposition_change",
+                            "description": "Agenda planned approval but recorded outcome is deferment.",
+                            "reason_codes": ["outcome_changed"],
+                            "evidence_references_v2": [
+                                {
+                                    "evidence_id": "mismatch-ev-1",
+                                    "document_id": "doc-minutes-1",
+                                    "document_kind": "minutes",
+                                    "artifact_id": "artifact-minutes-1",
+                                    "section_path": "minutes.section.8.vote",
+                                    "page_start": 7,
+                                    "page_end": 7,
+                                    "char_start": 141,
+                                    "char_end": 224,
+                                    "precision": "offset",
+                                    "confidence": "high",
+                                    "excerpt": "Council deferred the procurement contract pending revised terms.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-additive-full",
+        meeting_id="meeting-detail-additive-full",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Council approved the consent agenda and deferred one procurement item.",
+        key_decisions_json='["Approved consent agenda"]',
+        key_actions_json='["Staff to revise the procurement contract"]',
+        notable_topics_json='["Consent agenda","Procurement"]',
+        published_at="2026-03-07T09:30:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-additive-full",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-additive-full", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["planned"]["items"][0]["evidence_references_v2"] == [
+        {
+            "evidence_id": "plan-ev-1",
+            "document_id": "doc-agenda-1",
+            "artifact_id": "artifact-agenda-1",
+            "document_kind": "agenda",
+            "section_path": "agenda.items.8",
+            "page_start": 5,
+            "page_end": 5,
+            "char_start": None,
+            "char_end": None,
+            "precision": "section",
+            "confidence": "high",
+            "excerpt": "Approve the procurement contract for fleet replacement.",
+        }
+    ]
+    assert payload["outcomes"]["items"][0]["evidence_references_v2"] == [
+        {
+            "evidence_id": "outcome-ev-1",
+            "document_id": "doc-minutes-1",
+            "artifact_id": "artifact-minutes-1",
+            "document_kind": "minutes",
+            "section_path": "minutes.section.8.vote",
+            "page_start": 7,
+            "page_end": 7,
+            "char_start": 141,
+            "char_end": 224,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Council deferred the procurement contract pending revised terms.",
+        }
+    ]
+    assert payload["planned_outcome_mismatches"]["items"][0]["evidence_references_v2"] == [
+        {
+            "evidence_id": "mismatch-ev-1",
+            "document_id": "doc-minutes-1",
+            "artifact_id": "artifact-minutes-1",
+            "document_kind": "minutes",
+            "section_path": "minutes.section.8.vote",
+            "page_start": 7,
+            "page_end": 7,
+            "char_start": 141,
+            "char_end": 224,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Council deferred the procurement contract pending revised terms.",
+        }
+    ]
+
+
+def test_meeting_detail_additive_blocks_omit_item_level_evidence_v2_when_unavailable(monkeypatch) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    client = _client_with_configured_cities(monkeypatch, secret="additive-partial-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-additive-partial", secret="additive-partial-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-additive-partial",
+        meeting_uid="uid-detail-additive-partial",
+        title="Additive Partial Source Meeting",
+        created_at="2026-03-07 10:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-additive-partial",
+        run_id="run-detail-additive-partial",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-additive-partial",
+        metadata={
+            "planned": {
+                "generated_at": "2026-03-07T10:00:00Z",
+                "source_coverage": {"minutes": "missing", "agenda": "present", "packet": "present"},
+                "items": [
+                    {
+                        "planned_id": "planned-2",
+                        "title": "Utility rate adjustment resolution",
+                        "category": "ordinance",
+                        "status": "planned",
+                        "confidence": "medium",
+                        "evidence_references_v2": None,
+                    }
+                ],
+            },
+            "outcomes": {
+                "generated_at": "2026-03-07T10:10:00Z",
+                "authority_source": "minutes",
+                "items": [
+                    {
+                        "outcome_id": "outcome-2",
+                        "title": "Outcome unavailable pending minutes",
+                        "result": "unresolved",
+                        "confidence": "low",
+                    }
+                ],
+            },
+            "planned_outcome_mismatches": {
+                "summary": {"total": 1, "high": 0, "medium": 1, "low": 0},
+                "items": [
+                    {
+                        "mismatch_id": "mismatch-2",
+                        "planned_id": "planned-2",
+                        "outcome_id": None,
+                        "severity": "medium",
+                        "mismatch_type": "authority_missing",
+                        "description": "Minutes are unavailable, so the final outcome cannot yet be compared against the planned item.",
+                        "reason_codes": ["missing_authoritative_minutes"],
+                        "evidence_references_v2": None,
+                    }
+                ],
+            },
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-additive-partial",
+        meeting_id="meeting-detail-additive-partial",
+        publication_status="limited_confidence",
+        confidence_label="limited_confidence",
+        summary_text="Agenda and packet support planned work, but authoritative minutes are unavailable.",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json='["Utility rates"]',
+        published_at="2026-03-07T10:10:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-additive-partial",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-additive-partial", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "evidence_references_v2" not in payload["planned"]["items"][0]
+    assert "evidence_references_v2" not in payload["outcomes"]["items"][0]
+    assert "evidence_references_v2" not in payload["planned_outcome_mismatches"]["items"][0]
+
+
+def test_meeting_detail_additive_blocks_preserve_empty_no_mismatch_block_when_flag_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    client = _client_with_configured_cities(monkeypatch, secret="additive-no-mismatch-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-additive-no-mismatch", secret="additive-no-mismatch-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-additive-no-mismatch",
+        meeting_uid="uid-detail-additive-no-mismatch",
+        title="Additive No Mismatch Meeting",
+        created_at="2026-03-07 11:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-additive-no-mismatch",
+        run_id="run-detail-additive-no-mismatch",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-additive-no-mismatch",
+        metadata={
+            "planned": {
+                "generated_at": "2026-03-07T11:00:00Z",
+                "source_coverage": {"minutes": "present", "agenda": "present", "packet": "missing"},
+                "items": [{"planned_id": "planned-3", "title": "Consent agenda", "status": "planned", "confidence": "high"}],
+            },
+            "outcomes": {
+                "generated_at": "2026-03-07T11:05:00Z",
+                "authority_source": "minutes",
+                "items": [{"outcome_id": "outcome-3", "title": "Consent agenda approved", "result": "approved", "confidence": "high"}],
+            },
+            "planned_outcome_mismatches": {
+                "summary": {"total": 0, "high": 0, "medium": 0, "low": 0},
+                "items": [],
+            },
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-additive-no-mismatch",
+        meeting_id="meeting-detail-additive-no-mismatch",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Council approved the consent agenda.",
+        key_decisions_json='["Approved consent agenda"]',
+        key_actions_json="[]",
+        notable_topics_json='["Consent agenda"]',
+        published_at="2026-03-07T11:06:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-additive-no-mismatch",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-additive-no-mismatch", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["planned_outcome_mismatches"] == {
+        "summary": {"total": 0, "high": 0, "medium": 0, "low": 0},
+        "items": [],
+    }
+
+
+def test_meeting_detail_flag_off_remains_baseline_equivalent_when_publish_metadata_has_additive_blocks(monkeypatch) -> None:
+    client = _client_with_configured_cities(monkeypatch, secret="additive-flag-off-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-additive-flag-off", secret="additive-flag-off-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-additive-flag-off",
+        meeting_uid="uid-detail-additive-flag-off",
+        title="Additive Flag Off Meeting",
+        created_at="2026-03-07 12:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-additive-flag-off",
+        run_id="run-detail-additive-flag-off",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-additive-flag-off",
+        metadata={
+            "planned": {"generated_at": "2026-03-07T12:00:00Z", "items": [{"planned_id": "planned-4"}]},
+            "outcomes": {"generated_at": "2026-03-07T12:05:00Z", "items": [{"outcome_id": "outcome-4"}]},
+            "planned_outcome_mismatches": {"summary": {"total": 0, "high": 0, "medium": 0, "low": 0}, "items": []},
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-additive-flag-off",
+        meeting_id="meeting-detail-additive-flag-off",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Baseline meeting detail should not leak additive fields.",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-07T12:06:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-additive-flag-off",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-additive-flag-off", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload.keys()) == {
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "evidence_references_v2",
+        "evidence_references",
+        "claims",
+    }
 
 
 def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatch) -> None:
