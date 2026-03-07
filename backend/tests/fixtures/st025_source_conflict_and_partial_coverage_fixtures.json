@@ -1,0 +1,324 @@
+{
+  "schema_version": "st025-source-conflict-partial-coverage-fixtures-v1",
+  "fixtures": [
+    {
+      "fixture_id": "st025-conflict-minutes-authoritative",
+      "scenario_group": "source_conflict",
+      "description": "Minutes, agenda, and packet disagree on the same decision, but minutes remain authoritative.",
+      "meeting_id": "meeting-st025-conflict-minutes-authoritative",
+      "meeting_uid": "st025-conflict-minutes-authoritative",
+      "meeting_datetime_utc": "2026-03-06T19:00:00Z",
+      "documents": [
+        {
+          "document_id": "canon-st025-c1-minutes",
+          "document_kind": "minutes",
+          "revision_id": "minutes-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-06T22:00:00Z",
+          "authority_level": "authoritative",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "minutes are authoritative for final decisions and actions",
+          "spans": [
+            {
+              "stable_section_path": "minutes/section/1",
+              "text": "Council adopted Ordinance 2026-12 on second reading after closing the public hearing.",
+              "precision": "section",
+              "confidence": "high",
+              "signal_tags": ["resolved_conflict"]
+            },
+            {
+              "stable_section_path": "minutes/section/2",
+              "text": "Staff will publish the adopted ordinance and update the fee schedule before April 1.",
+              "precision": "section",
+              "confidence": "high",
+              "signal_tags": ["resolved_conflict"]
+            }
+          ]
+        },
+        {
+          "document_id": "canon-st025-c1-agenda",
+          "document_kind": "agenda",
+          "revision_id": "agenda-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-06T18:30:00Z",
+          "authority_level": "supplemental",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "agenda states proposed action only",
+          "spans": [
+            {
+              "stable_section_path": "agenda/section/4",
+              "text": "Public hearing and possible action on proposed Ordinance 2026-12.",
+              "precision": "section",
+              "confidence": "medium",
+              "signal_tags": ["conflict_candidate"]
+            }
+          ]
+        },
+        {
+          "document_id": "canon-st025-c1-packet",
+          "document_kind": "packet",
+          "revision_id": "packet-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-06T18:45:00Z",
+          "authority_level": "supplemental",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "packet memo recommended deferral before the meeting",
+          "spans": [
+            {
+              "stable_section_path": "packet/memo/2",
+              "text": "Staff memo recommended continuing Ordinance 2026-12 to a later meeting if amendments were requested.",
+              "precision": "section",
+              "confidence": "medium",
+              "signal_tags": ["conflict_candidate"]
+            }
+          ]
+        }
+      ],
+      "expected_compose": {
+        "source_order": ["minutes", "agenda", "packet"],
+        "source_statuses": {
+          "minutes": "present",
+          "agenda": "present",
+          "packet": "present"
+        },
+        "missing_source_types": [],
+        "partial_source_types": [],
+        "available_source_types": ["minutes", "agenda", "packet"],
+        "fallback_source_type": null,
+        "fallback_text": ""
+      },
+      "expected_policy": {
+        "authority_outcome": "minutes_authoritative",
+        "publication_status": "processed",
+        "confidence_reason_codes": []
+      }
+    },
+    {
+      "fixture_id": "st025-conflict-unresolved-without-minutes",
+      "scenario_group": "source_conflict",
+      "description": "Agenda and packet disagree on the final action and no minutes are available to resolve the conflict.",
+      "meeting_id": "meeting-st025-conflict-unresolved-without-minutes",
+      "meeting_uid": "st025-conflict-unresolved-without-minutes",
+      "meeting_datetime_utc": "2026-03-07T01:00:00Z",
+      "documents": [
+        {
+          "document_id": "canon-st025-c2-agenda",
+          "document_kind": "agenda",
+          "revision_id": "agenda-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-06T16:00:00Z",
+          "authority_level": "supplemental",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "agenda announces expected adoption",
+          "spans": [
+            {
+              "stable_section_path": "agenda/section/7",
+              "text": "Consider adoption of Resolution 2026-09 awarding the Main Street paving contract.",
+              "precision": "section",
+              "confidence": "medium",
+              "signal_tags": ["conflict_candidate"]
+            }
+          ]
+        },
+        {
+          "document_id": "canon-st025-c2-packet",
+          "document_kind": "packet",
+          "revision_id": "packet-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-06T16:05:00Z",
+          "authority_level": "supplemental",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "packet memo anticipates continuation instead of adoption",
+          "spans": [
+            {
+              "stable_section_path": "packet/report/3",
+              "text": "Staff recommendation was to continue Resolution 2026-09 pending updated bids.",
+              "precision": "section",
+              "confidence": "medium",
+              "signal_tags": ["conflict_candidate", "missing_minutes"]
+            }
+          ]
+        }
+      ],
+      "expected_compose": {
+        "source_order": ["minutes", "agenda", "packet"],
+        "source_statuses": {
+          "minutes": "missing",
+          "agenda": "present",
+          "packet": "present"
+        },
+        "missing_source_types": ["minutes"],
+        "partial_source_types": [],
+        "available_source_types": ["agenda", "packet"],
+        "fallback_source_type": null,
+        "fallback_text": ""
+      },
+      "expected_policy": {
+        "authority_outcome": "unresolved_conflict",
+        "publication_status": "limited_confidence",
+        "confidence_reason_codes": [
+          "missing_authoritative_minutes",
+          "unresolved_source_conflict"
+        ]
+      }
+    },
+    {
+      "fixture_id": "st025-partial-agenda-preview-missing-minutes",
+      "scenario_group": "partial_coverage",
+      "description": "Only agenda-derived fallback text is available, modeling preview-only publish continuity when minutes are missing.",
+      "meeting_id": "meeting-st025-partial-agenda-preview-missing-minutes",
+      "meeting_uid": "st025-partial-agenda-preview-missing-minutes",
+      "meeting_datetime_utc": "2026-03-08T00:30:00Z",
+      "documents": [],
+      "expected_compose": {
+        "source_order": ["minutes", "agenda", "packet"],
+        "source_statuses": {
+          "minutes": "missing",
+          "agenda": "partial",
+          "packet": "missing"
+        },
+        "missing_source_types": ["minutes", "packet"],
+        "partial_source_types": ["agenda"],
+        "available_source_types": ["agenda"],
+        "fallback_source_type": "agenda",
+        "fallback_text": "Agenda preview includes a public hearing on utility impact fees and a resolution authorizing bond documents; no confirmed decisions are available yet."
+      },
+      "expected_policy": {
+        "authority_outcome": "agenda_preview_only",
+        "publication_status": "limited_confidence",
+        "confidence_reason_codes": [
+          "agenda_preview_only",
+          "missing_authoritative_minutes"
+        ]
+      }
+    },
+    {
+      "fixture_id": "st025-partial-minutes-only-coverage",
+      "scenario_group": "partial_coverage",
+      "description": "Minutes are available but both supplemental sources are missing, preserving publish continuity under limited confidence.",
+      "meeting_id": "meeting-st025-partial-minutes-only-coverage",
+      "meeting_uid": "st025-partial-minutes-only-coverage",
+      "meeting_datetime_utc": "2026-03-09T01:15:00Z",
+      "documents": [
+        {
+          "document_id": "canon-st025-p2-minutes",
+          "document_kind": "minutes",
+          "revision_id": "minutes-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-09T05:00:00Z",
+          "authority_level": "authoritative",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "minutes provide the only available source coverage",
+          "spans": [
+            {
+              "stable_section_path": "minutes/section/5",
+              "text": "Council approved the fiscal year transfer and directed staff to finalize the interfund memo.",
+              "precision": "section",
+              "confidence": "high",
+              "signal_tags": ["partial_coverage"]
+            }
+          ]
+        }
+      ],
+      "expected_compose": {
+        "source_order": ["minutes", "agenda", "packet"],
+        "source_statuses": {
+          "minutes": "present",
+          "agenda": "missing",
+          "packet": "missing"
+        },
+        "missing_source_types": ["agenda", "packet"],
+        "partial_source_types": [],
+        "available_source_types": ["minutes"],
+        "fallback_source_type": null,
+        "fallback_text": ""
+      },
+      "expected_policy": {
+        "authority_outcome": "supplemental_coverage_missing",
+        "publication_status": "limited_confidence",
+        "confidence_reason_codes": ["supplemental_sources_missing"]
+      }
+    },
+    {
+      "fixture_id": "st025-weak-precision-minutes-locators",
+      "scenario_group": "weak_precision",
+      "description": "Minutes carry only weak locator precision, so the authoritative source is present but should downgrade confidence.",
+      "meeting_id": "meeting-st025-weak-precision-minutes-locators",
+      "meeting_uid": "st025-weak-precision-minutes-locators",
+      "meeting_datetime_utc": "2026-03-10T03:00:00Z",
+      "documents": [
+        {
+          "document_id": "canon-st025-w1-minutes",
+          "document_kind": "minutes",
+          "revision_id": "minutes-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-10T07:10:00Z",
+          "authority_level": "authoritative",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "minutes are authoritative but evidence locators are weak",
+          "spans": [
+            {
+              "stable_section_path": "minutes/page/unknown",
+              "text": "Motion carried to authorize the temporary road closure permit for the parade route.",
+              "precision": "document",
+              "confidence": "low",
+              "signal_tags": ["weak_precision"]
+            },
+            {
+              "stable_section_path": "minutes/page/unknown-2",
+              "text": "Staff will coordinate with public works and emergency services before the event.",
+              "precision": "document",
+              "confidence": "low",
+              "signal_tags": ["weak_precision"]
+            }
+          ]
+        },
+        {
+          "document_id": "canon-st025-w1-agenda",
+          "document_kind": "agenda",
+          "revision_id": "agenda-rev-1",
+          "revision_number": 1,
+          "is_active_revision": true,
+          "extracted_at": "2026-03-10T02:30:00Z",
+          "authority_level": "supplemental",
+          "authority_source": "minutes_policy_v1",
+          "authority_note": "agenda item provides supporting context",
+          "spans": [
+            {
+              "stable_section_path": "agenda/section/6",
+              "text": "Consider parade route road closure permit and traffic control plan.",
+              "precision": "section",
+              "confidence": "medium",
+              "signal_tags": []
+            }
+          ]
+        }
+      ],
+      "expected_compose": {
+        "source_order": ["minutes", "agenda", "packet"],
+        "source_statuses": {
+          "minutes": "present",
+          "agenda": "present",
+          "packet": "missing"
+        },
+        "missing_source_types": ["packet"],
+        "partial_source_types": [],
+        "available_source_types": ["minutes", "agenda"],
+        "fallback_source_type": null,
+        "fallback_text": ""
+      },
+      "expected_policy": {
+        "authority_outcome": "minutes_authoritative_weak_precision",
+        "publication_status": "limited_confidence",
+        "confidence_reason_codes": ["weak_evidence_precision"]
+      }
+    }
+  ]
+}
