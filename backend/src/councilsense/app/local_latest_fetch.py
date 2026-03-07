@@ -15,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from councilsense.app.multi_document_observability import derive_artifact_id, emit_multi_document_stage_event
+from councilsense.app.st031_source_observability import SourceAwareMetricEmitter, emit_source_stage_outcome
 from councilsense.db import CityRegistryRepository, MeetingWriteRepository, PILOT_CITY_ID
 
 
@@ -126,6 +127,7 @@ def fetch_latest_meeting(
     timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     artifact_root: str | None = None,
     fetch_url: Callable[[str, float], bytes] | None = None,
+    metric_emitter: SourceAwareMetricEmitter | None = None,
 ) -> LatestFetchResult:
     registry = CityRegistryRepository(connection)
     selected_source_id, source_type, source_url = _resolve_source(
@@ -206,6 +208,14 @@ def fetch_latest_meeting(
             "meeting_temporal_status": _classify_meeting_temporal_status(candidate.meeting_date_iso) or "unknown",
             "source_url": source_url,
         },
+    )
+    emit_source_stage_outcome(
+        metric_emitter,
+        stage="ingest",
+        outcome="success",
+        city_id=city_id,
+        source_type=source_type,
+        status="processed",
     )
 
     warnings: tuple[str, ...] = ()

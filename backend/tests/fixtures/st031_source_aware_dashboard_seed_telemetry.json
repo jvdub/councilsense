@@ -1,0 +1,134 @@
+{
+  "environment": "local",
+  "metric_samples": [
+    {
+      "metric": "councilsense_source_stage_outcomes_total",
+      "labels": {
+        "environment": "local",
+        "stage": "ingest",
+        "outcome": "success",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "minutes",
+        "status": "processed"
+      },
+      "value": 4
+    },
+    {
+      "metric": "councilsense_source_stage_outcomes_total",
+      "labels": {
+        "environment": "local",
+        "stage": "extract",
+        "outcome": "success",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "minutes",
+        "status": "processed"
+      },
+      "value": 4
+    },
+    {
+      "metric": "councilsense_source_stage_outcomes_total",
+      "labels": {
+        "environment": "local",
+        "stage": "compose",
+        "outcome": "failure",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "bundle",
+        "status": "failed"
+      },
+      "value": 1
+    },
+    {
+      "metric": "councilsense_source_stage_outcomes_total",
+      "labels": {
+        "environment": "local",
+        "stage": "compose",
+        "outcome": "success",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "bundle",
+        "status": "processed"
+      },
+      "value": 3
+    },
+    {
+      "metric": "councilsense_source_coverage_ratio",
+      "labels": {
+        "environment": "local",
+        "stage": "compose",
+        "outcome": "measured",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "bundle"
+      },
+      "value": 0.6667
+    },
+    {
+      "metric": "councilsense_source_citation_precision_ratio",
+      "labels": {
+        "environment": "local",
+        "stage": "summarize",
+        "outcome": "measured",
+        "city_id": "city-eagle-mountain-ut",
+        "source_type": "bundle"
+      },
+      "value": 0.875
+    },
+    {
+      "metric": "councilsense_source_citation_precision_ratio",
+      "labels": {
+        "environment": "local",
+        "stage": "summarize",
+        "outcome": "missing_inputs",
+        "city_id": "city-salt-lake-city-ut",
+        "source_type": "bundle"
+      },
+      "value": 0.0
+    },
+    {
+      "metric": "councilsense_pipeline_dlq_backlog_count",
+      "labels": {
+        "environment": "local",
+        "stage": "extract",
+        "outcome": "backlog",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "minutes"
+      },
+      "value": 2
+    },
+    {
+      "metric": "councilsense_pipeline_dlq_backlog_count",
+      "labels": {
+        "environment": "local",
+        "stage": "ingest",
+        "outcome": "backlog",
+        "city_id": "city-salt-lake-city-ut",
+        "source_id": "source-slc-agenda",
+        "source_type": "agenda"
+      },
+      "value": 1
+    },
+    {
+      "metric": "councilsense_pipeline_dlq_oldest_age_seconds",
+      "labels": {
+        "environment": "local",
+        "stage": "extract",
+        "outcome": "oldest_age",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "minutes"
+      },
+      "value": 1800
+    },
+    {
+      "metric": "councilsense_pipeline_dlq_oldest_age_seconds",
+      "labels": {
+        "environment": "local",
+        "stage": "ingest",
+        "outcome": "oldest_age",
+        "city_id": "city-salt-lake-city-ut",
+        "source_id": "source-slc-agenda",
+        "source_type": "agenda"
+      },
+      "value": 7200
+    }
+  ]
+}

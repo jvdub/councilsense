@@ -1,0 +1,97 @@
+{
+  "dashboard_id": "st-031-source-aware-ops",
+  "title": "ST-031 Source-Aware Operations Dashboard",
+  "description": "Source-aware triage panels for stage outcomes, quality ratios, and pipeline DLQ backlog health.",
+  "default_time_window": "PT6H",
+  "filters": [
+    {
+      "name": "environment",
+      "type": "enum",
+      "default": "local",
+      "values": ["local", "aws"]
+    }
+  ],
+  "panels": [
+    {
+      "panel_id": "st031-source-stage-outcomes",
+      "title": "Source stage outcomes",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st031_source_stage_outcomes_total",
+        "kind": "metric_count",
+        "metric": "councilsense_source_stage_outcomes_total",
+        "group_by": ["city_id", "stage", "source_type", "outcome"],
+        "filters": {
+          "stage": ["ingest", "extract", "compose"],
+          "outcome": ["success", "retry", "failure"],
+          "source_type": ["minutes", "agenda", "packet", "bundle", "unknown"]
+        },
+        "promql": "sum by (city_id, stage, source_type, outcome) (increase(councilsense_source_stage_outcomes_total{environment=\"$environment\",stage=~\"ingest|extract|compose\",outcome=~\"success|retry|failure\",source_type=~\"minutes|agenda|packet|bundle|unknown\"}[15m]))"
+      }
+    },
+    {
+      "panel_id": "st031-source-coverage-ratio",
+      "title": "Source coverage ratio",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st031_source_coverage_ratio",
+        "kind": "metric_gauge",
+        "metric": "councilsense_source_coverage_ratio",
+        "group_by": ["city_id"],
+        "filters": {
+          "stage": ["compose"],
+          "outcome": ["measured"],
+          "source_type": ["bundle"]
+        },
+        "promql": "max by (city_id) (councilsense_source_coverage_ratio{environment=\"$environment\",stage=\"compose\",outcome=\"measured\",source_type=\"bundle\"})"
+      }
+    },
+    {
+      "panel_id": "st031-citation-precision-ratio",
+      "title": "Citation precision ratio",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st031_source_citation_precision_ratio",
+        "kind": "metric_gauge",
+        "metric": "councilsense_source_citation_precision_ratio",
+        "group_by": ["city_id", "outcome"],
+        "filters": {
+          "stage": ["summarize"],
+          "outcome": ["measured", "missing_inputs"],
+          "source_type": ["bundle"]
+        },
+        "promql": "max by (city_id, outcome) (councilsense_source_citation_precision_ratio{environment=\"$environment\",stage=\"summarize\",outcome=~\"measured|missing_inputs\",source_type=\"bundle\"})"
+      }
+    },
+    {
+      "panel_id": "st031-pipeline-dlq-backlog-by-source",
+      "title": "Pipeline DLQ backlog by source",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st031_pipeline_dlq_backlog_count",
+        "kind": "metric_gauge",
+        "metric": "councilsense_pipeline_dlq_backlog_count",
+        "group_by": ["city_id", "stage", "source_type", "source_id"],
+        "filters": {
+          "outcome": ["backlog"]
+        },
+        "promql": "max by (city_id, stage, source_type, source_id) (councilsense_pipeline_dlq_backlog_count{environment=\"$environment\",outcome=\"backlog\"})"
+      }
+    },
+    {
+      "panel_id": "st031-pipeline-dlq-oldest-age-by-source",
+      "title": "Pipeline DLQ oldest age by source",
+      "type": "timeseries",
+      "query": {
+        "query_id": "st031_pipeline_dlq_oldest_age_seconds",
+        "kind": "metric_gauge",
+        "metric": "councilsense_pipeline_dlq_oldest_age_seconds",
+        "group_by": ["city_id", "stage", "source_type", "source_id"],
+        "filters": {
+          "outcome": ["oldest_age"]
+        },
+        "promql": "max by (city_id, stage, source_type, source_id) (councilsense_pipeline_dlq_oldest_age_seconds{environment=\"$environment\",outcome=\"oldest_age\"})"
+      }
+    }
+  ]
+}

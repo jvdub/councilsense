@@ -41,6 +41,12 @@ from councilsense.app.multi_document_observability import (
     emit_multi_document_stage_event,
     resolve_stage_source_type,
 )
+from councilsense.app.st031_source_observability import (
+    SourceAwareMetricEmitter,
+    emit_citation_precision_ratio,
+    emit_source_coverage_ratio,
+    emit_source_stage_outcome,
+)
 from councilsense.app.st030_document_aware_gates import DocumentAwareGateInput
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
@@ -363,10 +369,16 @@ class _TextCollector(HTMLParser):
 
 
 class LocalPipelineOrchestrator:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        metric_emitter: SourceAwareMetricEmitter | None = None,
+    ) -> None:
         self._connection = connection
         self._run_repository = ProcessingRunRepository(connection)
         self._lifecycle_service = ProcessingLifecycleService(self._run_repository)
+        self._metric_emitter = metric_emitter
 
     def process_latest(
         self,
@@ -549,6 +561,15 @@ class LocalPipelineOrchestrator:
                     )
                 except MultiDocumentLogContractError:
                     logger.exception("pipeline_multi_document_failure_log_contract_error")
+            if exc.stage != "publish":
+                emit_source_stage_outcome(
+                    self._metric_emitter,
+                    stage=exc.stage,
+                    outcome="failure",
+                    city_id=city_id,
+                    source_type=resolve_stage_source_type(stage=exc.stage, source_type=source_type),
+                    status="failed",
+                )
             self._lifecycle_service.mark_failed(run_id=run_id)
             return ProcessLatestResult(
                 run_id=run_id,
@@ -773,6 +794,14 @@ class LocalPipelineOrchestrator:
                 "extract_mode": str(payload.metadata.get("extract_mode") or "unknown"),
             },
         )
+        emit_source_stage_outcome(
+            self._metric_emitter,
+            stage="extract",
+            outcome="success",
+            city_id=city_id,
+            source_type=source_type,
+            status=status,
+        )
         return payload, status
 
     def _summarize_stage(
@@ -816,6 +845,19 @@ class LocalPipelineOrchestrator:
                 "available_source_types": list(compose_input.source_coverage.available_source_types),
                 "missing_source_types": list(compose_input.source_coverage.missing_source_types),
             },
+        )
+        emit_source_stage_outcome(
+            self._metric_emitter,
+            stage="compose",
+            outcome="success",
+            city_id=city_id,
+            source_type="bundle",
+            status="processed",
+        )
+        emit_source_coverage_ratio(
+            self._metric_emitter,
+            city_id=city_id,
+            coverage_ratio=compose_input.source_coverage.coverage_ratio,
         )
         authority_policy = _evaluate_authority_policy(compose_input=compose_input)
         summarize_text = authority_policy.summarize_text
@@ -911,6 +953,12 @@ class LocalPipelineOrchestrator:
                 "provider_used": provider_used,
                 "claim_count": len(output.claims),
             },
+        )
+        _, citation_precision_ratio = _summarization_pointer_metrics(output=output)
+        emit_citation_precision_ratio(
+            self._metric_emitter,
+            city_id=city_id,
+            citation_precision_ratio=citation_precision_ratio,
         )
         return _SummarizePayload(
             output=output,
@@ -1096,6 +1144,14 @@ class LocalPipelineOrchestrator:
                     "error_code": type(exc).__name__,
                     "error_message": str(exc),
                 },
+            )
+            emit_source_stage_outcome(
+                self._metric_emitter,
+                stage="publish",
+                outcome="failure",
+                city_id=city_id,
+                source_type="bundle",
+                status="failed",
             )
             raise LocalPipelineError(
                 stage="publish",

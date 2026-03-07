@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable, Literal
 
+from councilsense.app.st031_source_observability import (
+    SourceAwareMetricEmitter,
+    emit_pipeline_dlq_snapshot,
+    emit_source_stage_outcome,
+)
 from councilsense.db import (
     ProcessingLifecycleService,
     ProcessingRunRepository,
@@ -161,11 +166,13 @@ class StageExecutionService:
         lifecycle_service: ProcessingLifecycleService,
         source_health_repository: SourceHealthRepository | None = None,
         retry_policy: StageRetryPolicy | None = None,
+        metric_emitter: SourceAwareMetricEmitter | None = None,
     ) -> None:
         self._repository = repository
         self._lifecycle_service = lifecycle_service
         self._source_health_repository = source_health_repository
         self._retry_policy = retry_policy or StageRetryPolicy()
+        self._metric_emitter = metric_emitter
 
     def execute_many(
         self,
@@ -257,6 +264,14 @@ class StageExecutionService:
                     error_code=None,
                     error_message=None,
                 )
+                emit_source_stage_outcome(
+                    self._metric_emitter,
+                    stage=stage_name,
+                    outcome="success",
+                    city_id=item.city_id,
+                    source_type=resolved_policy.source_type,
+                    status="processed",
+                )
                 self._lifecycle_service.mark_processed(run_id=item.run_id)
                 return StageExecutionResult(
                     run_id=item.run_id,
@@ -288,6 +303,14 @@ class StageExecutionService:
                         retry_policy_version=resolved_policy.policy_version,
                         error_code=decision.error_code,
                         error_message=_short_error_message(error),
+                    )
+                    emit_source_stage_outcome(
+                        self._metric_emitter,
+                        stage=stage_name,
+                        outcome="retry",
+                        city_id=item.city_id,
+                        source_type=resolved_policy.source_type,
+                        status="failed",
                     )
                     continue
 
@@ -365,6 +388,18 @@ class StageExecutionService:
                     retry_policy_version=resolved_policy.policy_version,
                     error_code=decision.error_code,
                     error_message=_short_error_message(error),
+                )
+                emit_source_stage_outcome(
+                    self._metric_emitter,
+                    stage=stage_name,
+                    outcome="failure",
+                    city_id=item.city_id,
+                    source_type=resolved_policy.source_type,
+                    status="failed",
+                )
+                emit_pipeline_dlq_snapshot(
+                    self._metric_emitter,
+                    connection=self._repository._connection,
                 )
                 self._lifecycle_service.mark_failed(run_id=item.run_id)
                 return StageExecutionResult(

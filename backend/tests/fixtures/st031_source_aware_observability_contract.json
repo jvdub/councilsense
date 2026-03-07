@@ -1,0 +1,34 @@
+{
+  "metrics": [
+    {
+      "name": "councilsense_source_stage_outcomes_total",
+      "type": "counter",
+      "unit": "events",
+      "labels": ["stage", "outcome", "city_id", "source_type", "status"]
+    },
+    {
+      "name": "councilsense_source_coverage_ratio",
+      "type": "gauge",
+      "unit": "ratio",
+      "labels": ["stage", "outcome", "city_id", "source_type"]
+    },
+    {
+      "name": "councilsense_source_citation_precision_ratio",
+      "type": "gauge",
+      "unit": "ratio",
+      "labels": ["stage", "outcome", "city_id", "source_type"]
+    },
+    {
+      "name": "councilsense_pipeline_dlq_backlog_count",
+      "type": "gauge",
+      "unit": "entries",
+      "labels": ["stage", "outcome", "city_id", "source_id", "source_type"]
+    },
+    {
+      "name": "councilsense_pipeline_dlq_oldest_age_seconds",
+      "type": "gauge",
+      "unit": "seconds",
+      "labels": ["stage", "outcome", "city_id", "source_id", "source_type"]
+    }
+  ]
+}
