@@ -59,12 +59,48 @@ def _scenario(bundle: dict[str, Any], fixture_id: str) -> dict[str, Any]:
     return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
 
 
+def _matrix_entry(bundle: dict[str, Any], fixture_id: str) -> dict[str, Any]:
+    matrix = cast(list[dict[str, Any]], bundle["field_presence_matrix"])
+    return next(entry for entry in matrix if entry["fixture_id"] == fixture_id)
+
+
+def _present_item_level_evidence_paths(payload: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
+        block = payload.get(block_name)
+        if not isinstance(block, dict):
+            continue
+        items = block.get("items")
+        if not isinstance(items, list):
+            continue
+        for index, item in enumerate(items):
+            if isinstance(item, dict) and "evidence_references_v2" in item:
+                paths.append(f"$.{block_name}.items[{index}].evidence_references_v2")
+    return paths
+
+
+def _omitted_item_level_evidence_paths(payload: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
+        block = payload.get(block_name)
+        if not isinstance(block, dict):
+            continue
+        items = block.get("items")
+        if not isinstance(items, list):
+            continue
+        for index, item in enumerate(items):
+            if isinstance(item, dict) and "evidence_references_v2" not in item:
+                paths.append(f"$.{block_name}.items[{index}].evidence_references_v2")
+    return paths
+
+
 def test_st027_contract_fixture_bundle_covers_flag_off_and_flag_on_states() -> None:
     bundle = _load_bundle()
 
     assert bundle["schema_version"] == "st027-reader-api-additive-contract-examples-v1"
     assert bundle["contract_version"] == "st-022-meeting-detail-v1"
     assert bundle["task_id"] == "TASK-ST-027-01"
+    assert bundle["matrix_task_id"] == "TASK-ST-027-04"
     assert bundle["feature_flag"] == "st022_api_additive_v1_fields_enabled"
 
     scenarios = cast(list[dict[str, Any]], bundle["scenarios"])
@@ -79,6 +115,33 @@ def test_st027_contract_fixture_bundle_covers_flag_off_and_flag_on_states() -> N
         "available",
         "unavailable",
     }
+
+
+def test_st027_field_presence_matrix_matches_fixture_payload_shapes() -> None:
+    bundle = _load_bundle()
+
+    matrix = cast(list[dict[str, Any]], bundle["field_presence_matrix"])
+    assert [entry["fixture_id"] for entry in matrix] == [
+        "st027-flag-off-baseline",
+        "st027-flag-on-evidence-v2-available",
+        "st027-flag-on-evidence-v2-unavailable",
+    ]
+
+    for entry in matrix:
+        payload = cast(dict[str, Any], _scenario(bundle, str(entry["fixture_id"]))["payload"])
+        present_fields = set(cast(list[str], entry["expected_present_top_level_fields"]))
+        absent_fields = set(cast(list[str], entry["expected_absent_top_level_fields"]))
+
+        assert present_fields <= set(payload.keys())
+        assert not (absent_fields & set(payload.keys()))
+        assert _present_item_level_evidence_paths(payload) == cast(
+            list[str],
+            entry["expected_present_item_level_evidence_paths"],
+        )
+        assert _omitted_item_level_evidence_paths(payload) == cast(
+            list[str],
+            entry["expected_omitted_item_level_evidence_paths"],
+        )
 
 
 def test_st027_flag_off_example_is_baseline_compatible() -> None:
@@ -104,6 +167,24 @@ def test_st027_flag_on_example_includes_additive_blocks_without_changing_baselin
         assert "evidence_references_v2" in item
         evidence = cast(list[dict[str, Any]], item["evidence_references_v2"])
         assert evidence == [] or all(set(reference.keys()) == EVIDENCE_V2_KEYS for reference in evidence)
+
+    mismatch_evidence = cast(list[dict[str, Any]], mismatch_items[0]["evidence_references_v2"])
+    assert mismatch_evidence == [
+        {
+            "evidence_id": "ev2-st027-mismatch-100",
+            "document_id": "doc-minutes-100",
+            "document_kind": "minutes",
+            "artifact_id": "artifact-minutes-100",
+            "section_path": "minutes.section.8.vote",
+            "page_start": 7,
+            "page_end": 7,
+            "char_start": 141,
+            "char_end": 224,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Council deferred the procurement contract pending revised terms.",
+        }
+    ]
 
 
 def test_st027_flag_on_example_omits_item_level_evidence_v2_when_unavailable() -> None:

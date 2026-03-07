@@ -2,7 +2,109 @@
   "schema_version": "st027-reader-api-additive-contract-examples-v1",
   "contract_version": "st-022-meeting-detail-v1",
   "task_id": "TASK-ST-027-01",
+  "matrix_task_id": "TASK-ST-027-04",
   "feature_flag": "st022_api_additive_v1_fields_enabled",
+  "field_presence_matrix": [
+    {
+      "fixture_id": "st027-flag-off-baseline",
+      "flag_state": "off",
+      "expected_present_top_level_fields": [
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+        "evidence_references",
+        "evidence_references_v2"
+      ],
+      "expected_absent_top_level_fields": [
+        "planned",
+        "outcomes",
+        "planned_outcome_mismatches"
+      ],
+      "expected_present_item_level_evidence_paths": [],
+      "expected_omitted_item_level_evidence_paths": []
+    },
+    {
+      "fixture_id": "st027-flag-on-evidence-v2-available",
+      "flag_state": "on",
+      "expected_present_top_level_fields": [
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+        "evidence_references",
+        "evidence_references_v2",
+        "planned",
+        "outcomes",
+        "planned_outcome_mismatches"
+      ],
+      "expected_absent_top_level_fields": [],
+      "expected_present_item_level_evidence_paths": [
+        "$.planned.items[0].evidence_references_v2",
+        "$.outcomes.items[0].evidence_references_v2",
+        "$.planned_outcome_mismatches.items[0].evidence_references_v2"
+      ],
+      "expected_omitted_item_level_evidence_paths": []
+    },
+    {
+      "fixture_id": "st027-flag-on-evidence-v2-unavailable",
+      "flag_state": "on",
+      "expected_present_top_level_fields": [
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+        "evidence_references",
+        "evidence_references_v2",
+        "planned",
+        "outcomes",
+        "planned_outcome_mismatches"
+      ],
+      "expected_absent_top_level_fields": [],
+      "expected_present_item_level_evidence_paths": [],
+      "expected_omitted_item_level_evidence_paths": [
+        "$.planned.items[0].evidence_references_v2",
+        "$.outcomes.items[0].evidence_references_v2",
+        "$.planned_outcome_mismatches.items[0].evidence_references_v2"
+      ]
+    }
+  ],
   "scenarios": [
     {
       "fixture_id": "st027-flag-off-baseline",
@@ -145,7 +247,22 @@
               "reason_codes": [
                 "outcome_changed"
               ],
-              "evidence_references_v2": []
+              "evidence_references_v2": [
+                {
+                  "evidence_id": "ev2-st027-mismatch-100",
+                  "document_id": "doc-minutes-100",
+                  "document_kind": "minutes",
+                  "artifact_id": "artifact-minutes-100",
+                  "section_path": "minutes.section.8.vote",
+                  "page_start": 7,
+                  "page_end": 7,
+                  "char_start": 141,
+                  "char_end": 224,
+                  "precision": "offset",
+                  "confidence": "high",
+                  "excerpt": "Council deferred the procurement contract pending revised terms."
+                }
+              ]
             }
           ]
         }

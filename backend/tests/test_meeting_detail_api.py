@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -54,6 +55,23 @@ def _client_with_configured_cities(monkeypatch, *, secret: str, supported_city_i
     return TestClient(create_app())
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _st027_contract_fixture_path() -> Path:
+    return _repo_root() / "backend" / "tests" / "fixtures" / "st027_reader_api_additive_contract_examples.json"
+
+
+def _load_st027_contract_bundle() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(_st027_contract_fixture_path().read_text(encoding="utf-8")))
+
+
+def _load_st027_contract_scenario(fixture_id: str) -> dict[str, Any]:
+    scenarios = cast(list[dict[str, Any]], _load_st027_contract_bundle()["scenarios"])
+    return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
+
+
 def _insert_meeting(
     client: TestClient,
     *,
@@ -61,6 +79,7 @@ def _insert_meeting(
     meeting_uid: str,
     title: str,
     created_at: str,
+    updated_at: str | None = None,
     city_id: str = PILOT_CITY_ID,
 ) -> None:
     app = cast(Any, client.app)
@@ -69,7 +88,7 @@ def _insert_meeting(
         INSERT INTO meetings (id, city_id, meeting_uid, title, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (meeting_id, city_id, meeting_uid, title, created_at, created_at),
+        (meeting_id, city_id, meeting_uid, title, created_at, updated_at or created_at),
     )
 
 
@@ -419,6 +438,61 @@ def _insert_publish_stage_outcome(
             "2026-03-07T09:05:00Z",
             "2026-03-07T09:06:00Z",
         ),
+    )
+
+
+def _seed_st027_contract_scenario(
+    client: TestClient,
+    *,
+    scenario: dict[str, Any],
+    additive_blocks_override: dict[str, Any] | None = None,
+) -> None:
+    payload = cast(dict[str, Any], scenario["payload"])
+    meeting_id = cast(str, payload["id"])
+    publication_id = cast(str, payload["publication_id"])
+
+    _insert_meeting(
+        client,
+        meeting_id=meeting_id,
+        meeting_uid=cast(str, payload["meeting_uid"]),
+        title=cast(str, payload["title"]),
+        created_at=cast(str, payload["created_at"]),
+        updated_at=cast(str, payload["updated_at"]),
+        city_id=cast(str, payload["city_id"]),
+    )
+
+    additive_blocks = additive_blocks_override
+    if additive_blocks is None:
+        additive_blocks = {
+            block_name: payload[block_name]
+            for block_name in ("planned", "outcomes", "planned_outcome_mismatches")
+            if block_name in payload
+        }
+
+    publish_stage_outcome_id: str | None = None
+    if additive_blocks:
+        publish_stage_outcome_id = f"outcome-{publication_id}"
+        _insert_publish_stage_outcome(
+            client,
+            outcome_id=publish_stage_outcome_id,
+            run_id=f"run-{publication_id}",
+            city_id=cast(str, payload["city_id"]),
+            meeting_id=meeting_id,
+            metadata={"additive_blocks": additive_blocks},
+        )
+
+    _insert_publication(
+        client,
+        publication_id=publication_id,
+        meeting_id=meeting_id,
+        publication_status=cast(str, payload["status"]),
+        confidence_label=cast(str, payload["confidence_label"]),
+        summary_text=cast(str | None, payload["summary"]) or "",
+        key_decisions_json=json.dumps(payload["key_decisions"], separators=(",", ":")),
+        key_actions_json=json.dumps(payload["key_actions"], separators=(",", ":")),
+        notable_topics_json=json.dumps(payload["notable_topics"], separators=(",", ":")),
+        published_at=cast(str, payload["published_at"]),
+        publish_stage_outcome_id=publish_stage_outcome_id,
     )
 
 
@@ -816,6 +890,58 @@ def test_meeting_detail_flag_off_remains_baseline_equivalent_when_publish_metada
         "evidence_references",
         "claims",
     }
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    [
+        "st027-flag-on-evidence-v2-available",
+        "st027-flag-on-evidence-v2-unavailable",
+    ],
+)
+def test_st027_meeting_detail_matches_contract_fixture_when_additive_flag_enabled(monkeypatch, fixture_id: str) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+
+    scenario = _load_st027_contract_scenario(fixture_id)
+    payload = cast(dict[str, Any], scenario["payload"])
+    client = _client_with_configured_cities(monkeypatch, secret=f"{fixture_id}-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token(f"user-{fixture_id}", secret=f"{fixture_id}-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _seed_st027_contract_scenario(client, scenario=scenario)
+
+    response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_st027_flag_off_meeting_detail_matches_baseline_contract_fixture_even_with_hidden_additive_metadata(monkeypatch) -> None:
+    baseline_scenario = _load_st027_contract_scenario("st027-flag-off-baseline")
+    additive_scenario = _load_st027_contract_scenario("st027-flag-on-evidence-v2-available")
+    baseline_payload = cast(dict[str, Any], baseline_scenario["payload"])
+    additive_blocks = {
+        block_name: cast(dict[str, Any], additive_scenario["payload"])[block_name]
+        for block_name in ("planned", "outcomes", "planned_outcome_mismatches")
+    }
+
+    client = _client_with_configured_cities(monkeypatch, secret="st027-flag-off-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-st027-flag-off", secret="st027-flag-off-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _seed_st027_contract_scenario(
+        client,
+        scenario=baseline_scenario,
+        additive_blocks_override=additive_blocks,
+    )
+
+    response = client.get(f"/v1/meetings/{baseline_payload['id']}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == baseline_payload
 
 
 def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatch) -> None:
