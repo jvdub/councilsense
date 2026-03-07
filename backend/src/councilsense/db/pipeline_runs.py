@@ -34,6 +34,7 @@ PIPELINE_DLQ_CONTRACT_VERSION = "st029-pipeline-dlq.v1"
 
 PipelineDlqFailureClassification = Literal["transient", "terminal"]
 PipelineDlqStatus = Literal["open", "triaged", "replay_ready", "replayed", "dismissed"]
+PipelineReplayAuditEventType = Literal["requested", "queued", "noop", "failed"]
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,26 @@ class PipelineDlqRecord:
     replayed_at: str | None
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class PipelineReplayAuditRecord:
+    id: int
+    replay_request_key: str
+    idempotency_key: str
+    dlq_entry_id: int
+    dlq_key: str
+    run_id: str
+    city_id: str
+    meeting_id: str
+    stage_name: str
+    source_id: str
+    stage_outcome_id: str
+    actor_user_id: str
+    replay_reason: str
+    event_type: PipelineReplayAuditEventType
+    result_metadata_json: str
+    created_at: str
 
 
 class ProcessingRunRepository:
@@ -698,6 +719,222 @@ class ProcessingRunRepository:
         ).fetchall()
         return tuple(self._to_pipeline_dlq_record(row) for row in rows)
 
+    def transition_pipeline_dlq_status(
+        self,
+        *,
+        dlq_key: str,
+        next_status: PipelineDlqStatus,
+        transitioned_at: str | None = None,
+    ) -> PipelineDlqRecord:
+        record = self.get_pipeline_dlq_entry(dlq_key=dlq_key)
+        if record is None:
+            raise LookupError(f"Pipeline DLQ entry not found: {dlq_key}")
+        if record.status == next_status:
+            return record
+        if not PIPELINE_DLQ_STATUS_MODEL.can_transition(current=record.status, next_status=next_status):
+            raise ValueError(f"Invalid pipeline DLQ status transition: {record.status} -> {next_status}")
+
+        effective_transitioned_at = transitioned_at or _utc_now_timestamp()
+        replay_ready_at = record.replay_ready_at
+        replayed_at = record.replayed_at
+
+        if next_status == "replay_ready" and replay_ready_at is None:
+            replay_ready_at = effective_transitioned_at
+        if next_status == "replayed" and replayed_at is None:
+            replayed_at = effective_transitioned_at
+
+        with self._connection:
+            self._connection.execute(
+                """
+                UPDATE pipeline_dlq_entries
+                SET
+                    status = ?,
+                    replay_ready_at = ?,
+                    replayed_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE dlq_key = ?
+                """,
+                (next_status, replay_ready_at, replayed_at, dlq_key),
+            )
+
+        refreshed = self.get_pipeline_dlq_entry(dlq_key=dlq_key)
+        if refreshed is None:
+            raise LookupError(f"Pipeline DLQ entry missing after status transition: {dlq_key}")
+        return refreshed
+
+    def record_pipeline_replay_audit_event(
+        self,
+        *,
+        replay_request_key: str,
+        idempotency_key: str,
+        dlq_entry_id: int,
+        dlq_key: str,
+        run_id: str,
+        city_id: str,
+        meeting_id: str,
+        stage_name: str,
+        source_id: str,
+        stage_outcome_id: str,
+        actor_user_id: str,
+        replay_reason: str,
+        event_type: PipelineReplayAuditEventType,
+        result_metadata: Mapping[str, object] | None = None,
+    ) -> PipelineReplayAuditRecord:
+        result_metadata_json = _encode_json_object(_normalize_json_mapping(result_metadata))
+
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO pipeline_replay_audit_events (
+                    replay_request_key,
+                    idempotency_key,
+                    dlq_entry_id,
+                    dlq_key,
+                    run_id,
+                    city_id,
+                    meeting_id,
+                    stage_name,
+                    source_id,
+                    stage_outcome_id,
+                    actor_user_id,
+                    replay_reason,
+                    event_type,
+                    result_metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (replay_request_key, event_type) DO NOTHING
+                """,
+                (
+                    replay_request_key,
+                    idempotency_key,
+                    dlq_entry_id,
+                    dlq_key,
+                    run_id,
+                    city_id,
+                    meeting_id,
+                    stage_name,
+                    source_id,
+                    stage_outcome_id,
+                    actor_user_id,
+                    replay_reason,
+                    event_type,
+                    result_metadata_json,
+                ),
+            )
+
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                replay_request_key,
+                idempotency_key,
+                dlq_entry_id,
+                dlq_key,
+                run_id,
+                city_id,
+                meeting_id,
+                stage_name,
+                source_id,
+                stage_outcome_id,
+                actor_user_id,
+                replay_reason,
+                event_type,
+                result_metadata_json,
+                created_at
+            FROM pipeline_replay_audit_events
+            WHERE replay_request_key = ?
+              AND event_type = ?
+            """,
+            (replay_request_key, event_type),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("Pipeline replay audit row missing after insert")
+        return self._to_pipeline_replay_audit_record(row)
+
+    def list_pipeline_replay_audit_records(
+        self,
+        *,
+        replay_request_key: str | None = None,
+        idempotency_key: str | None = None,
+        dlq_key: str | None = None,
+        city_id: str | None = None,
+        meeting_id: str | None = None,
+        run_id: str | None = None,
+        stage_name: str | None = None,
+        source_id: str | None = None,
+        actor_user_id: str | None = None,
+        event_type: PipelineReplayAuditEventType | None = None,
+        limit: int = 200,
+    ) -> tuple[PipelineReplayAuditRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+
+        clauses: list[str] = []
+        params: list[object] = []
+        if replay_request_key is not None:
+            clauses.append("replay_request_key = ?")
+            params.append(replay_request_key)
+        if idempotency_key is not None:
+            clauses.append("idempotency_key = ?")
+            params.append(idempotency_key)
+        if dlq_key is not None:
+            clauses.append("dlq_key = ?")
+            params.append(dlq_key)
+        if city_id is not None:
+            clauses.append("city_id = ?")
+            params.append(city_id)
+        if meeting_id is not None:
+            clauses.append("meeting_id = ?")
+            params.append(meeting_id)
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            params.append(run_id)
+        if stage_name is not None:
+            clauses.append("stage_name = ?")
+            params.append(stage_name)
+        if source_id is not None:
+            clauses.append("source_id = ?")
+            params.append(source_id)
+        if actor_user_id is not None:
+            clauses.append("actor_user_id = ?")
+            params.append(actor_user_id)
+        if event_type is not None:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+
+        where_sql = ""
+        if clauses:
+            where_sql = f"WHERE {' AND '.join(clauses)}"
+
+        params.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT
+                id,
+                replay_request_key,
+                idempotency_key,
+                dlq_entry_id,
+                dlq_key,
+                run_id,
+                city_id,
+                meeting_id,
+                stage_name,
+                source_id,
+                stage_outcome_id,
+                actor_user_id,
+                replay_reason,
+                event_type,
+                result_metadata_json,
+                created_at
+            FROM pipeline_replay_audit_events
+            {where_sql}
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        return tuple(self._to_pipeline_replay_audit_record(row) for row in rows)
+
     def list_parser_drift_events(
         self,
         *,
@@ -1192,6 +1429,27 @@ class ProcessingRunRepository:
             updated_at=str(row[26]),
         )
 
+    @staticmethod
+    def _to_pipeline_replay_audit_record(row: sqlite3.Row | tuple[object, ...]) -> PipelineReplayAuditRecord:
+        return PipelineReplayAuditRecord(
+            id=int(row[0]),
+            replay_request_key=str(row[1]),
+            idempotency_key=str(row[2]),
+            dlq_entry_id=int(row[3]),
+            dlq_key=str(row[4]),
+            run_id=str(row[5]),
+            city_id=str(row[6]),
+            meeting_id=str(row[7]),
+            stage_name=str(row[8]),
+            source_id=str(row[9]),
+            stage_outcome_id=str(row[10]),
+            actor_user_id=str(row[11]),
+            replay_reason=str(row[12]),
+            event_type=str(row[13]),
+            result_metadata_json=str(row[14]),
+            created_at=str(row[15]),
+        )
+
     def _emit_source_freshness_breach_events(
         self,
         *,
@@ -1403,6 +1661,11 @@ def _pipeline_dlq_key(
     source_id: str,
 ) -> str:
     return f"pipeline-dlq:{run_id}:{city_id}:{meeting_id}:{stage_name}:{source_id}"
+
+
+def build_pipeline_replay_request_key(*, dlq_key: str, idempotency_key: str) -> str:
+    digest = sha256(f"{dlq_key}:{idempotency_key}".encode("utf-8")).hexdigest()
+    return f"pipeline-replay:{digest}"
 
 
 def _normalize_string_mapping(payload: Mapping[str, object] | None) -> dict[str, str]:

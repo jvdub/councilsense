@@ -48,6 +48,7 @@ from councilsense.db.pipeline_runs import (
 	ParserDriftEventRecord,
 	PipelineDlqFailureClassification,
 	PipelineDlqRecord,
+	PipelineReplayAuditRecord,
 	PipelineDlqStatus,
 	ProcessingRunSourceRecord,
 	ProcessingLifecycleService,
@@ -56,6 +57,7 @@ from councilsense.db.pipeline_runs import (
 	RunLifecycleStatus,
 	SourceFreshnessBreachEventRecord,
 	StageOutcomeRecord,
+	build_pipeline_replay_request_key,
 )
 from councilsense.db.operator_view import (
 	OperatorManualReviewRunRecord,
@@ -145,6 +147,7 @@ __all__ = [
 	"PIPELINE_DLQ_STATUS_MODEL",
 	"PipelineDlqFailureClassification",
 	"PipelineDlqRecord",
+	"PipelineReplayAuditRecord",
 	"PipelineDlqStatus",
 	"ProcessingLifecycleService",
 	"ParserDriftEventRecord",
@@ -162,6 +165,7 @@ __all__ = [
 	"SourceFreshnessBreachEventRecord",
 	"StageOutcomeRecord",
 	"SummaryPublicationRecord",
+	"build_pipeline_replay_request_key",
 	"apply_migrations",
 	"get_migration_status",
 	"seed_city_registry",

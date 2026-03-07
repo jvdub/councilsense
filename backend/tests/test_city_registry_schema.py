@@ -46,6 +46,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0023_st024_canonical_document_spans.sql" in before.pending
     assert "0024_st026_claim_evidence_linkage_contract.sql" in before.pending
     assert "0025_st029_pipeline_dlq_contract.sql" in before.pending
+    assert "0026_st029_pipeline_replay_audit_history.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -75,6 +76,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0023_st024_canonical_document_spans.sql",
         "0024_st026_claim_evidence_linkage_contract.sql",
         "0025_st029_pipeline_dlq_contract.sql",
+        "0026_st029_pipeline_replay_audit_history.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -118,6 +120,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "canonical_documents",
         "canonical_document_artifacts",
         "pipeline_dlq_entries",
+        "pipeline_replay_audit_events",
         "schema_migrations",
     }.issubset(table_names)
 
@@ -178,6 +181,12 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_pipeline_dlq_entries_source" in index_names
     assert "idx_pipeline_dlq_entries_meeting" in index_names
     assert "idx_pipeline_dlq_entries_stage_status" in index_names
+    assert "idx_pipeline_replay_audit_dlq_created" in index_names
+    assert "idx_pipeline_replay_audit_city_created" in index_names
+    assert "idx_pipeline_replay_audit_run_created" in index_names
+    assert "idx_pipeline_replay_audit_meeting_created" in index_names
+    assert "idx_pipeline_replay_audit_stage_source_created" in index_names
+    assert "idx_pipeline_replay_audit_actor_created" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:
