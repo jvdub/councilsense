@@ -194,6 +194,30 @@ def test_evaluate_authority_policy_downgrades_when_minutes_are_only_source_cover
     assert policy.summarize_text.startswith("Council approved the fiscal year transfer")
 
 
+def test_evaluate_authority_policy_downgrades_when_authoritative_minutes_have_only_weak_locators() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                source_type="minutes",
+                text="Council authorized the temporary road closure permit for the parade route.",
+                locator_precision="weak",
+            ),
+            _compose_source(
+                source_type="agenda",
+                text="Consider parade route road closure permit and traffic control plan.",
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "present", "packet": "missing"},
+    )
+
+    policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    assert policy.authority_outcome == "minutes_authoritative_weak_precision"
+    assert policy.publication_status == "limited_confidence"
+    assert policy.reason_codes == ("weak_evidence_precision",)
+    assert policy.preview_only is False
+
+
 def test_derive_grounded_sections_excludes_city_name_topics() -> None:
     source_text = (
         "Eagle Mountain City Council approved a motion to adopt the transportation plan. "
@@ -302,12 +326,13 @@ def _build_compose_input(
     )
 
 
-def _compose_source(source_type: str, text: str) -> ComposedSourceDocument:
+def _compose_source(source_type: str, text: str, locator_precision: str = "precise") -> ComposedSourceDocument:
     return ComposedSourceDocument(
         source_type=source_type,
         source_origin="canonical",
         coverage_status="present",
         text=text,
+        locator_precision=locator_precision,
         canonical_document_id=f"canon-{source_type}",
         revision_id=f"{source_type}-rev-1",
         revision_number=1,

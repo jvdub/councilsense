@@ -281,6 +281,38 @@ class _AuthorityPolicyResult:
         }
 
 
+def _ordered_unique_codes(*codes: str) -> tuple[str, ...]:
+    ordered: list[str] = []
+    for code in codes:
+        normalized = code.strip()
+        if normalized and normalized not in ordered:
+            ordered.append(normalized)
+    return tuple(ordered)
+
+
+def _build_authority_policy_result(
+    *,
+    authority_outcome: str,
+    publication_status: str,
+    reason_codes: tuple[str, ...],
+    summarize_text: str,
+    authoritative_source_type: str | None,
+    outcome_source_types: tuple[str, ...],
+    preview_only: bool,
+    conflicts: tuple[_AuthorityConflictSignal, ...],
+) -> _AuthorityPolicyResult:
+    return _AuthorityPolicyResult(
+        authority_outcome=authority_outcome,
+        publication_status=publication_status,
+        reason_codes=_ordered_unique_codes(*reason_codes),
+        summarize_text=summarize_text,
+        authoritative_source_type=authoritative_source_type,
+        outcome_source_types=tuple(dict.fromkeys(outcome_source_types)),
+        preview_only=preview_only,
+        conflicts=conflicts,
+    )
+
+
 @dataclass(frozen=True)
 class _AuthorityOutcomeSignal:
     source_type: str
@@ -1370,25 +1402,25 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
             authoritative_source=minutes_source,
             supporting_sources=supplemental_sources,
         )
-        supplemental_coverage_incomplete = any(
-            compose_input.source_coverage.statuses.get(source_type) != "present"
-            for source_type in ("agenda", "packet")
-        )
-        if supplemental_coverage_incomplete:
-            return _AuthorityPolicyResult(
-                authority_outcome="supplemental_coverage_missing",
-                publication_status="limited_confidence",
-                reason_codes=("supplemental_sources_missing",),
-                summarize_text=minutes_source.text,
-                authoritative_source_type="minutes",
-                outcome_source_types=("minutes",),
-                preview_only=False,
-                conflicts=conflicts,
-            )
-        return _AuthorityPolicyResult(
-            authority_outcome="minutes_authoritative",
-            publication_status="processed",
-            reason_codes=(),
+        reason_codes: list[str] = []
+        authority_outcome = "minutes_authoritative"
+        publication_status = "processed"
+
+        if not supplemental_sources:
+            authority_outcome = "supplemental_coverage_missing"
+            publication_status = "limited_confidence"
+            reason_codes.append("supplemental_sources_missing")
+
+        if minutes_source.locator_precision == "weak":
+            if authority_outcome == "minutes_authoritative":
+                authority_outcome = "minutes_authoritative_weak_precision"
+            publication_status = "limited_confidence"
+            reason_codes.append("weak_evidence_precision")
+
+        return _build_authority_policy_result(
+            authority_outcome=authority_outcome,
+            publication_status=publication_status,
+            reason_codes=tuple(reason_codes),
             summarize_text=minutes_source.text,
             authoritative_source_type="minutes",
             outcome_source_types=("minutes",),
@@ -1400,7 +1432,7 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
     if supplemental_available:
         conflicts = _detect_supplemental_conflicts(sources=supplemental_available)
         if conflicts:
-            return _AuthorityPolicyResult(
+            return _build_authority_policy_result(
                 authority_outcome="unresolved_conflict",
                 publication_status="limited_confidence",
                 reason_codes=("missing_authoritative_minutes", "unresolved_source_conflict"),
@@ -1410,10 +1442,16 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
                 preview_only=True,
                 conflicts=conflicts,
             )
-        return _AuthorityPolicyResult(
-            authority_outcome="agenda_preview_only",
+
+        has_agenda_preview = agenda_source is not None
+        return _build_authority_policy_result(
+            authority_outcome=("agenda_preview_only" if has_agenda_preview else "missing_authoritative_minutes"),
             publication_status="limited_confidence",
-            reason_codes=("agenda_preview_only", "missing_authoritative_minutes"),
+            reason_codes=(
+                ("agenda_preview_only", "missing_authoritative_minutes")
+                if has_agenda_preview
+                else ("missing_authoritative_minutes",)
+            ),
             summarize_text=_compose_authority_text(supplemental_available),
             authoritative_source_type=None,
             outcome_source_types=tuple(source.source_type for source in supplemental_available),
@@ -1421,7 +1459,7 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
             conflicts=(),
         )
 
-    return _AuthorityPolicyResult(
+    return _build_authority_policy_result(
         authority_outcome="missing_authoritative_minutes",
         publication_status="limited_confidence",
         reason_codes=("missing_authoritative_minutes",),

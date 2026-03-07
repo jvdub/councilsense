@@ -12,6 +12,7 @@ from councilsense.db import CanonicalDocumentRepository, CanonicalDocumentRecord
 
 SourceCoverageStatus = Literal["present", "partial", "missing"]
 ComposeSourceOrigin = Literal["canonical", "fallback_extract", "missing"]
+LocatorPrecision = Literal["precise", "weak", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class ComposedSourceDocument:
     source_origin: ComposeSourceOrigin
     coverage_status: SourceCoverageStatus
     text: str
+    locator_precision: LocatorPrecision
     canonical_document_id: str | None
     revision_id: str | None
     revision_number: int | None
@@ -68,6 +70,7 @@ class SummarizeComposeInput:
                 "source_type": source.source_type,
                 "source_origin": source.source_origin,
                 "coverage_status": source.coverage_status,
+                "locator_precision": source.locator_precision,
                 "canonical_document_id": source.canonical_document_id,
                 "revision_id": source.revision_id,
                 "revision_number": source.revision_number,
@@ -103,7 +106,7 @@ def assemble_summarize_compose_input(
     for source_type in EXPECTED_SOURCE_TYPES:
         selected = _select_preferred_document(documents=documents, source_type=source_type)
         if selected is not None:
-            canonical_text, span_count = _compose_document_text(
+            canonical_text, span_count, locator_precision = _compose_document_text(
                 connection=connection,
                 canonical_document_id=selected.id,
             )
@@ -120,6 +123,7 @@ def assemble_summarize_compose_input(
                     source_origin="canonical",
                     coverage_status=status,
                     text=composed_text,
+                    locator_precision=locator_precision,
                     canonical_document_id=selected.id,
                     revision_id=selected.revision_id,
                     revision_number=selected.revision_number,
@@ -142,6 +146,7 @@ def assemble_summarize_compose_input(
                     source_origin="fallback_extract",
                     coverage_status="partial",
                     text=normalized_fallback_text,
+                    locator_precision="unknown",
                     canonical_document_id=None,
                     revision_id=None,
                     revision_number=None,
@@ -158,6 +163,7 @@ def assemble_summarize_compose_input(
                 source_origin="missing",
                 coverage_status="missing",
                 text="",
+                locator_precision="unknown",
                 canonical_document_id=None,
                 revision_id=None,
                 revision_number=None,
@@ -208,10 +214,16 @@ def _compose_document_text(
     *,
     connection: sqlite3.Connection,
     canonical_document_id: str,
-) -> tuple[str, int]:
+) -> tuple[str, int, LocatorPrecision]:
     rows = connection.execute(
         """
-        SELECT span_text
+        SELECT
+            span_text,
+            stable_section_path,
+            page_number,
+            line_index,
+            start_char_offset,
+            end_char_offset
         FROM canonical_document_spans
         WHERE canonical_document_id = ?
           AND span_text IS NOT NULL
@@ -233,6 +245,7 @@ def _compose_document_text(
     ).fetchall()
 
     parts: list[str] = []
+    has_precise_locator = False
     for row in rows:
         raw = row[0]
         if raw is None:
@@ -240,8 +253,50 @@ def _compose_document_text(
         normalized = " ".join(str(raw).split())
         if normalized:
             parts.append(normalized)
+            has_precise_locator = has_precise_locator or _span_has_precise_locator(
+                stable_section_path=str(row[1]) if row[1] is not None else None,
+                page_number=int(row[2]) if row[2] is not None else None,
+                line_index=int(row[3]) if row[3] is not None else None,
+                start_char_offset=int(row[4]) if row[4] is not None else None,
+                end_char_offset=int(row[5]) if row[5] is not None else None,
+            )
 
-    return " ".join(parts), len(parts)
+    locator_precision: LocatorPrecision
+    if not parts:
+        locator_precision = "unknown"
+    elif has_precise_locator:
+        locator_precision = "precise"
+    else:
+        locator_precision = "weak"
+
+    return " ".join(parts), len(parts), locator_precision
+
+
+def _span_has_precise_locator(
+    *,
+    stable_section_path: str | None,
+    page_number: int | None,
+    line_index: int | None,
+    start_char_offset: int | None,
+    end_char_offset: int | None,
+) -> bool:
+    if page_number is not None:
+        return True
+
+    normalized_path = (stable_section_path or "").strip().lower()
+    if not normalized_path:
+        return False
+    if normalized_path in {"artifact.html", "artifact.pdf", "meeting.metadata"}:
+        return False
+
+    segments = tuple(segment for segment in normalized_path.split("/") if segment)
+    if not segments:
+        return False
+    if any("unknown" in segment for segment in segments):
+        return False
+    if start_char_offset is not None and end_char_offset is not None and end_char_offset > start_char_offset:
+        return True
+    return True
 
 
 def _build_source_coverage(*, sources: tuple[ComposedSourceDocument, ...]) -> SourceCoverageSummary:
