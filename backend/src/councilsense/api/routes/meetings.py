@@ -28,10 +28,13 @@ CITY_ACCESS_DENIED_BODY = {
 class MeetingListItemResponse(BaseModel):
     id: str
     city_id: str
+    city_name: str | None
     meeting_uid: str
     title: str
     created_at: str
     updated_at: str
+    meeting_date: str | None
+    body_name: str | None
     status: str | None
     confidence_label: str | None
     reader_low_confidence: bool
@@ -86,10 +89,15 @@ class MeetingDetailResponse(BaseModel):
 
     id: str
     city_id: str
+    city_name: str | None
     meeting_uid: str
     title: str
     created_at: str
     updated_at: str
+    meeting_date: str | None
+    body_name: str | None
+    source_document_kind: str | None
+    source_document_url: str | None
     status: str | None
     confidence_label: str | None
     reader_low_confidence: bool
@@ -480,10 +488,13 @@ def get_city_meetings(
             MeetingListItemResponse(
                 id=item.id,
                 city_id=item.city_id,
+                city_name=item.city_name,
                 meeting_uid=item.meeting_uid,
                 title=item.title,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
+                meeting_date=item.meeting_date,
+                body_name=item.body_name,
                 status=item.publication_status,
                 confidence_label=item.confidence_label,
                 reader_low_confidence=item.reader_low_confidence,
@@ -545,10 +556,15 @@ def get_meeting_detail(
     payload = MeetingDetailResponse(
         id=detail.id,
         city_id=detail.city_id,
+        city_name=detail.city_name,
         meeting_uid=detail.meeting_uid,
         title=detail.title,
         created_at=detail.created_at,
         updated_at=detail.updated_at,
+        meeting_date=detail.meeting_date,
+        body_name=detail.body_name,
+        source_document_kind=detail.source_document_kind,
+        source_document_url=detail.source_document_url,
         status=detail.publication_status,
         confidence_label=detail.confidence_label,
         reader_low_confidence=detail.reader_low_confidence,

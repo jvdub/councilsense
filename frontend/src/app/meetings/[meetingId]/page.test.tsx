@@ -86,10 +86,15 @@ describe("MeetingDetailPage", () => {
     fetchMeetingDetailMock.mockResolvedValueOnce({
       id: "meeting-1",
       city_id: "seattle-wa",
+      city_name: "Seattle",
       meeting_uid: "uid-1",
       title: "Council Session",
       created_at: "2026-02-25 18:00:00",
       updated_at: "2026-02-25 19:00:00",
+      meeting_date: "2026-02-25",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/council-session.pdf",
       status: "processed",
       confidence_label: "high",
       reader_low_confidence: false,
@@ -108,6 +113,7 @@ describe("MeetingDetailPage", () => {
             {
               id: "pointer-1",
               artifact_id: "artifact-1",
+              source_document_url: "https://example.org/minutes/council-session.pdf",
               section_ref: "minutes.section.4",
               char_start: 12,
               char_end: 80,
@@ -129,6 +135,8 @@ describe("MeetingDetailPage", () => {
     expect(
       screen.getByRole("heading", { name: "Council Session" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Seattle")).toBeInTheDocument();
+    expect(screen.getByText("City Council • February 25, 2026")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Summary" }),
     ).toBeInTheDocument();
@@ -164,8 +172,8 @@ describe("MeetingDetailPage", () => {
       screen.getByText("Council voted 6-1 to approve the transit plan."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "minutes.section.4" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("link", { name: "Open minutes source" }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByRole("link", { name: "Back to meetings" }),
     ).toHaveAttribute("href", "/meetings");
@@ -252,10 +260,15 @@ describe("MeetingDetailPage", () => {
     fetchMeetingDetailMock.mockResolvedValueOnce({
       id: "meeting-2",
       city_id: "seattle-wa",
+      city_name: "Seattle",
       meeting_uid: "uid-2",
       title: "Budget Session",
       created_at: "2026-02-25 18:00:00",
       updated_at: "2026-02-25 19:00:00",
+      meeting_date: "2026-02-25",
+      body_name: "Budget Committee",
+      source_document_kind: null,
+      source_document_url: null,
       status: "limited_confidence",
       confidence_label: "limited_confidence",
       reader_low_confidence: true,
@@ -282,7 +295,7 @@ describe("MeetingDetailPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Status: limited_confidence · Confidence: limited_confidence",
+        "Status: Limited Confidence · Confidence: Limited Confidence",
       ),
     ).toBeInTheDocument();
     expect(

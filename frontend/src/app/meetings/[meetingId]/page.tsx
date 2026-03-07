@@ -10,6 +10,13 @@ import {
   resolveMeetingDetailRenderState,
 } from "../../../lib/meetings/detailRenderMode";
 import {
+  formatCalendarDate,
+  formatCityLabel,
+  formatSourceKindLabel,
+  formatTimestamp,
+  humanizeIdentifier,
+} from "../../../lib/meetings/presentation";
+import {
   type MeetingOutcomeItem,
   type MeetingPlannedItem,
 } from "../../../lib/models/meetings";
@@ -233,6 +240,12 @@ export default async function MeetingDetailPage({
   const additiveOutcomes = showOutcomesSection
     ? (detailResponse.outcomes ?? null)
     : null;
+  const cityLabel = formatCityLabel(detailResponse.city_name, detailResponse.city_id);
+  const meetingDateLabel = formatCalendarDate(
+    detailResponse.meeting_date ?? detailResponse.created_at,
+  );
+  const bodyLabel = detailResponse.body_name?.trim() || detailResponse.title;
+  const publishedLabel = formatTimestamp(detailResponse.published_at, "Pending");
 
   return (
     <main
@@ -254,20 +267,51 @@ export default async function MeetingDetailPage({
           </Link>
         </p>
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
+          <div className="max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-cyan-700">
+              {cityLabel}
+            </p>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
               {detailResponse.title}
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Status: {detailResponse.status ?? "unknown"} · Confidence:{" "}
-              {detailResponse.confidence_label ?? "unknown"}
+              {bodyLabel}
+              {meetingDateLabel ? ` • ${meetingDateLabel}` : ""}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Status: {humanizeIdentifier(detailResponse.status, "Unknown")} · Confidence:{" "}
+              {humanizeIdentifier(detailResponse.confidence_label, "Unknown")}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <p>
-              <span className="font-medium text-slate-800">Published:</span>{" "}
-              {detailResponse.published_at ?? "Pending"}
-            </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:w-104">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Meeting date</p>
+              <p className="mt-2 font-medium text-slate-900">{meetingDateLabel}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Published</p>
+              <p className="mt-2 font-medium text-slate-900">{publishedLabel}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:col-span-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Source</p>
+              {detailResponse.source_document_url ? (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="font-medium text-slate-900">
+                    {formatSourceKindLabel(detailResponse.source_document_kind)}
+                  </span>
+                  <a
+                    href={detailResponse.source_document_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
+                  >
+                    Open source document
+                  </a>
+                </div>
+              ) : (
+                <p className="mt-2 font-medium text-slate-900">Source document unavailable</p>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -446,7 +490,10 @@ export default async function MeetingDetailPage({
           Evidence references
         </h2>
         <div className="mt-6">
-          <EvidenceReferences claims={detailResponse.claims} />
+          <EvidenceReferences
+            claims={detailResponse.claims}
+            sourceDocumentKind={detailResponse.source_document_kind}
+          />
         </div>
       </section>
 

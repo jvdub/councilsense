@@ -1,10 +1,13 @@
 export type MeetingListItem = {
   id: string;
   city_id: string;
+  city_name: string | null;
   meeting_uid: string;
   title: string;
   created_at: string;
   updated_at: string;
+  meeting_date: string | null;
+  body_name: string | null;
   status: string | null;
   confidence_label: string | null;
   reader_low_confidence: boolean;
@@ -19,6 +22,7 @@ export type CityMeetingsListResponse = {
 export type MeetingEvidencePointer = {
   id: string;
   artifact_id: string;
+  source_document_url: string | null;
   section_ref: string | null;
   char_start: number | null;
   char_end: number | null;
@@ -104,10 +108,15 @@ export type MeetingPlannedOutcomeMismatchesBlock = {
 export type MeetingDetailResponse = {
   id: string;
   city_id: string;
+  city_name: string | null;
   meeting_uid: string;
   title: string;
   created_at: string;
   updated_at: string;
+  meeting_date: string | null;
+  body_name: string | null;
+  source_document_kind: string | null;
+  source_document_url: string | null;
   status: string | null;
   confidence_label: string | null;
   reader_low_confidence: boolean;

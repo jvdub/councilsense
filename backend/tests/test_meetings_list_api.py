@@ -99,6 +99,73 @@ def _insert_publication(
     )
 
 
+def _insert_ingest_stage_outcome(
+    client: TestClient,
+    *,
+    outcome_id: str,
+    run_id: str,
+    meeting_id: str,
+    candidate_url: str,
+    selected_event_name: str,
+    selected_event_date: str,
+) -> None:
+    app = cast(Any, client.app)
+    app.state.db_connection.execute(
+        """
+        INSERT OR IGNORE INTO processing_runs (
+            id,
+            city_id,
+            cycle_id,
+            status,
+            parser_version,
+            source_version,
+            started_at
+        )
+        VALUES (?, ?, ?, 'processed', ?, ?, ?)
+        """,
+        (
+            run_id,
+            PILOT_CITY_ID,
+            f"cycle-{run_id}",
+            "v1",
+            "test-source",
+            "2026-02-20T12:00:00Z",
+        ),
+    )
+    app.state.db_connection.execute(
+        """
+        INSERT INTO processing_stage_outcomes (
+            id,
+            run_id,
+            city_id,
+            meeting_id,
+            stage_name,
+            status,
+            metadata_json,
+            started_at,
+            finished_at
+        )
+        VALUES (?, ?, ?, ?, 'ingest', 'processed', ?, ?, ?)
+        """,
+        (
+            outcome_id,
+            run_id,
+            PILOT_CITY_ID,
+            meeting_id,
+            json.dumps(
+                {
+                    "candidate_url": candidate_url,
+                    "selected_event_name": selected_event_name,
+                    "selected_event_date": selected_event_date,
+                },
+                separators=(",", ":"),
+            ),
+            "2026-02-20T12:10:00Z",
+            "2026-02-20T12:11:00Z",
+        ),
+    )
+
+
 def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(monkeypatch) -> None:
     client = _client_with_configured_cities(
         monkeypatch,
@@ -149,6 +216,15 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
         confidence_label="high",
         published_at="2026-02-20 12:30:00",
     )
+    _insert_ingest_stage_outcome(
+        client,
+        outcome_id="outcome-ingest-meeting-c",
+        run_id="run-ingest-meeting-c",
+        meeting_id="meeting-c",
+        candidate_url="https://example.org/meetings/meeting-c/minutes.pdf",
+        selected_event_name="Eagle Mountain City Council",
+        selected_event_date="2026-02-20",
+    )
 
     first_page = client.get(f"/v1/cities/{PILOT_CITY_ID}/meetings", headers=headers, params={"limit": 2})
 
@@ -159,6 +235,9 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
     assert first_payload["items"][0]["status"] == "limited_confidence"
     assert first_payload["items"][0]["confidence_label"] == "limited_confidence"
     assert first_payload["items"][0]["reader_low_confidence"] is True
+    assert first_payload["items"][0]["city_name"] == "Eagle Mountain"
+    assert first_payload["items"][0]["meeting_date"] == "2026-02-20"
+    assert first_payload["items"][0]["body_name"] == "Eagle Mountain City Council"
     assert first_payload["items"][1]["reader_low_confidence"] is False
     assert first_payload["next_cursor"] is not None
 
@@ -223,15 +302,21 @@ def test_city_meetings_list_response_contract_includes_required_fields(monkeypat
     assert set(item.keys()) == {
         "id",
         "city_id",
+        "city_name",
         "meeting_uid",
         "title",
         "created_at",
         "updated_at",
+        "meeting_date",
+        "body_name",
         "status",
         "confidence_label",
         "reader_low_confidence",
     }
     assert item["id"] == "meeting-contract-1"
+    assert item["city_name"] == "Eagle Mountain"
+    assert item["meeting_date"] == "2026-02-24"
+    assert item["body_name"] is None
     assert item["status"] == "limited_confidence"
     assert item["confidence_label"] == "limited_confidence"
     assert item["reader_low_confidence"] is True

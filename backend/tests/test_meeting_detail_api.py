@@ -72,6 +72,22 @@ def _load_st027_contract_scenario(fixture_id: str) -> dict[str, Any]:
     return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
 
 
+def _with_reader_context(payload: dict[str, Any]) -> dict[str, Any]:
+    created_at = str(payload.get("created_at") or "")
+    meeting_date = created_at[:10] if len(created_at) >= 10 else None
+    enriched = dict(payload)
+    enriched.update(
+        {
+            "city_name": "Eagle Mountain",
+            "meeting_date": meeting_date,
+            "body_name": None,
+            "source_document_kind": None,
+            "source_document_url": None,
+        }
+    )
+    return enriched
+
+
 def _insert_meeting(
     client: TestClient,
     *,
@@ -331,6 +347,8 @@ def _insert_ingest_stage_outcome(
     city_id: str,
     meeting_id: str,
     candidate_url: str,
+    selected_event_name: str = "City Council Meeting",
+    selected_event_date: str = "2026-02-20",
 ) -> None:
     app = cast(Any, client.app)
     app.state.db_connection.execute(
@@ -375,7 +393,14 @@ def _insert_ingest_stage_outcome(
             run_id,
             city_id,
             meeting_id,
-            json.dumps({"candidate_url": candidate_url}, separators=(",", ":")),
+            json.dumps(
+                {
+                    "candidate_url": candidate_url,
+                    "selected_event_name": selected_event_name,
+                    "selected_event_date": selected_event_date,
+                },
+                separators=(",", ":"),
+            ),
             "2026-02-20T12:10:00Z",
             "2026-02-20T12:11:00Z",
         ),
@@ -873,10 +898,15 @@ def test_meeting_detail_flag_off_remains_baseline_equivalent_when_publish_metada
     assert set(payload.keys()) == {
         "id",
         "city_id",
+        "city_name",
         "meeting_uid",
         "title",
         "created_at",
         "updated_at",
+        "meeting_date",
+        "body_name",
+        "source_document_kind",
+        "source_document_url",
         "status",
         "confidence_label",
         "reader_low_confidence",
@@ -915,7 +945,7 @@ def test_st027_meeting_detail_matches_contract_fixture_when_additive_flag_enable
     response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == payload
+    assert response.json() == _with_reader_context(payload)
 
 
 def test_st027_flag_off_meeting_detail_matches_baseline_contract_fixture_even_with_hidden_additive_metadata(monkeypatch) -> None:
@@ -941,7 +971,7 @@ def test_st027_flag_off_meeting_detail_matches_baseline_contract_fixture_even_wi
     response = client.get(f"/v1/meetings/{baseline_payload['id']}", headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == baseline_payload
+    assert response.json() == _with_reader_context(baseline_payload)
 
 
 def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatch) -> None:
@@ -1031,6 +1061,8 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         city_id=PILOT_CITY_ID,
         meeting_id="meeting-detail-1",
         candidate_url="https://example.org/minutes/meeting-detail-1.pdf",
+        selected_event_name="Eagle Mountain City Council",
+        selected_event_date="2026-02-20",
     )
 
     response = client.get("/v1/meetings/meeting-detail-1", headers=headers)
@@ -1040,10 +1072,15 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert set(payload.keys()) == {
         "id",
         "city_id",
+        "city_name",
         "meeting_uid",
         "title",
         "created_at",
         "updated_at",
+        "meeting_date",
+        "body_name",
+        "source_document_kind",
+        "source_document_url",
         "status",
         "confidence_label",
         "reader_low_confidence",
@@ -1058,6 +1095,11 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         "claims",
     }
     assert payload["id"] == "meeting-detail-1"
+    assert payload["city_name"] == "Eagle Mountain"
+    assert payload["meeting_date"] == "2026-02-20"
+    assert payload["body_name"] == "Eagle Mountain City Council"
+    assert payload["source_document_kind"] == "minutes"
+    assert payload["source_document_url"] == "https://example.org/minutes/meeting-detail-1.pdf"
     assert payload["status"] == "processed"
     assert payload["confidence_label"] == "high"
     assert payload["reader_low_confidence"] is False

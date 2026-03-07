@@ -24,6 +24,19 @@ class MeetingDetailEvidencePointer:
 
 
 @dataclass(frozen=True)
+class MeetingIngestContext:
+    body_name: str | None
+    meeting_date: str | None
+    candidate_url: str | None
+
+
+@dataclass(frozen=True)
+class MeetingSourceContext:
+    document_kind: str | None
+    source_document_url: str | None
+
+
+@dataclass(frozen=True)
 class MeetingDetailClaim:
     id: str
     claim_order: int
@@ -35,10 +48,15 @@ class MeetingDetailClaim:
 class MeetingDetail:
     id: str
     city_id: str
+    city_name: str | None
     meeting_uid: str
     title: str
     created_at: str
     updated_at: str
+    meeting_date: str | None
+    body_name: str | None
+    source_document_kind: str | None
+    source_document_url: str | None
     publication_id: str | None
     publication_status: str | None
     confidence_label: str | None
@@ -99,10 +117,13 @@ class MeetingListCursor:
 class MeetingListItem:
     id: str
     city_id: str
+    city_name: str | None
     meeting_uid: str
     title: str
     created_at: str
     updated_at: str
+    meeting_date: str | None
+    body_name: str | None
     publication_status: str | None
     confidence_label: str | None
     reader_low_confidence: bool
@@ -246,6 +267,7 @@ class MeetingReadRepository:
             SELECT
                 m.id,
                 m.city_id,
+                c.name,
                 m.meeting_uid,
                 m.title,
                 m.created_at,
@@ -275,6 +297,7 @@ class MeetingReadRepository:
                     ELSE 0
                 END AS reader_low_confidence
             FROM meetings m
+            INNER JOIN cities c ON c.id = m.city_id
             WHERE {where_sql}
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT ?
@@ -282,20 +305,30 @@ class MeetingReadRepository:
             tuple(params),
         ).fetchall()
 
-        items = tuple(
-            MeetingListItem(
-                id=str(row[0]),
-                city_id=str(row[1]),
-                meeting_uid=str(row[2]),
-                title=str(row[3]),
-                created_at=str(row[4]),
-                updated_at=str(row[5]),
-                publication_status=str(row[6]) if row[6] is not None else None,
-                confidence_label=str(row[7]) if row[7] is not None else None,
-                reader_low_confidence=bool(row[8]),
+        items_list: list[MeetingListItem] = []
+        for row in rows:
+            ingest_context = self._lookup_ingest_context(meeting_id=str(row[0]))
+            items_list.append(
+                MeetingListItem(
+                    id=str(row[0]),
+                    city_id=str(row[1]),
+                    city_name=str(row[2]) if row[2] is not None else None,
+                    meeting_uid=str(row[3]),
+                    title=str(row[4]),
+                    created_at=str(row[5]),
+                    updated_at=str(row[6]),
+                    meeting_date=self._resolve_meeting_date(
+                        created_at=str(row[5]),
+                        ingest_context=ingest_context,
+                    ),
+                    body_name=ingest_context.body_name,
+                    publication_status=str(row[7]) if row[7] is not None else None,
+                    confidence_label=str(row[8]) if row[8] is not None else None,
+                    reader_low_confidence=bool(row[9]),
+                )
             )
-            for row in rows
-        )
+
+        items = tuple(items_list)
 
         next_cursor = None
         if len(items) == limit:
@@ -338,6 +371,7 @@ class MeetingReadRepository:
             SELECT
                 m.id,
                 m.city_id,
+                c.name,
                 m.meeting_uid,
                 m.title,
                 m.created_at,
@@ -356,6 +390,7 @@ class MeetingReadRepository:
                                 sp.published_at,
                                 sp.publish_stage_outcome_id
             FROM meetings m
+                        INNER JOIN cities c ON c.id = m.city_id
             LEFT JOIN summary_publications sp
               ON sp.id = (
                 SELECT sp2.id
@@ -372,9 +407,10 @@ class MeetingReadRepository:
         if meeting_row is None:
             return None
 
-        publication_id = str(meeting_row[6]) if meeting_row[6] is not None else None
-        publish_stage_outcome_id = str(meeting_row[15]) if meeting_row[15] is not None else None
-        source_document_url = self._lookup_source_document_url(meeting_id=meeting_id)
+        publication_id = str(meeting_row[7]) if meeting_row[7] is not None else None
+        publish_stage_outcome_id = str(meeting_row[16]) if meeting_row[16] is not None else None
+        ingest_context = self._lookup_ingest_context(meeting_id=meeting_id)
+        source_context = self._lookup_source_context(meeting_id=meeting_id, ingest_context=ingest_context)
         claims: tuple[MeetingDetailClaim, ...] = ()
         if publication_id is not None:
             claim_rows = self._connection.execute(
@@ -415,7 +451,7 @@ class MeetingReadRepository:
                     MeetingDetailEvidencePointer(
                         id=str(evidence_row[0]),
                         artifact_id=str(evidence_row[1]),
-                        source_document_url=source_document_url,
+                        source_document_url=source_context.source_document_url,
                         section_ref=str(evidence_row[2]) if evidence_row[2] is not None else None,
                         char_start=int(evidence_row[3]) if evidence_row[3] is not None else None,
                         char_end=int(evidence_row[4]) if evidence_row[4] is not None else None,
@@ -448,22 +484,114 @@ class MeetingReadRepository:
         return MeetingDetail(
             id=str(meeting_row[0]),
             city_id=str(meeting_row[1]),
-            meeting_uid=str(meeting_row[2]),
-            title=str(meeting_row[3]),
-            created_at=str(meeting_row[4]),
-            updated_at=str(meeting_row[5]),
+            city_name=str(meeting_row[2]) if meeting_row[2] is not None else None,
+            meeting_uid=str(meeting_row[3]),
+            title=str(meeting_row[4]),
+            created_at=str(meeting_row[5]),
+            updated_at=str(meeting_row[6]),
+            meeting_date=self._resolve_meeting_date(
+                created_at=str(meeting_row[5]),
+                ingest_context=ingest_context,
+            ),
+            body_name=ingest_context.body_name,
+            source_document_kind=source_context.document_kind,
+            source_document_url=source_context.source_document_url,
             publication_id=publication_id,
-            publication_status=str(meeting_row[7]) if meeting_row[7] is not None else None,
-            confidence_label=str(meeting_row[8]) if meeting_row[8] is not None else None,
-            reader_low_confidence=bool(meeting_row[9]),
-            summary_text=str(meeting_row[10]) if meeting_row[10] is not None else None,
-            key_decisions=self._parse_string_list(meeting_row[11]),
-            key_actions=self._parse_string_list(meeting_row[12]),
-            notable_topics=self._parse_string_list(meeting_row[13]),
-            published_at=str(meeting_row[14]) if meeting_row[14] is not None else None,
+            publication_status=str(meeting_row[8]) if meeting_row[8] is not None else None,
+            confidence_label=str(meeting_row[9]) if meeting_row[9] is not None else None,
+            reader_low_confidence=bool(meeting_row[10]),
+            summary_text=str(meeting_row[11]) if meeting_row[11] is not None else None,
+            key_decisions=self._parse_string_list(meeting_row[12]),
+            key_actions=self._parse_string_list(meeting_row[13]),
+            notable_topics=self._parse_string_list(meeting_row[14]),
+            published_at=str(meeting_row[15]) if meeting_row[15] is not None else None,
             claims=claims,
             additive_blocks=additive_blocks,
         )
+
+    def _lookup_ingest_context(self, *, meeting_id: str) -> MeetingIngestContext:
+        row = self._connection.execute(
+            """
+            SELECT metadata_json
+            FROM processing_stage_outcomes
+            WHERE meeting_id = ?
+              AND stage_name = 'ingest'
+            ORDER BY COALESCE(finished_at, updated_at, created_at) DESC, id DESC
+            LIMIT 1
+            """,
+            (meeting_id,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+
+        try:
+            parsed = json.loads(str(row[0]))
+        except json.JSONDecodeError:
+            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+
+        if not isinstance(parsed, dict):
+            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+
+        raw_body_name = parsed.get("selected_event_name")
+        raw_meeting_date = parsed.get("selected_event_date") or parsed.get("meeting_date")
+        raw_candidate_url = parsed.get("candidate_url")
+        return MeetingIngestContext(
+            body_name=raw_body_name.strip() if isinstance(raw_body_name, str) and raw_body_name.strip() else None,
+            meeting_date=raw_meeting_date.strip() if isinstance(raw_meeting_date, str) and raw_meeting_date.strip() else None,
+            candidate_url=(
+                raw_candidate_url.strip() if isinstance(raw_candidate_url, str) and raw_candidate_url.strip() else None
+            ),
+        )
+
+    def _lookup_source_context(
+        self,
+        *,
+        meeting_id: str,
+        ingest_context: MeetingIngestContext,
+    ) -> MeetingSourceContext:
+        row = self._connection.execute(
+            """
+            SELECT document_kind, source_document_url
+            FROM canonical_documents
+            WHERE meeting_id = ?
+              AND is_active_revision = 1
+            ORDER BY
+              CASE document_kind
+                WHEN 'minutes' THEN 0
+                WHEN 'agenda' THEN 1
+                WHEN 'packet' THEN 2
+                ELSE 3
+              END ASC,
+              revision_number DESC,
+              created_at DESC,
+              id DESC
+            LIMIT 1
+            """,
+            (meeting_id,),
+        ).fetchone()
+        if row is not None:
+            return MeetingSourceContext(
+                document_kind=str(row[0]) if row[0] is not None else None,
+                source_document_url=(
+                    str(row[1]).strip()
+                    if row[1] is not None and str(row[1]).strip()
+                    else ingest_context.candidate_url
+                ),
+            )
+
+        return MeetingSourceContext(
+            document_kind=None,
+            source_document_url=ingest_context.candidate_url,
+        )
+
+    def _resolve_meeting_date(self, *, created_at: str, ingest_context: MeetingIngestContext) -> str | None:
+        if ingest_context.meeting_date is not None:
+            return ingest_context.meeting_date
+
+        created_value = created_at.strip()
+        if len(created_value) >= 10:
+            return created_value[:10]
+        return None
 
     def _lookup_additive_blocks(self, *, publish_stage_outcome_id: str) -> Mapping[str, object] | None:
         row = self._connection.execute(
@@ -501,32 +629,11 @@ class MeetingReadRepository:
         return candidate_blocks or None
 
     def _lookup_source_document_url(self, *, meeting_id: str) -> str | None:
-        rows = self._connection.execute(
-            """
-            SELECT metadata_json
-            FROM processing_stage_outcomes
-            WHERE meeting_id = ?
-              AND stage_name = 'ingest'
-            ORDER BY COALESCE(finished_at, updated_at, created_at) DESC, id DESC
-            """,
-            (meeting_id,),
-        ).fetchall()
-
-        for row in rows:
-            raw_metadata = row[0]
-            if raw_metadata is None:
-                continue
-            try:
-                parsed = json.loads(str(raw_metadata))
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-            candidate_url = parsed.get("candidate_url")
-            if isinstance(candidate_url, str) and candidate_url.strip():
-                return candidate_url.strip()
-
-        return None
+        source_context = self._lookup_source_context(
+            meeting_id=meeting_id,
+            ingest_context=self._lookup_ingest_context(meeting_id=meeting_id),
+        )
+        return source_context.source_document_url
 
     def _parse_string_list(self, value: object) -> tuple[str, ...]:
         if value is None:

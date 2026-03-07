@@ -127,10 +127,13 @@ describe("MeetingsPage", () => {
         {
           id: "meeting-1",
           city_id: "seattle-wa",
+          city_name: "Seattle",
           meeting_uid: "uid-1",
           title: "Budget Committee",
           created_at: "2026-02-25 18:00:00",
           updated_at: "2026-02-25 19:00:00",
+          meeting_date: "2026-02-25",
+          body_name: "City Council",
           status: "processed",
           confidence_label: "high",
           reader_low_confidence: false,
@@ -148,7 +151,9 @@ describe("MeetingsPage", () => {
       "href",
       "/meetings/meeting-1",
     );
-    expect(screen.getByText("Status: processed · Confidence: high")).toBeInTheDocument();
+    expect(screen.getByText("Seattle • City Council • February 25, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Status: Processed · Confidence: High")).toBeInTheDocument();
+    expect(screen.getByText("Meeting date: February 25, 2026")).toBeInTheDocument();
     expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
       cursor: undefined,
       limit: 20,
@@ -162,10 +167,13 @@ describe("MeetingsPage", () => {
         {
           id: "meeting-lc-1",
           city_id: "seattle-wa",
+          city_name: "Seattle",
           meeting_uid: "uid-lc-1",
           title: "Public Safety Committee",
           created_at: "2026-02-24 17:00:00",
           updated_at: "2026-02-24 18:00:00",
+          meeting_date: "2026-02-24",
+          body_name: "Public Safety Committee",
           status: "limited_confidence",
           confidence_label: "limited_confidence",
           reader_low_confidence: true,
@@ -178,7 +186,7 @@ describe("MeetingsPage", () => {
     render(await MeetingsPage());
 
     expect(
-      screen.getByText("Status: limited_confidence · Confidence: limited_confidence"),
+      screen.getByText("Status: Limited Confidence · Confidence: Limited Confidence"),
     ).toBeInTheDocument();
   });
 
@@ -209,10 +217,13 @@ describe("MeetingsPage", () => {
         {
           id: "meeting-2",
           city_id: "seattle-wa",
+          city_name: "Seattle",
           meeting_uid: "uid-2",
           title: "City Council Session",
           created_at: "2026-02-24 17:00:00",
           updated_at: "2026-02-24 18:00:00",
+          meeting_date: "2026-02-24",
+          body_name: "City Council",
           status: "limited_confidence",
           confidence_label: "limited_confidence",
           reader_low_confidence: true,

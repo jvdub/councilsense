@@ -5,6 +5,11 @@ import { redirect } from "next/navigation";
 import { fetchBootstrap } from "../../lib/api/bootstrap";
 import { fetchCityMeetings } from "../../lib/api/meetings";
 import { getAuthTokenFromCookie } from "../../lib/auth/session";
+import {
+  formatCalendarDate,
+  formatCityLabel,
+  humanizeIdentifier,
+} from "../../lib/meetings/presentation";
 import { getOnboardingRedirectPath } from "../../lib/onboarding/guard";
 
 const DEFAULT_LIMIT = 20;
@@ -103,6 +108,10 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
 
   const hasMeetings = (listResponse?.items.length ?? 0) > 0;
   const nextCursor = listResponse?.next_cursor ?? null;
+  const homeCityLabel = formatCityLabel(
+    listResponse?.items[0]?.city_name ?? null,
+    bootstrap.home_city_id,
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:gap-8">
@@ -118,7 +127,7 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
               <span className="block text-xs uppercase tracking-[0.2em] text-slate-400">Home city</span>
-              <span className="mt-1 block font-semibold text-white">{bootstrap.home_city_id}</span>
+              <span className="mt-1 block font-semibold text-white">{homeCityLabel}</span>
             </div>
             <Link
               href="/settings"
@@ -153,21 +162,28 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
               <div className="flex h-full flex-col justify-between gap-5">
                 <div className="space-y-3">
                   <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
-                    {meeting.status ?? "unknown"}
+                    {humanizeIdentifier(meeting.status, "Unknown")}
                   </div>
                   <h2 className="text-xl font-semibold tracking-tight text-slate-950">
                     <Link href={`/meetings/${meeting.id}`} className="transition hover:text-cyan-700">
                       {meeting.title}
                     </Link>
                   </h2>
+                  <p className="text-sm font-medium leading-6 text-slate-700">
+                    {formatCityLabel(meeting.city_name, meeting.city_id)}
+                    {meeting.body_name && meeting.body_name !== meeting.title ? ` • ${meeting.body_name}` : ""}
+                    {meeting.meeting_date ? ` • ${formatCalendarDate(meeting.meeting_date)}` : ""}
+                  </p>
                   <p className="text-sm leading-6 text-slate-600">
-                    Status: {meeting.status ?? "unknown"} · Confidence: {meeting.confidence_label ?? "unknown"}
+                    Status: {humanizeIdentifier(meeting.status, "Unknown")} · Confidence: {humanizeIdentifier(meeting.confidence_label, "Unknown")}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
-                  <time className="text-sm text-slate-500" dateTime={meeting.created_at}>
-                    Created: {meeting.created_at}
+                  <time className="text-sm text-slate-500" dateTime={meeting.meeting_date ?? meeting.updated_at}>
+                    {meeting.meeting_date
+                      ? `Meeting date: ${formatCalendarDate(meeting.meeting_date)}`
+                      : `Updated: ${formatCalendarDate(meeting.updated_at, "Unavailable")}`}
                   </time>
                   <Link
                     href={`/meetings/${meeting.id}`}

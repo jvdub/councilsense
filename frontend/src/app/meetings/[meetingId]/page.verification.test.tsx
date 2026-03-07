@@ -111,6 +111,7 @@ function buildClaim(index: number, evidenceCount = 3): MeetingClaim {
     evidence: Array.from({ length: evidenceCount }, (_, evidenceIndex) => ({
       id: `pointer-${index + 1}-${evidenceIndex + 1}`,
       artifact_id: `artifact-${index + 1}-${evidenceIndex + 1}`,
+      source_document_url: `https://example.org/minutes/claim-${index + 1}.pdf`,
       section_ref: `minutes.section.${index + 1}.${evidenceIndex + 1}`,
       char_start: 25 * (evidenceIndex + 1),
       char_end: 25 * (evidenceIndex + 1) + 40,
@@ -163,10 +164,15 @@ function buildMeetingDetail(
   return {
     id: "meeting-verification",
     city_id: "seattle-wa",
+    city_name: "Seattle",
     meeting_uid: "uid-verification",
     title: "Council verification session",
     created_at: "2026-03-07T16:00:00Z",
     updated_at: "2026-03-07T16:05:00Z",
+    meeting_date: "2026-03-07",
+    body_name: "City Council",
+    source_document_kind: "minutes",
+    source_document_url: "https://example.org/minutes/verification-session.pdf",
     status: "processed",
     confidence_label: "high",
     reader_low_confidence: false,
