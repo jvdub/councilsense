@@ -55,3 +55,17 @@
 - The meeting detail route resolves render mode once and exposes the result as non-visible DOM data attributes for downstream component tasks.
 - Current baseline sections remain the only visible rendering path in TASK-ST-028-01.
 - TASK-ST-028-02 and TASK-ST-028-03 should consume the resolved contract instead of re-deriving payload validity in UI components.
+
+## TASK-ST-028-04 fallback hardening
+
+- Baseline rendering must remain equivalent when `NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED` is off, even if additive payload fields are present, partial, or malformed.
+- Planned and outcomes sections render only when the resolved mode is `additive` and their corresponding contract blocks are `present`.
+- Mismatch indicators render only when mismatch signals are enabled and the mismatch contract block is `present`; malformed mismatch payloads disable the component without affecting planned/outcomes mode.
+- Unknown additive fields are ignored by the frontend. Only required contract fields control visibility and fallback behavior.
+
+## Rollout and rollback notes
+
+- Rollout: enable `NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED=true` only after verifying representative meeting detail payloads include valid `planned` and `outcomes` blocks.
+- Rollout: enable `NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED=true` only after verifying `planned_outcome_mismatches` is present and valid for the same payload set.
+- Rollback: set `NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED=false` to remove mismatch indicators while retaining additive planned/outcomes sections.
+- Rollback: set `NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED=false` to restore baseline-only meeting detail rendering regardless of additive payload drift.

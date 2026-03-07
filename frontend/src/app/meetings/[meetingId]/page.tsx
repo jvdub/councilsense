@@ -184,8 +184,14 @@ export default async function MeetingDetailPage({
     detailResponse,
     getMeetingDetailFeatureFlags(),
   );
-  const additivePlanned = renderState.mode === "additive" ? detailResponse.planned : undefined;
-  const additiveOutcomes = renderState.mode === "additive" ? detailResponse.outcomes : undefined;
+  const showPlannedSection =
+    renderState.mode === "additive" && renderState.contract.planned === "present";
+  const showOutcomesSection =
+    renderState.mode === "additive" && renderState.contract.outcomes === "present";
+  const showMismatchIndicators =
+    renderState.mismatchSignalsEnabled && renderState.contract.mismatches === "present";
+  const additivePlanned = showPlannedSection ? detailResponse.planned ?? null : null;
+  const additiveOutcomes = showOutcomesSection ? detailResponse.outcomes ?? null : null;
 
   return (
     <main
@@ -319,7 +325,7 @@ export default async function MeetingDetailPage({
         </div>
       </section>
 
-      {renderState.mismatchSignalsEnabled && detailResponse.planned_outcome_mismatches ? (
+      {showMismatchIndicators && detailResponse.planned_outcome_mismatches ? (
         <MismatchIndicators mismatches={detailResponse.planned_outcome_mismatches} />
       ) : null}
     </main>

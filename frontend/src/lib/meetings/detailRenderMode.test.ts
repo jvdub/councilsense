@@ -104,6 +104,37 @@ describe("meeting detail render mode resolution", () => {
     });
   });
 
+  it("preserves baseline resolution when additive payloads are malformed and the flag is off", () => {
+    const flags = getMeetingDetailFeatureFlags({
+      [MEETING_DETAIL_PLANNED_OUTCOMES_FLAG]: "false",
+      [MEETING_DETAIL_MISMATCH_SIGNALS_FLAG]: "true",
+    });
+
+    const result = resolveMeetingDetailRenderState(
+      buildMeetingDetail({
+        planned: {
+          generated_at: "2026-03-07T14:00:00Z",
+          items: [],
+        } as unknown as MeetingDetailResponse["planned"],
+        outcomes: {
+          authority_source: "minutes",
+          items: [],
+        } as unknown as MeetingDetailResponse["outcomes"],
+        planned_outcome_mismatches: {
+          items: [],
+        } as unknown as MeetingDetailResponse["planned_outcome_mismatches"],
+      }),
+      flags,
+    );
+
+    expect(result).toMatchObject({
+      mode: "baseline",
+      modeFallbackReason: "planned_outcomes_flag_disabled",
+      mismatchSignalsEnabled: false,
+      mismatchFallbackReason: "mismatch_flag_disabled",
+    });
+  });
+
   it("activates additive mode when the flag is on and planned/outcomes blocks are valid", () => {
     const flags = getMeetingDetailFeatureFlags({
       [MEETING_DETAIL_PLANNED_OUTCOMES_FLAG]: "true",
@@ -175,6 +206,35 @@ describe("meeting detail render mode resolution", () => {
             },
           ],
         },
+      }),
+      flags,
+    );
+
+    expect(result).toMatchObject({
+      mode: "baseline",
+      modeFallbackReason: "invalid_planned_block",
+      mismatchSignalsEnabled: false,
+      mismatchFallbackReason: "additive_mode_unavailable",
+      contract: {
+        planned: "invalid",
+        outcomes: "present",
+        mismatches: "present",
+      },
+    });
+  });
+
+  it("classifies malformed nested additive structures as invalid instead of throwing", () => {
+    const flags = getMeetingDetailFeatureFlags({
+      [MEETING_DETAIL_PLANNED_OUTCOMES_FLAG]: "true",
+      [MEETING_DETAIL_MISMATCH_SIGNALS_FLAG]: "true",
+    });
+
+    const result = resolveMeetingDetailRenderState(
+      buildMeetingDetail({
+        planned: {
+          generated_at: "2026-03-07T14:00:00Z",
+          items: [],
+        } as unknown as MeetingDetailResponse["planned"],
       }),
       flags,
     );

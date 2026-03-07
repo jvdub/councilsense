@@ -138,6 +138,62 @@ describe("MeetingDetailPage", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("preserves baseline output when additive fields are malformed and feature flags are off", async () => {
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-1b",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-1b",
+      title: "Council Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-1b",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Baseline detail still renders.",
+      key_decisions: ["Approved downtown transit plan"],
+      key_actions: ["Staff to publish implementation timeline"],
+      notable_topics: ["Transit"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        items: [],
+      },
+      outcomes: {
+        authority_source: "minutes",
+        items: [],
+      },
+      planned_outcome_mismatches: {
+        items: [],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-1b" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-render-mode]");
+    const sectionHeadings = Array.from(
+      container.querySelectorAll("section[aria-label] > h2"),
+    ).map((heading) => heading.textContent);
+
+    expect(main).toHaveAttribute("data-render-mode", "baseline");
+    expect(main).toHaveAttribute("data-render-fallback", "planned_outcomes_flag_disabled");
+    expect(screen.getByText("Baseline detail still renders.")).toBeInTheDocument();
+    expect(sectionHeadings).toEqual([
+      "Summary",
+      "Decisions and actions",
+      "Notable topics",
+      "Evidence references",
+    ]);
+    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Mismatch indicators" })).not.toBeInTheDocument();
+  });
+
   it("renders a prominent limited confidence banner when flagged", async () => {
     fetchMeetingDetailMock.mockResolvedValueOnce({
       id: "meeting-2",
@@ -456,6 +512,63 @@ describe("MeetingDetailPage", () => {
     expect(main).toHaveAttribute("data-render-fallback", "missing_outcomes_block");
     expect(container.textContent).not.toContain("Unable to load meeting detail");
     expect(screen.getByText("Council discussed utilities planning.")).toBeInTheDocument();
+  });
+
+  it("falls back safely when additive payloads are structurally malformed", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+    process.env[MEETING_DETAIL_MISMATCH_SIGNALS_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-5b",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-5b",
+      title: "Utilities Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "medium",
+      reader_low_confidence: false,
+      publication_id: "publication-5b",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Malformed additive data should not break baseline rendering.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Utilities"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        items: [],
+      },
+      outcomes: {
+        generated_at: "2026-03-07T14:05:00Z",
+        authority_source: "minutes",
+        items: [],
+      },
+      planned_outcome_mismatches: {
+        summary: {
+          total: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+        },
+        items: [],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-5b" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-render-mode]");
+
+    expect(main).toHaveAttribute("data-render-mode", "baseline");
+    expect(main).toHaveAttribute("data-render-fallback", "invalid_planned_block");
+    expect(container.textContent).not.toContain("Unable to load meeting detail");
+    expect(screen.getByText("Malformed additive data should not break baseline rendering.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
   });
 
   it("renders an explicit neutral state when mismatch entries are unsupported", async () => {

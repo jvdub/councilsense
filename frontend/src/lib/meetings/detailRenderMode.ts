@@ -48,6 +48,8 @@ export type MeetingDetailResolvedRenderState = {
   };
 };
 
+type UnknownRecord = Record<string, unknown>;
+
 export function getMeetingDetailFeatureFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): MeetingDetailFeatureFlags {
@@ -166,7 +168,7 @@ export function resolveMeetingDetailRenderState(
   };
 }
 
-function classifyPlannedBlock(value: MeetingPlannedBlock | undefined): MeetingDetailBlockContractState {
+function classifyPlannedBlock(value: unknown): MeetingDetailBlockContractState {
   if (value === undefined) {
     return "missing";
   }
@@ -174,7 +176,7 @@ function classifyPlannedBlock(value: MeetingPlannedBlock | undefined): MeetingDe
   return isPlannedBlock(value) ? "present" : "invalid";
 }
 
-function classifyOutcomesBlock(value: MeetingOutcomesBlock | undefined): MeetingDetailBlockContractState {
+function classifyOutcomesBlock(value: unknown): MeetingDetailBlockContractState {
   if (value === undefined) {
     return "missing";
   }
@@ -183,7 +185,7 @@ function classifyOutcomesBlock(value: MeetingOutcomesBlock | undefined): Meeting
 }
 
 function classifyMismatchBlock(
-  value: MeetingPlannedOutcomeMismatchesBlock | undefined,
+  value: unknown,
 ): MeetingDetailBlockContractState {
   if (value === undefined) {
     return "missing";
@@ -192,18 +194,24 @@ function classifyMismatchBlock(
   return isMismatchBlock(value) ? "present" : "invalid";
 }
 
-function isPlannedBlock(value: MeetingPlannedBlock): boolean {
+function isPlannedBlock(value: unknown): value is MeetingPlannedBlock {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
     typeof value.generated_at === "string" &&
-    isCoverageStatus(value.source_coverage.minutes) &&
-    isCoverageStatus(value.source_coverage.agenda) &&
-    isCoverageStatus(value.source_coverage.packet) &&
+    isSourceCoverage(value.source_coverage) &&
     Array.isArray(value.items) &&
     value.items.every(isPlannedItem)
   );
 }
 
-function isPlannedItem(value: MeetingPlannedItem): boolean {
+function isPlannedItem(value: unknown): value is MeetingPlannedItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
     typeof value.planned_id === "string" &&
     typeof value.title === "string" &&
@@ -214,7 +222,11 @@ function isPlannedItem(value: MeetingPlannedItem): boolean {
   );
 }
 
-function isOutcomesBlock(value: MeetingOutcomesBlock): boolean {
+function isOutcomesBlock(value: unknown): value is MeetingOutcomesBlock {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
     typeof value.generated_at === "string" &&
     value.authority_source === "minutes" &&
@@ -223,7 +235,11 @@ function isOutcomesBlock(value: MeetingOutcomesBlock): boolean {
   );
 }
 
-function isOutcomeItem(value: MeetingOutcomeItem): boolean {
+function isOutcomeItem(value: unknown): value is MeetingOutcomeItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
     typeof value.outcome_id === "string" &&
     typeof value.title === "string" &&
@@ -233,18 +249,23 @@ function isOutcomeItem(value: MeetingOutcomeItem): boolean {
   );
 }
 
-function isMismatchBlock(value: MeetingPlannedOutcomeMismatchesBlock): boolean {
+function isMismatchBlock(value: unknown): value is MeetingPlannedOutcomeMismatchesBlock {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
-    Number.isInteger(value.summary.total) &&
-    Number.isInteger(value.summary.high) &&
-    Number.isInteger(value.summary.medium) &&
-    Number.isInteger(value.summary.low) &&
+    isMismatchSummary(value.summary) &&
     Array.isArray(value.items) &&
     value.items.every(isMismatchItem)
   );
 }
 
-function isMismatchItem(value: MeetingPlannedOutcomeMismatchItem): boolean {
+function isMismatchItem(value: unknown): value is MeetingPlannedOutcomeMismatchItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
   return (
     typeof value.mismatch_id === "string" &&
     typeof value.planned_id === "string" &&
@@ -258,14 +279,45 @@ function isMismatchItem(value: MeetingPlannedOutcomeMismatchItem): boolean {
   );
 }
 
-function isCoverageStatus(value: string): boolean {
+function isSourceCoverage(value: unknown): value is MeetingPlannedBlock["source_coverage"] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isCoverageStatus(value.minutes) &&
+    isCoverageStatus(value.agenda) &&
+    isCoverageStatus(value.packet)
+  );
+}
+
+function isMismatchSummary(
+  value: unknown,
+): value is MeetingPlannedOutcomeMismatchesBlock["summary"] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    Number.isInteger(value.total) &&
+    Number.isInteger(value.high) &&
+    Number.isInteger(value.medium) &&
+    Number.isInteger(value.low)
+  );
+}
+
+function isCoverageStatus(value: unknown): boolean {
   return value === "present" || value === "missing";
 }
 
-function isConfidenceLevel(value: string): boolean {
+function isConfidenceLevel(value: unknown): boolean {
   return value === "high" || value === "medium" || value === "low";
 }
 
 function isOptionalEvidenceReferences(value: unknown): boolean {
   return value === undefined || Array.isArray(value);
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
 }
