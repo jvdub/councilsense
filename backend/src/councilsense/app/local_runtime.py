@@ -28,9 +28,39 @@ from councilsense.db import (
 _DEFAULT_DB_PATH = "/data/councilsense-local.db"
 _FIXTURE_MEETING_ID = "meeting-local-runtime-smoke-001"
 _FIXTURE_MEETING_UID = "local-runtime-smoke-uid-001"
-_FIXTURE_PUBLICATION_ID = "pub-local-runtime-smoke-001"
-_FIXTURE_CLAIM_ID = "claim-local-runtime-smoke-001"
-_FIXTURE_POINTER_ID = "pointer-local-runtime-smoke-001"
+_FIXTURE_TITLE = "Eagle Mountain City Council Regular Meeting"
+_FIXTURE_PUBLICATION_ID = "pub-local-runtime-eaglemountain-review-v2"
+_FIXTURE_PUBLICATION_VERSION = 2
+_FIXTURE_CLAIM_ID = "claim-local-runtime-eaglemountain-review-v2"
+_FIXTURE_POINTER_ID = "pointer-local-runtime-eaglemountain-review-v2"
+_FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v2"
+_FIXTURE_SUMMARY = (
+    "Eagle Mountain City Council advanced two visible neighborhood projects: the Hidden Valley Park "
+    "restroom build and final design work for the North Ranch roundabout. Council also held off on "
+    "budget changes tied to long-term utility maintenance until staff returns with a side-by-side "
+    "water-rate comparison for residents."
+)
+_FIXTURE_DECISIONS = (
+    "Approved the Hidden Valley Park restroom construction bid.",
+    "Authorized final design work for the North Ranch roundabout.",
+)
+_FIXTURE_ACTIONS = (
+    "Staff will bring back a March comparison of water-rate options before any utility budget amendment.",
+    "Public works will post a construction notice and anticipated start window for the park project.",
+)
+_FIXTURE_TOPICS = (
+    "Hidden Valley Park improvements",
+    "North Ranch roundabout design",
+    "Water rate planning",
+)
+_FIXTURE_CLAIM_TEXT = (
+    "Council approved the park restroom bid and asked staff to return with a resident-facing water-rate comparison."
+)
+_FIXTURE_SECTION_REF = "minutes.section.7"
+_FIXTURE_EVIDENCE_EXCERPT = (
+    "The council approved the Hidden Valley Park restroom bid not to exceed $148,500 and directed staff "
+    "to return on March 19 with a comparison of water-rate options for long-term system maintenance."
+)
 
 
 def _build_command_envelope(
@@ -82,7 +112,7 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
         meeting_id=_FIXTURE_MEETING_ID,
         meeting_uid=_FIXTURE_MEETING_UID,
         city_id=PILOT_CITY_ID,
-        title="Local Runtime Smoke Meeting",
+        title=_FIXTURE_TITLE,
     )
 
     existing_publication = connection.execute(
@@ -115,13 +145,13 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
                     meeting.id,
                     None,
                     None,
-                    1,
+                    _FIXTURE_PUBLICATION_VERSION,
                     "processed",
                     "high",
-                    "Deterministic local runtime summary for smoke validation.",
-                    json.dumps(["Approved deterministic smoke fixture"], separators=(",", ":")),
-                    json.dumps(["Publish local runtime artifact"], separators=(",", ":")),
-                    json.dumps(["runtime", "smoke"], separators=(",", ":")),
+                    _FIXTURE_SUMMARY,
+                    json.dumps(_FIXTURE_DECISIONS, separators=(",", ":")),
+                    json.dumps(_FIXTURE_ACTIONS, separators=(",", ":")),
+                    json.dumps(_FIXTURE_TOPICS, separators=(",", ":")),
                 ),
             )
         connection.execute(
@@ -138,7 +168,7 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
                 _FIXTURE_CLAIM_ID,
                 _FIXTURE_PUBLICATION_ID,
                 1,
-                "Local runtime smoke fixture claim.",
+                _FIXTURE_CLAIM_TEXT,
             ),
         )
         connection.execute(
@@ -157,11 +187,11 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
             (
                 _FIXTURE_POINTER_ID,
                 _FIXTURE_CLAIM_ID,
-                "artifact-local-runtime-smoke-001",
-                "minutes.section.1",
+                _FIXTURE_ARTIFACT_ID,
+                _FIXTURE_SECTION_REF,
                 0,
-                42,
-                "Evidence excerpt for local runtime smoke fixture.",
+                len(_FIXTURE_EVIDENCE_EXCERPT),
+                _FIXTURE_EVIDENCE_EXCERPT,
             ),
         )
 
