@@ -1,0 +1,630 @@
+{
+  "ruleset_version": "st-031-source-aware-alert-rules-v1",
+  "story_task": "TASK-ST-031-03",
+  "references": {
+    "observability_contract": "docs/runbooks/st-031-source-aware-observability-contract.md",
+    "source_aware_dashboard": "docs/runbooks/st-031-source-aware-dashboard.json",
+    "pipeline_baseline_dashboard": "docs/runbooks/st-011-baseline-dashboards.json",
+    "parser_drift_runbook": "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
+    "pipeline_dlq_contract": "docs/runbooks/st-029-pipeline-dlq-contract.md"
+  },
+  "deployment": {
+    "enabled_env_var": "COUNCILSENSE_SOURCE_AWARE_ALERTS_ENABLED",
+    "target_environment_env_var": "COUNCILSENSE_ENVIRONMENT",
+    "target_environment_default": "local",
+    "notification_channel_env_var": "COUNCILSENSE_SOURCE_AWARE_ALERTS_NOTIFICATION_CHANNEL",
+    "notification_channel_default": "ops-multi-document-alerts",
+    "owner_mapping_env_var": "COUNCILSENSE_ALERTS_OWNER_MAPPING",
+    "threshold_profile_env_var": "COUNCILSENSE_SOURCE_AWARE_ALERT_PROFILE"
+  },
+  "triage_metadata": {
+    "required_common_fields": [
+      "alert_class",
+      "alert_id",
+      "severity",
+      "environment",
+      "city_id",
+      "source_id",
+      "source_type",
+      "run_id",
+      "meeting_id",
+      "stage",
+      "observed_value",
+      "threshold_value",
+      "evaluation_window",
+      "triggered_at_utc",
+      "dashboard_path",
+      "dashboard_panel_id"
+    ],
+    "required_for_escalation": [
+      "city_id",
+      "source_id",
+      "run_id"
+    ],
+    "field_mapping": {
+      "city_id": "$labels.city_id",
+      "source_id": "$labels.source_id",
+      "source_type": "$labels.source_type",
+      "run_id": "$labels.run_id",
+      "meeting_id": "$labels.meeting_id",
+      "stage": "$labels.stage",
+      "environment": "$labels.environment",
+      "dashboard_path": "$rule.diagnostic_links.dashboard_path",
+      "dashboard_panel_id": "$rule.diagnostic_links.dashboard_panel_id"
+    }
+  },
+  "default_noise_controls": {
+    "repeat_interval": "PT6H",
+    "acknowledgment_fields": [
+      "acknowledged_by",
+      "acknowledged_at_utc",
+      "acknowledgment_note"
+    ]
+  },
+  "rules": [
+    {
+      "alert_id": "st031-parser-drift-spike-warning",
+      "alert_class": "parser_drift_spike",
+      "severity": "warning",
+      "signal": "event_count",
+      "signal_source": {
+        "dataset": "parser_drift_events",
+        "filters": {
+          "source_type": [
+            "minutes",
+            "agenda",
+            "packet"
+          ]
+        },
+        "group_by": [
+          "city_id",
+          "source_id",
+          "source_type",
+          "current_parser_version"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 2,
+        "unit": "events",
+        "for": "PT15M",
+        "evaluation_window": "PT1H",
+        "environment_overrides": {
+          "local": {
+            "value": 1
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "source_id",
+          "source_type",
+          "current_parser_version"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 2,
+        "suppression_conditions": [
+          "planned_parser_rollout_window"
+        ]
+      },
+      "payload_context_fields": [
+        "parser_drift_event_id",
+        "baseline_run_id",
+        "baseline_parser_name",
+        "baseline_parser_version",
+        "current_parser_name",
+        "current_parser_version",
+        "delta_context_json",
+        "source_url"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json",
+        "dashboard_panel_id": "st016-parser-drift-events-weekly",
+        "supporting_paths": [
+          "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
+          "docs/runbooks/st-031-source-aware-observability-contract.md"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-parser-drift-spike-critical",
+      "alert_class": "parser_drift_spike",
+      "severity": "critical",
+      "signal": "event_count",
+      "signal_source": {
+        "dataset": "parser_drift_events",
+        "filters": {
+          "source_type": [
+            "minutes",
+            "agenda",
+            "packet"
+          ]
+        },
+        "group_by": [
+          "city_id",
+          "source_id",
+          "source_type",
+          "current_parser_version"
+        ]
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 4,
+        "unit": "events",
+        "for": "PT15M",
+        "evaluation_window": "PT1H",
+        "environment_overrides": {
+          "local": {
+            "value": 2
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "source_id",
+          "source_type",
+          "current_parser_version"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 4,
+        "suppression_conditions": [
+          "planned_parser_rollout_window"
+        ]
+      },
+      "payload_context_fields": [
+        "parser_drift_event_id",
+        "baseline_run_id",
+        "baseline_parser_name",
+        "baseline_parser_version",
+        "current_parser_name",
+        "current_parser_version",
+        "delta_context_json",
+        "source_url"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json",
+        "dashboard_panel_id": "st016-parser-drift-events-weekly",
+        "supporting_paths": [
+          "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
+          "docs/runbooks/st-031-source-aware-observability-contract.md"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-missing-minutes-surge-warning",
+      "alert_class": "missing_minutes_surge",
+      "severity": "warning",
+      "signal": "below_threshold_count",
+      "signal_source": {
+        "metric": "councilsense_source_coverage_ratio",
+        "filters": {
+          "stage": "compose",
+          "outcome": "measured",
+          "source_type": "bundle"
+        },
+        "comparison_operator": "<=",
+        "comparison_value": 0.6667,
+        "comparison_unit": "ratio",
+        "correlation_hint": "minutes_absent_with_supplemental_sources_present"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 2,
+        "unit": "low_coverage_observations",
+        "for": "PT20M",
+        "evaluation_window": "PT30M",
+        "environment_overrides": {
+          "local": {
+            "value": 1
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id"
+        ],
+        "dedupe_window": "PT90M",
+        "minimum_sample_count": 2,
+        "suppression_conditions": [
+          "planned_source_maintenance_window"
+        ]
+      },
+      "payload_context_fields": [
+        "coverage_ratio",
+        "coverage_floor",
+        "expected_missing_source_type",
+        "available_source_types",
+        "missing_source_types",
+        "authority_reason_codes",
+        "quality_gate_reason_codes",
+        "source_gap_hint"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-source-coverage-ratio",
+        "supporting_paths": [
+          "docs/runbooks/st-031-source-aware-observability-contract.md"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-missing-minutes-surge-critical",
+      "alert_class": "missing_minutes_surge",
+      "severity": "critical",
+      "signal": "below_threshold_count",
+      "signal_source": {
+        "metric": "councilsense_source_coverage_ratio",
+        "filters": {
+          "stage": "compose",
+          "outcome": "measured",
+          "source_type": "bundle"
+        },
+        "comparison_operator": "<=",
+        "comparison_value": 0.6667,
+        "comparison_unit": "ratio",
+        "correlation_hint": "minutes_absent_with_supplemental_sources_present"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 4,
+        "unit": "low_coverage_observations",
+        "for": "PT20M",
+        "evaluation_window": "PT30M",
+        "environment_overrides": {
+          "local": {
+            "value": 2
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT45M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id"
+        ],
+        "dedupe_window": "PT90M",
+        "minimum_sample_count": 4,
+        "suppression_conditions": [
+          "planned_source_maintenance_window"
+        ]
+      },
+      "payload_context_fields": [
+        "coverage_ratio",
+        "coverage_floor",
+        "expected_missing_source_type",
+        "available_source_types",
+        "missing_source_types",
+        "authority_reason_codes",
+        "quality_gate_reason_codes",
+        "source_gap_hint"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-source-coverage-ratio",
+        "supporting_paths": [
+          "docs/runbooks/st-031-source-aware-observability-contract.md"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-summarize-failure-spike-warning",
+      "alert_class": "summarize_failure_spike",
+      "severity": "warning",
+      "signal": "failure_rate",
+      "signal_source": {
+        "metric": "councilsense_pipeline_stage_events_total",
+        "filters": {
+          "stage": "summarize"
+        },
+        "calculation": {
+          "numerator_outcomes": [
+            "failure"
+          ],
+          "denominator_outcomes": [
+            "success",
+            "failure",
+            "retry"
+          ],
+          "minimum_denominator": 8
+        }
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.1,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "stage"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 8,
+        "suppression_conditions": []
+      },
+      "payload_context_fields": [
+        "failure_rate",
+        "failed_runs",
+        "total_runs",
+        "provider_used",
+        "fallback_reason",
+        "error_code",
+        "error_type"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
+        "dashboard_panel_id": "pipeline-stage-outcomes",
+        "supporting_paths": [
+          "docs/runbooks/st-031-source-aware-dashboard.json"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-summarize-failure-spike-critical",
+      "alert_class": "summarize_failure_spike",
+      "severity": "critical",
+      "signal": "failure_rate",
+      "signal_source": {
+        "metric": "councilsense_pipeline_stage_events_total",
+        "filters": {
+          "stage": "summarize"
+        },
+        "calculation": {
+          "numerator_outcomes": [
+            "failure"
+          ],
+          "denominator_outcomes": [
+            "success",
+            "failure",
+            "retry"
+          ],
+          "minimum_denominator": 8
+        }
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.2,
+        "unit": "ratio",
+        "for": "PT15M",
+        "evaluation_window": "PT15M"
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "stage"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 8,
+        "suppression_conditions": []
+      },
+      "payload_context_fields": [
+        "failure_rate",
+        "failed_runs",
+        "total_runs",
+        "provider_used",
+        "fallback_reason",
+        "error_code",
+        "error_type"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
+        "dashboard_panel_id": "pipeline-stage-outcomes",
+        "supporting_paths": [
+          "docs/runbooks/st-031-source-aware-dashboard.json"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-stale-pipeline-dlq-backlog-warning",
+      "alert_class": "stale_pipeline_dlq_backlog",
+      "severity": "warning",
+      "signal": "age_with_backlog",
+      "signal_source": {
+        "primary_metric": "councilsense_pipeline_dlq_oldest_age_seconds",
+        "primary_filters": {
+          "outcome": "oldest_age"
+        },
+        "gating_metric": "councilsense_pipeline_dlq_backlog_count",
+        "gating_filters": {
+          "outcome": "backlog"
+        }
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 3600,
+        "unit": "seconds",
+        "for": "PT30M",
+        "evaluation_window": "PT30M",
+        "gating_conditions": [
+          {
+            "metric": "councilsense_pipeline_dlq_backlog_count",
+            "operator": ">=",
+            "value": 2,
+            "unit": "entries"
+          }
+        ],
+        "environment_overrides": {
+          "local": {
+            "value": 1800,
+            "gating_conditions": [
+              {
+                "metric": "councilsense_pipeline_dlq_backlog_count",
+                "operator": ">=",
+                "value": 1,
+                "unit": "entries"
+              }
+            ]
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "source_id",
+          "stage"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 1,
+        "suppression_conditions": [
+          "active_dlq_replay_batch"
+        ]
+      },
+      "payload_context_fields": [
+        "dlq_key",
+        "terminal_reason",
+        "retry_policy_version",
+        "backlog_count",
+        "oldest_age_seconds",
+        "dlq_status",
+        "error_code",
+        "error_type"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
+        "supporting_paths": [
+          "docs/runbooks/st-029-pipeline-dlq-contract.md"
+        ]
+      }
+    },
+    {
+      "alert_id": "st031-stale-pipeline-dlq-backlog-critical",
+      "alert_class": "stale_pipeline_dlq_backlog",
+      "severity": "critical",
+      "signal": "age_with_backlog",
+      "signal_source": {
+        "primary_metric": "councilsense_pipeline_dlq_oldest_age_seconds",
+        "primary_filters": {
+          "outcome": "oldest_age"
+        },
+        "gating_metric": "councilsense_pipeline_dlq_backlog_count",
+        "gating_filters": {
+          "outcome": "backlog"
+        }
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 10800,
+        "unit": "seconds",
+        "for": "PT30M",
+        "evaluation_window": "PT30M",
+        "gating_conditions": [
+          {
+            "metric": "councilsense_pipeline_dlq_backlog_count",
+            "operator": ">=",
+            "value": 3,
+            "unit": "entries"
+          }
+        ],
+        "environment_overrides": {
+          "local": {
+            "value": 3600,
+            "gating_conditions": [
+              {
+                "metric": "councilsense_pipeline_dlq_backlog_count",
+                "operator": ">=",
+                "value": 2,
+                "unit": "entries"
+              }
+            ]
+          }
+        }
+      },
+      "owner_routing": {
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "escalation_sla": "PT30M"
+      },
+      "noise_controls": {
+        "dedupe_key_fields": [
+          "alert_id",
+          "environment",
+          "city_id",
+          "source_id",
+          "stage"
+        ],
+        "dedupe_window": "PT2H",
+        "minimum_sample_count": 1,
+        "suppression_conditions": [
+          "active_dlq_replay_batch"
+        ]
+      },
+      "payload_context_fields": [
+        "dlq_key",
+        "terminal_reason",
+        "retry_policy_version",
+        "backlog_count",
+        "oldest_age_seconds",
+        "dlq_status",
+        "error_code",
+        "error_type"
+      ],
+      "diagnostic_links": {
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
+        "supporting_paths": [
+          "docs/runbooks/st-029-pipeline-dlq-contract.md"
+        ]
+      }
+    }
+  ]
+}

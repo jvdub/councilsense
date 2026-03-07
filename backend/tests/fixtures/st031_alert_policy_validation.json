@@ -1,0 +1,253 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "parser-drift-critical",
+      "environment": "local",
+      "alert_class": "parser_drift_spike",
+      "observed_count": 4,
+      "expected_alert_ids": [
+        "st031-parser-drift-spike-warning",
+        "st031-parser-drift-spike-critical"
+      ],
+      "payload": {
+        "alert_class": "parser_drift_spike",
+        "alert_id": "st031-parser-drift-spike-critical",
+        "severity": "critical",
+        "environment": "local",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "minutes",
+        "run_id": "run-st031-drift-004",
+        "meeting_id": "meeting-st031-drift-004",
+        "stage": "ingest",
+        "observed_value": 4,
+        "threshold_value": 4,
+        "evaluation_window": "PT1H",
+        "triggered_at_utc": "2026-03-07T11:15:00+00:00",
+        "dashboard_path": "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json",
+        "dashboard_panel_id": "st016-parser-drift-events-weekly",
+        "parser_drift_event_id": "pde-1234567890abcd",
+        "baseline_run_id": "run-st031-drift-003",
+        "baseline_parser_name": "civicclerk",
+        "baseline_parser_version": "v8",
+        "current_parser_name": "civicclerk",
+        "current_parser_version": "v9",
+        "delta_context_json": "{\"changed_fields\":[\"parser_version\"]}",
+        "source_url": "https://example.test/minutes"
+      }
+    },
+    {
+      "scenario_id": "missing-minutes-critical",
+      "environment": "local",
+      "alert_class": "missing_minutes_surge",
+      "samples": [
+        {
+          "value": 0.6667
+        },
+        {
+          "value": 0.5
+        },
+        {
+          "value": 0.6667
+        },
+        {
+          "value": 0.6667
+        }
+      ],
+      "expected_alert_ids": [
+        "st031-missing-minutes-surge-warning",
+        "st031-missing-minutes-surge-critical"
+      ],
+      "payload": {
+        "alert_class": "missing_minutes_surge",
+        "alert_id": "st031-missing-minutes-surge-critical",
+        "severity": "critical",
+        "environment": "local",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "bundle",
+        "run_id": "run-st031-coverage-004",
+        "meeting_id": "meeting-st031-coverage-004",
+        "stage": "compose",
+        "observed_value": 4,
+        "threshold_value": 2,
+        "evaluation_window": "PT30M",
+        "triggered_at_utc": "2026-03-07T11:20:00+00:00",
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-source-coverage-ratio",
+        "coverage_ratio": 0.6667,
+        "coverage_floor": 0.6667,
+        "expected_missing_source_type": "minutes",
+        "available_source_types": [
+          "agenda",
+          "packet"
+        ],
+        "missing_source_types": [
+          "minutes"
+        ],
+        "authority_reason_codes": [
+          "agenda_preview_only",
+          "missing_authoritative_minutes"
+        ],
+        "quality_gate_reason_codes": [
+          "missing_authoritative_minutes",
+          "coverage_balance_below_threshold"
+        ],
+        "source_gap_hint": "minutes_absent_with_supplemental_sources_present"
+      }
+    },
+    {
+      "scenario_id": "summarize-failure-critical",
+      "environment": "local",
+      "alert_class": "summarize_failure_spike",
+      "samples": [
+        {
+          "outcome": "success",
+          "value": 6
+        },
+        {
+          "outcome": "failure",
+          "value": 2
+        }
+      ],
+      "expected_alert_ids": [
+        "st031-summarize-failure-spike-warning",
+        "st031-summarize-failure-spike-critical"
+      ],
+      "payload": {
+        "alert_class": "summarize_failure_spike",
+        "alert_id": "st031-summarize-failure-spike-critical",
+        "severity": "critical",
+        "environment": "local",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "bundle",
+        "run_id": "run-st031-summarize-004",
+        "meeting_id": "meeting-st031-summarize-004",
+        "stage": "summarize",
+        "observed_value": 0.25,
+        "threshold_value": 0.2,
+        "evaluation_window": "PT15M",
+        "triggered_at_utc": "2026-03-07T11:25:00+00:00",
+        "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
+        "dashboard_panel_id": "pipeline-stage-outcomes",
+        "failure_rate": 0.25,
+        "failed_runs": 2,
+        "total_runs": 8,
+        "provider_used": "ollama",
+        "fallback_reason": "provider_timeout",
+        "error_code": "SummarizeTimeout",
+        "error_type": "TimeoutError"
+      }
+    },
+    {
+      "scenario_id": "stale-dlq-critical",
+      "environment": "local",
+      "alert_class": "stale_pipeline_dlq_backlog",
+      "metrics": {
+        "backlog_count": 3,
+        "oldest_age_seconds": 10800
+      },
+      "expected_alert_ids": [
+        "st031-stale-pipeline-dlq-backlog-warning",
+        "st031-stale-pipeline-dlq-backlog-critical"
+      ],
+      "payload": {
+        "alert_class": "stale_pipeline_dlq_backlog",
+        "alert_id": "st031-stale-pipeline-dlq-backlog-critical",
+        "severity": "critical",
+        "environment": "local",
+        "city_id": "city-eagle-mountain-ut",
+        "source_id": "source-eagle-mountain-minutes",
+        "source_type": "minutes",
+        "run_id": "run-st031-dlq-004",
+        "meeting_id": "meeting-st031-dlq-004",
+        "stage": "extract",
+        "observed_value": 10800,
+        "threshold_value": 3600,
+        "evaluation_window": "PT30M",
+        "triggered_at_utc": "2026-03-07T11:30:00+00:00",
+        "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
+        "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
+        "dlq_key": "pipeline-dlq:run-st031-dlq-004:city-eagle-mountain-ut:meeting-st031-dlq-004:extract:source-eagle-mountain-minutes",
+        "terminal_reason": "retry_exhausted",
+        "retry_policy_version": "st029-retry-policy.v1",
+        "backlog_count": 3,
+        "oldest_age_seconds": 10800,
+        "dlq_status": "open",
+        "error_code": "transient_stage_error",
+        "error_type": "TransientStageError"
+      }
+    }
+  ],
+  "dedupe_sequences": [
+    {
+      "rule_id": "st031-summarize-failure-spike-warning",
+      "events": [
+        {
+          "triggered_at_utc": "2026-03-07T10:00:00+00:00",
+          "payload": {
+            "environment": "local",
+            "city_id": "city-eagle-mountain-ut",
+            "stage": "summarize"
+          },
+          "suppression_context": {},
+          "expected_suppressed": false
+        },
+        {
+          "triggered_at_utc": "2026-03-07T10:30:00+00:00",
+          "payload": {
+            "environment": "local",
+            "city_id": "city-eagle-mountain-ut",
+            "stage": "summarize"
+          },
+          "suppression_context": {},
+          "expected_suppressed": true
+        },
+        {
+          "triggered_at_utc": "2026-03-07T13:05:00+00:00",
+          "payload": {
+            "environment": "local",
+            "city_id": "city-eagle-mountain-ut",
+            "stage": "summarize"
+          },
+          "suppression_context": {},
+          "expected_suppressed": false
+        }
+      ]
+    },
+    {
+      "rule_id": "st031-parser-drift-spike-warning",
+      "events": [
+        {
+          "triggered_at_utc": "2026-03-07T11:00:00+00:00",
+          "payload": {
+            "environment": "local",
+            "city_id": "city-eagle-mountain-ut",
+            "source_id": "source-eagle-mountain-minutes",
+            "source_type": "minutes",
+            "current_parser_version": "v9"
+          },
+          "suppression_context": {
+            "planned_parser_rollout_window": true
+          },
+          "expected_suppressed": true
+        },
+        {
+          "triggered_at_utc": "2026-03-07T11:20:00+00:00",
+          "payload": {
+            "environment": "local",
+            "city_id": "city-eagle-mountain-ut",
+            "source_id": "source-eagle-mountain-minutes",
+            "source_type": "minutes",
+            "current_parser_version": "v9"
+          },
+          "suppression_context": {
+            "planned_parser_rollout_window": false
+          },
+          "expected_suppressed": false
+        }
+      ]
+    }
+  ]
+}
