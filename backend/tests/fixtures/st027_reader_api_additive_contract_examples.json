@@ -123,16 +123,9 @@
         "publication_id": "pub-st027-flag-off",
         "published_at": "2026-03-07T14:30:00Z",
         "summary": "Council approved the consent agenda and deferred one procurement item.",
-        "key_decisions": [
-          "Approved consent agenda"
-        ],
-        "key_actions": [
-          "Staff to revise the procurement contract"
-        ],
-        "notable_topics": [
-          "Consent agenda",
-          "Procurement"
-        ],
+        "key_decisions": ["Approved consent agenda"],
+        "key_actions": ["Staff to revise the procurement contract"],
+        "notable_topics": ["Consent agenda", "Procurement"],
         "claims": [],
         "evidence_references": [],
         "evidence_references_v2": []
@@ -155,16 +148,9 @@
         "publication_id": "pub-st027-flag-on-available",
         "published_at": "2026-03-07T14:30:00Z",
         "summary": "Council approved the consent agenda and deferred one procurement item.",
-        "key_decisions": [
-          "Approved consent agenda"
-        ],
-        "key_actions": [
-          "Staff to revise the procurement contract"
-        ],
-        "notable_topics": [
-          "Consent agenda",
-          "Procurement"
-        ],
+        "key_decisions": ["Approved consent agenda"],
+        "key_actions": ["Staff to revise the procurement contract"],
+        "notable_topics": ["Consent agenda", "Procurement"],
         "claims": [],
         "evidence_references": [],
         "evidence_references_v2": [],
@@ -244,9 +230,7 @@
               "severity": "high",
               "mismatch_type": "disposition_change",
               "description": "Agenda planned approval but recorded outcome is deferment.",
-              "reason_codes": [
-                "outcome_changed"
-              ],
+              "reason_codes": ["outcome_changed"],
               "evidence_references_v2": [
                 {
                   "evidence_id": "ev2-st027-mismatch-100",
@@ -292,9 +276,7 @@
         "summary": "Agenda and packet support planned work, but authoritative minutes are unavailable.",
         "key_decisions": [],
         "key_actions": [],
-        "notable_topics": [
-          "Utility rates"
-        ],
+        "notable_topics": ["Utility rates"],
         "claims": [],
         "evidence_references": [],
         "evidence_references_v2": [],
@@ -342,9 +324,7 @@
               "severity": "medium",
               "mismatch_type": "authority_missing",
               "description": "Minutes are unavailable, so the final outcome cannot yet be compared against the planned item.",
-              "reason_codes": [
-                "missing_authoritative_minutes"
-              ]
+              "reason_codes": ["missing_authoritative_minutes"]
             }
           ]
         }

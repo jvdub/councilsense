@@ -6,10 +6,10 @@
 ## Ordered Checklist
 
 - [x] [TASK-ST-027-01](TASK-ST-027-01-additive-reader-api-contract-for-planned-outcomes-and-mismatch-blocks.md) — Additive Reader API Contract for Planned/Outcomes/Mismatch Blocks
-- [ ] [TASK-ST-027-02](TASK-ST-027-02-feature-flag-wiring-and-flag-off-baseline-parity-guards.md) — Feature Flag Wiring and Flag-Off Baseline Parity Guards
-- [ ] [TASK-ST-027-03](TASK-ST-027-03-meeting-detail-serializer-extension-for-additive-fields.md) — Meeting Detail Serializer Extension for Additive Fields
-- [ ] [TASK-ST-027-04](TASK-ST-027-04-flag-state-contract-and-integration-test-matrix.md) — Flag-State Contract and Integration Test Matrix
-- [ ] [TASK-ST-027-05](TASK-ST-027-05-detail-endpoint-latency-regression-checks-and-release-evidence.md) — Detail Endpoint Latency Regression Checks and Release Evidence
+- [x] [TASK-ST-027-02](TASK-ST-027-02-feature-flag-wiring-and-flag-off-baseline-parity-guards.md) — Feature Flag Wiring and Flag-Off Baseline Parity Guards
+- [x] [TASK-ST-027-03](TASK-ST-027-03-meeting-detail-serializer-extension-for-additive-fields.md) — Meeting Detail Serializer Extension for Additive Fields
+- [x] [TASK-ST-027-04](TASK-ST-027-04-flag-state-contract-and-integration-test-matrix.md) — Flag-State Contract and Integration Test Matrix
+- [x] [TASK-ST-027-05](TASK-ST-027-05-detail-endpoint-latency-regression-checks-and-release-evidence.md) — Detail Endpoint Latency Regression Checks and Release Evidence
 
 ## Dependency Chain
 

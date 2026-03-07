@@ -195,11 +195,11 @@ Item-level presence semantics inside additive blocks:
 
 ## ST-027 additive exposure matrix
 
-| Scenario | `planned` | `outcomes` | `planned_outcome_mismatches` | Item `evidence_references_v2` behavior |
-| -------- | --------- | ---------- | ---------------------------- | -------------------------------------- |
-| Flag off baseline | omitted | omitted | omitted | n/a |
-| Flag on, evidence v2 available | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | include array; use `[]` when evaluated but no qualifying references |
-| Flag on, evidence v2 unavailable | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | omit field on affected items; never serialize `null` |
+| Scenario                         | `planned`                         | `outcomes`                        | `planned_outcome_mismatches`            | Item `evidence_references_v2` behavior                              |
+| -------------------------------- | --------------------------------- | --------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| Flag off baseline                | omitted                           | omitted                           | omitted                                 | n/a                                                                 |
+| Flag on, evidence v2 available   | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | include array; use `[]` when evaluated but no qualifying references |
+| Flag on, evidence v2 unavailable | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | omit field on affected items; never serialize `null`                |
 
 ## Contract examples
 

@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-026-01](TASK-ST-026-01-claim-to-canonical-document-and-span-linkage-contract.md) — Claim-to-Canonical Document/Span Linkage Contract
-- [ ] [TASK-ST-026-02](TASK-ST-026-02-precision-ladder-ranking-and-deterministic-evidence-ordering.md) — Precision Ladder Ranking and Deterministic Evidence Ordering
-- [ ] [TASK-ST-026-03](TASK-ST-026-03-additive-evidence-references-v2-projection-and-compatibility-gating.md) — Additive `evidence_references_v2` Projection and Compatibility Gating
-- [ ] [TASK-ST-026-04](TASK-ST-026-04-contract-fixtures-and-rerun-stability-snapshot-verification.md) — Contract Fixtures and Rerun Stability Snapshot Verification
-- [ ] [TASK-ST-026-05](TASK-ST-026-05-precision-distribution-diagnostics-and-scorecard-reporting.md) — Precision Distribution Diagnostics and Scorecard Reporting
+- [x] [TASK-ST-026-01](TASK-ST-026-01-claim-to-canonical-document-and-span-linkage-contract.md) — Claim-to-Canonical Document/Span Linkage Contract
+- [x] [TASK-ST-026-02](TASK-ST-026-02-precision-ladder-ranking-and-deterministic-evidence-ordering.md) — Precision Ladder Ranking and Deterministic Evidence Ordering
+- [x] [TASK-ST-026-03](TASK-ST-026-03-additive-evidence-references-v2-projection-and-compatibility-gating.md) — Additive `evidence_references_v2` Projection and Compatibility Gating
+- [x] [TASK-ST-026-04](TASK-ST-026-04-contract-fixtures-and-rerun-stability-snapshot-verification.md) — Contract Fixtures and Rerun Stability Snapshot Verification
+- [x] [TASK-ST-026-05](TASK-ST-026-05-precision-distribution-diagnostics-and-scorecard-reporting.md) — Precision Distribution Diagnostics and Scorecard Reporting
 
 ## Dependency Chain
 

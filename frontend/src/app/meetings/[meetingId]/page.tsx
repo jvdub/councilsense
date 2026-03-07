@@ -5,8 +5,14 @@ import { redirect } from "next/navigation";
 import { fetchBootstrap } from "../../../lib/api/bootstrap";
 import { fetchMeetingDetail } from "../../../lib/api/meetings";
 import { getAuthTokenFromCookie } from "../../../lib/auth/session";
-import { getMeetingDetailFeatureFlags, resolveMeetingDetailRenderState } from "../../../lib/meetings/detailRenderMode";
-import { type MeetingOutcomeItem, type MeetingPlannedItem } from "../../../lib/models/meetings";
+import {
+  getMeetingDetailFeatureFlags,
+  resolveMeetingDetailRenderState,
+} from "../../../lib/meetings/detailRenderMode";
+import {
+  type MeetingOutcomeItem,
+  type MeetingPlannedItem,
+} from "../../../lib/models/meetings";
 import { getOnboardingRedirectPath } from "../../../lib/onboarding/guard";
 import { ConfidenceBanner } from "./ConfidenceBanner";
 import { EvidenceReferences } from "./EvidenceReferences";
@@ -28,7 +34,10 @@ function renderStringList(items: string[], emptyMessage: string) {
   return (
     <ul className="space-y-3">
       {items.map((item) => (
-        <li key={item} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 shadow-sm">
+        <li
+          key={item}
+          className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 shadow-sm"
+        >
           {item}
         </li>
       ))}
@@ -65,25 +74,34 @@ function renderPlannedItems(items: MeetingPlannedItem[]) {
   return (
     <ul className="space-y-4">
       {items.map((item) => (
-        <li key={item.planned_id} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm">
+        <li
+          key={item.planned_id}
+          className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
+        >
           <p className="text-base font-semibold tracking-tight text-slate-950">
             {renderValue(item.title, "Untitled planned item")}
           </p>
           <dl className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Category</dt>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Category
+              </dt>
               <dd className="mt-2 text-sm text-slate-700">
                 {renderLabelValue(item.category, "Category unavailable")}
               </dd>
             </div>
             <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</dt>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Status
+              </dt>
               <dd className="mt-2 text-sm text-slate-700">
                 {renderLabelValue(item.status, "Status unavailable")}
               </dd>
             </div>
             <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Confidence</dt>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Confidence
+              </dt>
               <dd className="mt-2 text-sm text-slate-700">
                 {renderLabelValue(item.confidence, "Confidence unavailable")}
               </dd>
@@ -107,19 +125,26 @@ function renderOutcomeItems(items: MeetingOutcomeItem[]) {
   return (
     <ul className="space-y-4">
       {items.map((item) => (
-        <li key={item.outcome_id} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm">
+        <li
+          key={item.outcome_id}
+          className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
+        >
           <p className="text-base font-semibold tracking-tight text-slate-950">
             {renderValue(item.title, "Untitled outcome")}
           </p>
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Result</dt>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Result
+              </dt>
               <dd className="mt-2 text-sm text-slate-700">
                 {renderLabelValue(item.result, "Result unavailable")}
               </dd>
             </div>
             <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Confidence</dt>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Confidence
+              </dt>
               <dd className="mt-2 text-sm text-slate-700">
                 {renderLabelValue(item.confidence, "Confidence unavailable")}
               </dd>
@@ -153,7 +178,8 @@ export default async function MeetingDetailPage({
   }
 
   let detailError: string | null = null;
-  let detailResponse: Awaited<ReturnType<typeof fetchMeetingDetail>> | null = null;
+  let detailResponse: Awaited<ReturnType<typeof fetchMeetingDetail>> | null =
+    null;
 
   try {
     detailResponse = await fetchMeetingDetail(authToken, meetingId);
@@ -166,13 +192,21 @@ export default async function MeetingDetailPage({
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-xl shadow-slate-200/60 backdrop-blur">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Meeting detail</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+            Meeting detail
+          </h1>
           <p className="mt-4">
-            <Link href="/meetings" className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline">
+            <Link
+              href="/meetings"
+              className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
+            >
               Back to meetings
             </Link>
           </p>
-          <p role="alert" className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+          <p
+            role="alert"
+            className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700"
+          >
             Unable to load meeting detail. {detailError ?? "Unknown error"}
           </p>
         </section>
@@ -185,33 +219,48 @@ export default async function MeetingDetailPage({
     getMeetingDetailFeatureFlags(),
   );
   const showPlannedSection =
-    renderState.mode === "additive" && renderState.contract.planned === "present";
+    renderState.mode === "additive" &&
+    renderState.contract.planned === "present";
   const showOutcomesSection =
-    renderState.mode === "additive" && renderState.contract.outcomes === "present";
+    renderState.mode === "additive" &&
+    renderState.contract.outcomes === "present";
   const showMismatchIndicators =
-    renderState.mismatchSignalsEnabled && renderState.contract.mismatches === "present";
-  const additivePlanned = showPlannedSection ? detailResponse.planned ?? null : null;
-  const additiveOutcomes = showOutcomesSection ? detailResponse.outcomes ?? null : null;
+    renderState.mismatchSignalsEnabled &&
+    renderState.contract.mismatches === "present";
+  const additivePlanned = showPlannedSection
+    ? (detailResponse.planned ?? null)
+    : null;
+  const additiveOutcomes = showOutcomesSection
+    ? (detailResponse.outcomes ?? null)
+    : null;
 
   return (
     <main
       className="mx-auto flex w-full max-w-5xl flex-col gap-6"
       data-render-mode={renderState.mode}
       data-render-fallback={renderState.modeFallbackReason ?? undefined}
-      data-mismatch-signals={renderState.mismatchSignalsEnabled ? "enabled" : "disabled"}
+      data-mismatch-signals={
+        renderState.mismatchSignalsEnabled ? "enabled" : "disabled"
+      }
       data-mismatch-fallback={renderState.mismatchFallbackReason ?? undefined}
     >
       <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-xl shadow-slate-200/60 backdrop-blur">
         <p>
-          <Link href="/meetings" className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline">
+          <Link
+            href="/meetings"
+            className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
+          >
             Back to meetings
           </Link>
         </p>
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{detailResponse.title}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+              {detailResponse.title}
+            </h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Status: {detailResponse.status ?? "unknown"} · Confidence: {detailResponse.confidence_label ?? "unknown"}
+              Status: {detailResponse.status ?? "unknown"} · Confidence:{" "}
+              {detailResponse.confidence_label ?? "unknown"}
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -228,105 +277,183 @@ export default async function MeetingDetailPage({
         readerLowConfidence={detailResponse.reader_low_confidence}
       />
 
-      <section aria-label="Summary" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Summary</h2>
-        <p className="mt-4 text-base leading-8 text-slate-700">{detailResponse.summary ?? "Summary is not available yet."}</p>
+      <section
+        aria-label="Summary"
+        className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+      >
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+          Summary
+        </h2>
+        <p className="mt-4 text-base leading-8 text-slate-700">
+          {detailResponse.summary ?? "Summary is not available yet."}
+        </p>
       </section>
 
       {additivePlanned ? (
-        <section aria-label="Planned" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Planned</h2>
+        <section
+          aria-label="Planned"
+          className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+        >
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+            Planned
+          </h2>
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,18rem)_1fr]">
             <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Generated</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Generated
+                </h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
                   {renderValue(additivePlanned.generated_at, "Unavailable")}
                 </p>
               </div>
               <div className="mt-5">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Source coverage</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Source coverage
+                </h3>
                 <dl className="mt-3 space-y-3 text-sm text-slate-700">
                   <div className="flex items-center justify-between gap-4 rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
                     <dt className="font-medium text-slate-800">Agenda</dt>
-                    <dd>{renderLabelValue(additivePlanned.source_coverage.agenda, "Unavailable")}</dd>
+                    <dd>
+                      {renderLabelValue(
+                        additivePlanned.source_coverage.agenda,
+                        "Unavailable",
+                      )}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4 rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
                     <dt className="font-medium text-slate-800">Packet</dt>
-                    <dd>{renderLabelValue(additivePlanned.source_coverage.packet, "Unavailable")}</dd>
+                    <dd>
+                      {renderLabelValue(
+                        additivePlanned.source_coverage.packet,
+                        "Unavailable",
+                      )}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4 rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
                     <dt className="font-medium text-slate-800">Minutes</dt>
-                    <dd>{renderLabelValue(additivePlanned.source_coverage.minutes, "Unavailable")}</dd>
+                    <dd>
+                      {renderLabelValue(
+                        additivePlanned.source_coverage.minutes,
+                        "Unavailable",
+                      )}
+                    </dd>
                   </div>
                 </dl>
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Agenda and packet items</h3>
-              <div className="mt-4">{renderPlannedItems(additivePlanned.items)}</div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Agenda and packet items
+              </h3>
+              <div className="mt-4">
+                {renderPlannedItems(additivePlanned.items)}
+              </div>
             </div>
           </div>
         </section>
       ) : null}
 
       {additiveOutcomes ? (
-        <section aria-label="Outcomes" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Outcomes</h2>
+        <section
+          aria-label="Outcomes"
+          className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+        >
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+            Outcomes
+          </h2>
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,18rem)_1fr]">
             <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Generated</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Generated
+                </h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
                   {renderValue(additiveOutcomes.generated_at, "Unavailable")}
                 </p>
               </div>
               <div className="mt-5 rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Authority source</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Authority source
+                </h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {renderLabelValue(additiveOutcomes.authority_source, "Unavailable")}
+                  {renderLabelValue(
+                    additiveOutcomes.authority_source,
+                    "Unavailable",
+                  )}
                 </p>
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Recorded outcomes</h3>
-              <div className="mt-4">{renderOutcomeItems(additiveOutcomes.items)}</div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Recorded outcomes
+              </h3>
+              <div className="mt-4">
+                {renderOutcomeItems(additiveOutcomes.items)}
+              </div>
             </div>
           </div>
         </section>
       ) : null}
 
-      <section aria-label="Decisions and actions" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Decisions and actions</h2>
+      <section
+        aria-label="Decisions and actions"
+        className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+      >
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+          Decisions and actions
+        </h2>
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <div>
-            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Key decisions</h3>
-        {renderStringList(
-          detailResponse.key_decisions,
-          "No key decisions available.",
-        )}
+            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Key decisions
+            </h3>
+            {renderStringList(
+              detailResponse.key_decisions,
+              "No key decisions available.",
+            )}
           </div>
           <div>
-            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Key actions</h3>
-            {renderStringList(detailResponse.key_actions, "No key actions available.")}
+            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Key actions
+            </h3>
+            {renderStringList(
+              detailResponse.key_actions,
+              "No key actions available.",
+            )}
           </div>
         </div>
       </section>
 
-      <section aria-label="Notable topics" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Notable topics</h2>
-        {renderStringList(detailResponse.notable_topics, "No notable topics available.")}
+      <section
+        aria-label="Notable topics"
+        className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+      >
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+          Notable topics
+        </h2>
+        {renderStringList(
+          detailResponse.notable_topics,
+          "No notable topics available.",
+        )}
       </section>
 
-      <section aria-label="Evidence references" className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Evidence references</h2>
+      <section
+        aria-label="Evidence references"
+        className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+      >
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+          Evidence references
+        </h2>
         <div className="mt-6">
-        <EvidenceReferences claims={detailResponse.claims} />
+          <EvidenceReferences claims={detailResponse.claims} />
         </div>
       </section>
 
       {showMismatchIndicators && detailResponse.planned_outcome_mismatches ? (
-        <MismatchIndicators mismatches={detailResponse.planned_outcome_mismatches} />
+        <MismatchIndicators
+          mismatches={detailResponse.planned_outcome_mismatches}
+        />
       ) : null}
     </main>
   );

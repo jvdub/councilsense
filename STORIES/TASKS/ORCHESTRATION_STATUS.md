@@ -1,6 +1,6 @@
 # Orchestration Status
 
-Last updated: 2026-03-04
+Last updated: 2026-03-06
 
 ## Execution Policies
 
@@ -170,9 +170,19 @@ Last updated: 2026-03-04
 | TASK-ST-016-04 | ✅ Done | 527f94f |
 | TASK-ST-016-05 | ✅ Done | 4f37f89 |
 
+### ST-025 — Authority-Aware Multi-Document Compose and Limited-Confidence Policy
+
+| Task           | Status  | Commit  |
+| -------------- | ------- | ------- |
+| TASK-ST-025-01 | ✅ Done | 279ca26 |
+| TASK-ST-025-02 | ✅ Done | 870fed1 |
+| TASK-ST-025-03 | ✅ Done | 63c75b5 |
+| TASK-ST-025-04 | ✅ Done | 01ec357 |
+| TASK-ST-025-05 | ✅ Done | 598d235 |
+
 ## Current Repository State
 
-- Working tree: dirty (active orchestration and task implementations)
+- Working tree: dirty (unrelated REQUIREMENTS.md edit and orchestration updates)
 - Branch: `main`
 - `main` ahead of `origin/main` by task commits
 
@@ -181,19 +191,24 @@ Last updated: 2026-03-04
 - ST-001 through ST-021 are completed.
 - ST-022 and ST-023 are completed.
 - ST-024 is completed.
-- ST-025 is active (in progress).
+- ST-025 is completed.
+- ST-026 is completed.
+- ST-027 is completed.
+- ST-028 is completed.
+- ST-029 is next in queue and dependency-safe to start.
 - ST-026 through ST-031 remain fully decomposed and ready for execution when dependencies are satisfied.
 
 ## Prepared and Execution Stories (Decomposed)
+
 | Story  | Story Folder                                                                         | Task Pack               | Decomposition Status | Execution Status |
 | ------ | ------------------------------------------------------------------------------------ | ----------------------- | -------------------- | ---------------- |
 | ST-022 | `STORIES/ST-022-agenda-plan-v1-contract-schema-and-rollout-freeze.md`                | `STORIES/TASKS/ST-022/` | ✅ Complete          | ✅ Completed     |
 | ST-023 | `STORIES/ST-023-meeting-bundle-planner-and-source-scoped-ingestion.md`               | `STORIES/TASKS/ST-023/` | ✅ Complete          | ✅ Completed     |
 | ST-024 | `STORIES/ST-024-canonical-documents-artifacts-and-spans-persistence.md`              | `STORIES/TASKS/ST-024/` | ✅ Complete          | ✅ Completed     |
-| ST-025 | `STORIES/ST-025-authority-aware-multi-document-compose-and-limited-confidence.md`    | `STORIES/TASKS/ST-025/` | ✅ Complete          | ▶ In progress (1/5) |
-| ST-026 | `STORIES/ST-026-evidence-v2-linkage-precision-ladder-and-deterministic-ordering.md`  | `STORIES/TASKS/ST-026/` | ✅ Complete          | ⏳ Not started   |
-| ST-027 | `STORIES/ST-027-reader-api-additive-planned-outcomes-and-mismatch-fields.md`         | `STORIES/TASKS/ST-027/` | ✅ Complete          | ⏳ Not started   |
-| ST-028 | `STORIES/ST-028-frontend-meeting-detail-planned-outcomes-and-mismatch-rendering.md`  | `STORIES/TASKS/ST-028/` | ✅ Complete          | ⏳ Not started   |
+| ST-025 | `STORIES/ST-025-authority-aware-multi-document-compose-and-limited-confidence.md`    | `STORIES/TASKS/ST-025/` | ✅ Complete          | ✅ Completed     |
+| ST-026 | `STORIES/ST-026-evidence-v2-linkage-precision-ladder-and-deterministic-ordering.md`  | `STORIES/TASKS/ST-026/` | ✅ Complete          | ✅ Completed     |
+| ST-027 | `STORIES/ST-027-reader-api-additive-planned-outcomes-and-mismatch-fields.md`         | `STORIES/TASKS/ST-027/` | ✅ Complete          | ✅ Completed     |
+| ST-028 | `STORIES/ST-028-frontend-meeting-detail-planned-outcomes-and-mismatch-rendering.md`  | `STORIES/TASKS/ST-028/` | ✅ Complete          | ✅ Completed     |
 | ST-029 | `STORIES/ST-029-pipeline-retry-classification-dlq-and-replay-audit.md`               | `STORIES/TASKS/ST-029/` | ✅ Complete          | ⏳ Not started   |
 | ST-030 | `STORIES/ST-030-document-aware-quality-gates-and-authority-alignment-enforcement.md` | `STORIES/TASKS/ST-030/` | ✅ Complete          | ⏳ Not started   |
 | ST-031 | `STORIES/ST-031-multi-document-observability-alerts-and-runbook-completion.md`       | `STORIES/TASKS/ST-031/` | ✅ Complete          | ⏳ Not started   |

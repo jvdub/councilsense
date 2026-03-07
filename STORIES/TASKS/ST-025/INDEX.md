@@ -6,10 +6,10 @@
 ## Ordered Checklist
 
 - [x] [TASK-ST-025-01](TASK-ST-025-01-deterministic-multi-document-compose-assembly.md) — Deterministic Multi-Document Compose Assembly
-- [ ] [TASK-ST-025-02](TASK-ST-025-02-authority-aware-outcomes-decision-policy.md) — Authority-Aware Outcomes Decision Policy
-- [ ] [TASK-ST-025-03](TASK-ST-025-03-limited-confidence-reason-codes-and-publish-wiring.md) — Limited-Confidence Reason Codes and Publish Wiring
-- [ ] [TASK-ST-025-04](TASK-ST-025-04-source-conflict-and-partial-coverage-fixtures.md) — Source Conflict and Partial-Coverage Fixtures
-- [ ] [TASK-ST-025-05](TASK-ST-025-05-deterministic-compose-and-confidence-transition-tests.md) — Deterministic Compose and Confidence Transition Tests
+- [x] [TASK-ST-025-02](TASK-ST-025-02-authority-aware-outcomes-decision-policy.md) — Authority-Aware Outcomes Decision Policy
+- [x] [TASK-ST-025-03](TASK-ST-025-03-limited-confidence-reason-codes-and-publish-wiring.md) — Limited-Confidence Reason Codes and Publish Wiring
+- [x] [TASK-ST-025-04](TASK-ST-025-04-source-conflict-and-partial-coverage-fixtures.md) — Source Conflict and Partial-Coverage Fixtures
+- [x] [TASK-ST-025-05](TASK-ST-025-05-deterministic-compose-and-confidence-transition-tests.md) — Deterministic Compose and Confidence Transition Tests
 
 ## Dependency Chain
 

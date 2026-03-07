@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-028-01](TASK-ST-028-01-meeting-detail-flag-contract-and-render-mode-resolution.md) — Meeting Detail Flag Contract and Render Mode Resolution
-- [ ] [TASK-ST-028-02](TASK-ST-028-02-planned-and-outcomes-sections-and-data-binding.md) — Planned and Outcomes Sections and Data Binding
-- [ ] [TASK-ST-028-03](TASK-ST-028-03-evidence-backed-mismatch-indicators-and-empty-states.md) — Evidence-Backed Mismatch Indicators and Empty States
-- [ ] [TASK-ST-028-04](TASK-ST-028-04-additive-field-fallback-and-baseline-parity-hardening.md) — Additive-Field Fallback and Baseline Parity Hardening
-- [ ] [TASK-ST-028-05](TASK-ST-028-05-frontend-tests-accessibility-and-latency-regression-checks.md) — Frontend Tests, Accessibility, and Latency Regression Checks
+- [x] [TASK-ST-028-01](TASK-ST-028-01-meeting-detail-flag-contract-and-render-mode-resolution.md) — Meeting Detail Flag Contract and Render Mode Resolution
+- [x] [TASK-ST-028-02](TASK-ST-028-02-planned-and-outcomes-sections-and-data-binding.md) — Planned and Outcomes Sections and Data Binding
+- [x] [TASK-ST-028-03](TASK-ST-028-03-evidence-backed-mismatch-indicators-and-empty-states.md) — Evidence-Backed Mismatch Indicators and Empty States
+- [x] [TASK-ST-028-04](TASK-ST-028-04-additive-field-fallback-and-baseline-parity-hardening.md) — Additive-Field Fallback and Baseline Parity Hardening
+- [x] [TASK-ST-028-05](TASK-ST-028-05-frontend-tests-accessibility-and-latency-regression-checks.md) — Frontend Tests, Accessibility, and Latency Regression Checks
 
 ## Dependency Chain
 

@@ -1,5 +1,13 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import type {
   MeetingClaim,
@@ -23,8 +31,10 @@ const getAuthTokenFromCookieMock = vi.fn();
 const fetchBootstrapMock = vi.fn();
 const getOnboardingRedirectPathMock = vi.fn();
 const fetchMeetingDetailMock = vi.fn();
-const originalPlannedOutcomesFlag = process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
-const originalMismatchSignalsFlag = process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
+const originalPlannedOutcomesFlag =
+  process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
+const originalMismatchSignalsFlag =
+  process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
 
 const LATENCY_THRESHOLDS = {
   flagOffP95MaxMs: 35,
@@ -196,9 +206,15 @@ function buildMeetingDetail(
 
 function buildRepresentativeLatencyDetail(): MeetingDetailResponse {
   const claims = Array.from({ length: 24 }, (_, index) => buildClaim(index, 3));
-  const plannedItems = Array.from({ length: 18 }, (_, index) => buildPlannedItem(index));
-  const outcomeItems = Array.from({ length: 18 }, (_, index) => buildOutcomeItem(index));
-  const mismatches = Array.from({ length: 12 }, (_, index) => buildMismatch(index));
+  const plannedItems = Array.from({ length: 18 }, (_, index) =>
+    buildPlannedItem(index),
+  );
+  const outcomeItems = Array.from({ length: 18 }, (_, index) =>
+    buildOutcomeItem(index),
+  );
+  const mismatches = Array.from({ length: 12 }, (_, index) =>
+    buildMismatch(index),
+  );
   const mismatchSummary = mismatches.reduce(
     (summary, item) => {
       summary.total += 1;
@@ -212,10 +228,20 @@ function buildRepresentativeLatencyDetail(): MeetingDetailResponse {
     id: "meeting-latency-verification",
     meeting_uid: "uid-latency-verification",
     title: "Council latency verification session",
-    summary: "Representative high-contention meeting detail payload for latency regression checks.",
-    key_decisions: Array.from({ length: 12 }, (_, index) => `Decision ${index + 1}`),
-    key_actions: Array.from({ length: 12 }, (_, index) => `Action ${index + 1}`),
-    notable_topics: Array.from({ length: 8 }, (_, index) => `Topic ${index + 1}`),
+    summary:
+      "Representative high-contention meeting detail payload for latency regression checks.",
+    key_decisions: Array.from(
+      { length: 12 },
+      (_, index) => `Decision ${index + 1}`,
+    ),
+    key_actions: Array.from(
+      { length: 12 },
+      (_, index) => `Action ${index + 1}`,
+    ),
+    notable_topics: Array.from(
+      { length: 8 },
+      (_, index) => `Topic ${index + 1}`,
+    ),
     claims,
     planned: {
       generated_at: "2026-03-07T15:50:00Z",
@@ -262,7 +288,11 @@ async function measureRouteGenerationLatency(
   setFeatureFlags(flags);
   fetchMeetingDetailMock.mockImplementation(async () => detail);
 
-  for (let warmupIndex = 0; warmupIndex < LATENCY_WARMUP_COUNT; warmupIndex += 1) {
+  for (
+    let warmupIndex = 0;
+    warmupIndex < LATENCY_WARMUP_COUNT;
+    warmupIndex += 1
+  ) {
     await MeetingDetailPage({
       params: Promise.resolve({ meetingId: detail.id }),
     });
@@ -270,7 +300,11 @@ async function measureRouteGenerationLatency(
 
   const samples: number[] = [];
 
-  for (let sampleIndex = 0; sampleIndex < LATENCY_SAMPLE_COUNT; sampleIndex += 1) {
+  for (
+    let sampleIndex = 0;
+    sampleIndex < LATENCY_SAMPLE_COUNT;
+    sampleIndex += 1
+  ) {
     const start = performance.now();
 
     await MeetingDetailPage({
@@ -325,7 +359,12 @@ describe("MeetingDetailPage verification", () => {
       container.querySelectorAll("section[aria-label]"),
     ).map((section) => section.getAttribute("aria-label"));
 
-    expect(screen.getByRole("heading", { level: 1, name: "Baseline accessibility session" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Baseline accessibility session",
+      }),
+    ).toBeInTheDocument();
     expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
       "Summary",
       "Decisions and actions",
@@ -338,13 +377,18 @@ describe("MeetingDetailPage verification", () => {
       "Notable topics",
       "Evidence references",
     ]);
-    expect(screen.getByRole("link", { name: "Back to meetings" })).toHaveAttribute(
-      "href",
-      "/meetings",
-    );
-    expect(screen.queryByRole("region", { name: "Planned" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Outcomes" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Mismatch indicators" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Back to meetings" }),
+    ).toHaveAttribute("href", "/meetings");
+    expect(
+      screen.queryByRole("region", { name: "Planned" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Outcomes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Mismatch indicators" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders severity labels for evidence-backed mismatches and suppresses unsupported entries", async () => {
@@ -368,7 +412,8 @@ describe("MeetingDetailPage verification", () => {
       }),
       buildMismatch(3, {
         severity: "high",
-        description: "Unsupported mismatch without evidence should stay hidden.",
+        description:
+          "Unsupported mismatch without evidence should stay hidden.",
         evidence_references_v2: [],
       }),
     ];
@@ -405,10 +450,17 @@ describe("MeetingDetailPage verification", () => {
     const labelledRegions = Array.from(
       container.querySelectorAll("section[aria-label]"),
     ).map((section) => section.getAttribute("aria-label"));
-    const mismatchRegion = screen.getByRole("region", { name: "Mismatch indicators" });
+    const mismatchRegion = screen.getByRole("region", {
+      name: "Mismatch indicators",
+    });
     const mismatchItems = within(mismatchRegion).getAllByRole("listitem");
 
-    expect(screen.getByRole("heading", { level: 1, name: "Additive accessibility session" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Additive accessibility session",
+      }),
+    ).toBeInTheDocument();
     expect(labelledRegions).toEqual([
       "Summary",
       "Planned",
@@ -419,23 +471,36 @@ describe("MeetingDetailPage verification", () => {
       "Mismatch indicators",
     ]);
     expect(screen.getByRole("region", { name: "Planned" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Outcomes" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Mismatch indicators" })).toHaveAttribute(
-      "data-mismatch-indicator-state",
-      "supported",
-    );
+    expect(
+      screen.getByRole("region", { name: "Outcomes" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Mismatch indicators" }),
+    ).toHaveAttribute("data-mismatch-indicator-state", "supported");
     expect(mismatchItems).toHaveLength(3);
-    expect(within(mismatchRegion).getByText("High mismatch")).toBeInTheDocument();
-    expect(within(mismatchRegion).getByText("Medium mismatch")).toBeInTheDocument();
-    expect(within(mismatchRegion).getByText("Low mismatch")).toBeInTheDocument();
     expect(
-      within(mismatchRegion).getByText("High-severity mismatch backed by minutes."),
+      within(mismatchRegion).getByText("High mismatch"),
     ).toBeInTheDocument();
     expect(
-      within(mismatchRegion).getByText("Medium-severity mismatch backed by minutes."),
+      within(mismatchRegion).getByText("Medium mismatch"),
     ).toBeInTheDocument();
     expect(
-      within(mismatchRegion).getByText("Low-severity mismatch backed by minutes."),
+      within(mismatchRegion).getByText("Low mismatch"),
+    ).toBeInTheDocument();
+    expect(
+      within(mismatchRegion).getByText(
+        "High-severity mismatch backed by minutes.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(mismatchRegion).getByText(
+        "Medium-severity mismatch backed by minutes.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(mismatchRegion).getByText(
+        "Low-severity mismatch backed by minutes.",
+      ),
     ).toBeInTheDocument();
     expect(
       within(mismatchRegion).queryByText(
@@ -456,9 +521,15 @@ describe("MeetingDetailPage verification", () => {
     });
     const additiveDelta = additive.p95Ms - baseline.p95Ms;
 
-    expect(baseline.p95Ms).toBeLessThanOrEqual(LATENCY_THRESHOLDS.flagOffP95MaxMs);
-    expect(additive.p95Ms).toBeLessThanOrEqual(LATENCY_THRESHOLDS.flagOnP95MaxMs);
-    expect(additiveDelta).toBeLessThanOrEqual(LATENCY_THRESHOLDS.additiveDeltaMaxMs);
+    expect(baseline.p95Ms).toBeLessThanOrEqual(
+      LATENCY_THRESHOLDS.flagOffP95MaxMs,
+    );
+    expect(additive.p95Ms).toBeLessThanOrEqual(
+      LATENCY_THRESHOLDS.flagOnP95MaxMs,
+    );
+    expect(additiveDelta).toBeLessThanOrEqual(
+      LATENCY_THRESHOLDS.additiveDeltaMaxMs,
+    );
   });
 });
 
@@ -470,12 +541,14 @@ afterAll(() => {
   if (originalPlannedOutcomesFlag === undefined) {
     delete process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
   } else {
-    process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED = originalPlannedOutcomesFlag;
+    process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED =
+      originalPlannedOutcomesFlag;
   }
 
   if (originalMismatchSignalsFlag === undefined) {
     delete process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
   } else {
-    process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED = originalMismatchSignalsFlag;
+    process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED =
+      originalMismatchSignalsFlag;
   }
 });

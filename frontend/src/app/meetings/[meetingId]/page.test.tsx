@@ -1,5 +1,13 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import MeetingDetailPage from "./page";
 import {
@@ -15,8 +23,10 @@ const getAuthTokenFromCookieMock = vi.fn();
 const fetchBootstrapMock = vi.fn();
 const getOnboardingRedirectPathMock = vi.fn();
 const fetchMeetingDetailMock = vi.fn();
-const originalPlannedOutcomesFlag = process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
-const originalMismatchSignalsFlag = process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
+const originalPlannedOutcomesFlag =
+  process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
+const originalMismatchSignalsFlag =
+  process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
@@ -65,7 +75,9 @@ describe("MeetingDetailPage", () => {
     getAuthTokenFromCookieMock.mockResolvedValueOnce(null);
 
     await expect(
-      MeetingDetailPage({ params: Promise.resolve({ meetingId: "meeting-1" }) }),
+      MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-1" }),
+      }),
     ).rejects.toThrow("REDIRECT:/auth/sign-in");
     expect(fetchBootstrapMock).not.toHaveBeenCalled();
   });
@@ -114,27 +126,58 @@ describe("MeetingDetailPage", () => {
 
     const main = container.querySelector("main[data-render-mode]");
 
-    expect(screen.getByRole("heading", { name: "Council Session" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
-    expect(screen.getByText("Council approved the downtown transit plan.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Decisions and actions" })).toBeInTheDocument();
-    expect(screen.getByText("Approved downtown transit plan")).toBeInTheDocument();
-    expect(screen.getByText("Staff to publish implementation timeline")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Notable topics" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Council Session" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Summary" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Council approved the downtown transit plan."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Decisions and actions" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Approved downtown transit plan"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Staff to publish implementation timeline"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Notable topics" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Transit")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Evidence references" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
-    expect(screen.getByText("Council approved the transit plan.")).toBeInTheDocument();
-    expect(screen.getByText("Council voted 6-1 to approve the transit plan.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "minutes.section.4" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to meetings" })).toHaveAttribute(
-      "href",
-      "/meetings",
-    );
+    expect(
+      screen.getByRole("heading", { name: "Evidence references" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Planned" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Outcomes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Council approved the transit plan."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Council voted 6-1 to approve the transit plan."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "minutes.section.4" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Back to meetings" }),
+    ).toHaveAttribute("href", "/meetings");
     expect(main).toHaveAttribute("data-render-mode", "baseline");
-    expect(main).toHaveAttribute("data-render-fallback", "planned_outcomes_flag_disabled");
-    expect(fetchMeetingDetailMock).toHaveBeenCalledWith("token-abc", "meeting-1");
+    expect(main).toHaveAttribute(
+      "data-render-fallback",
+      "planned_outcomes_flag_disabled",
+    );
+    expect(fetchMeetingDetailMock).toHaveBeenCalledWith(
+      "token-abc",
+      "meeting-1",
+    );
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
@@ -181,17 +224,28 @@ describe("MeetingDetailPage", () => {
     ).map((heading) => heading.textContent);
 
     expect(main).toHaveAttribute("data-render-mode", "baseline");
-    expect(main).toHaveAttribute("data-render-fallback", "planned_outcomes_flag_disabled");
-    expect(screen.getByText("Baseline detail still renders.")).toBeInTheDocument();
+    expect(main).toHaveAttribute(
+      "data-render-fallback",
+      "planned_outcomes_flag_disabled",
+    );
+    expect(
+      screen.getByText("Baseline detail still renders."),
+    ).toBeInTheDocument();
     expect(sectionHeadings).toEqual([
       "Summary",
       "Decisions and actions",
       "Notable topics",
       "Evidence references",
     ]);
-    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Mismatch indicators" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Planned" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Outcomes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Mismatch indicators" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a prominent limited confidence banner when flagged", async () => {
@@ -220,20 +274,34 @@ describe("MeetingDetailPage", () => {
       }),
     );
 
-    expect(screen.getByRole("alert", { name: "Confidence warning" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Limited confidence" })).toBeInTheDocument();
     expect(
-      screen.getByText("Status: limited_confidence · Confidence: limited_confidence"),
+      screen.getByRole("alert", { name: "Confidence warning" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Summary is not available yet.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Limited confidence" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Status: limited_confidence · Confidence: limited_confidence",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Summary is not available yet."),
+    ).toBeInTheDocument();
     expect(screen.getByText("No key decisions available.")).toBeInTheDocument();
     expect(screen.getByText("No key actions available.")).toBeInTheDocument();
-    expect(screen.getByText("No notable topics available.")).toBeInTheDocument();
-    expect(screen.getByText("No evidence references available.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No notable topics available."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No evidence references available."),
+    ).toBeInTheDocument();
   });
 
   it("renders an error state when detail fetch fails", async () => {
-    fetchMeetingDetailMock.mockRejectedValueOnce(new Error("Service unavailable"));
+    fetchMeetingDetailMock.mockRejectedValueOnce(
+      new Error("Service unavailable"),
+    );
 
     render(
       await MeetingDetailPage({
@@ -241,7 +309,9 @@ describe("MeetingDetailPage", () => {
       }),
     );
 
-    expect(screen.getByRole("heading", { name: "Meeting detail" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Meeting detail" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Unable to load meeting detail. Service unavailable"),
     ).toBeInTheDocument();
@@ -328,7 +398,8 @@ describe("MeetingDetailPage", () => {
                 char_end: 104,
                 precision: "span",
                 confidence: "high",
-                excerpt: "Council deferred the transit procurement item pending revisions.",
+                excerpt:
+                  "Council deferred the transit procurement item pending revisions.",
               },
             ],
           },
@@ -360,17 +431,29 @@ describe("MeetingDetailPage", () => {
       "Notable topics",
       "Evidence references",
     ]);
-    expect(within(plannedSection).getByText("2026-03-07T14:00:00Z")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Approve transit procurement")).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("2026-03-07T14:00:00Z"),
+    ).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Approve transit procurement"),
+    ).toBeInTheDocument();
     expect(within(plannedSection).getByText("Procurement")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Agenda and packet items")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Source coverage")).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Agenda and packet items"),
+    ).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Source coverage"),
+    ).toBeInTheDocument();
     expect(within(plannedSection).getByText("High")).toBeInTheDocument();
     expect(within(plannedSection).getByText("Agenda")).toBeInTheDocument();
     expect(within(plannedSection).getByText("Packet")).toBeInTheDocument();
     expect(within(plannedSection).getByText("Minutes")).toBeInTheDocument();
-    expect(within(outcomesSection).getByText("2026-03-07T14:05:00Z")).toBeInTheDocument();
-    expect(within(outcomesSection).getByText("Transit procurement deferred")).toBeInTheDocument();
+    expect(
+      within(outcomesSection).getByText("2026-03-07T14:05:00Z"),
+    ).toBeInTheDocument();
+    expect(
+      within(outcomesSection).getByText("Transit procurement deferred"),
+    ).toBeInTheDocument();
     expect(within(outcomesSection).getByText("Deferred")).toBeInTheDocument();
     expect(within(outcomesSection).getByText("Minutes")).toBeInTheDocument();
   });
@@ -450,12 +533,22 @@ describe("MeetingDetailPage", () => {
     expect(main).toHaveAttribute("data-render-mode", "additive");
     expect(main).not.toHaveAttribute("data-render-fallback");
     expect(within(plannedSection).getByText("Unavailable")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Untitled planned item")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Category unavailable")).toBeInTheDocument();
-    expect(within(plannedSection).getByText("Status unavailable")).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Untitled planned item"),
+    ).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Category unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      within(plannedSection).getByText("Status unavailable"),
+    ).toBeInTheDocument();
     expect(within(plannedSection).getByText("Low")).toBeInTheDocument();
-    expect(within(outcomesSection).getByText("Untitled outcome")).toBeInTheDocument();
-    expect(within(outcomesSection).getByText("Result unavailable")).toBeInTheDocument();
+    expect(
+      within(outcomesSection).getByText("Untitled outcome"),
+    ).toBeInTheDocument();
+    expect(
+      within(outcomesSection).getByText("Result unavailable"),
+    ).toBeInTheDocument();
     expect(within(outcomesSection).getByText("Medium")).toBeInTheDocument();
   });
 
@@ -509,9 +602,16 @@ describe("MeetingDetailPage", () => {
     const main = container.querySelector("main[data-render-mode]");
 
     expect(main).toHaveAttribute("data-render-mode", "baseline");
-    expect(main).toHaveAttribute("data-render-fallback", "missing_outcomes_block");
-    expect(container.textContent).not.toContain("Unable to load meeting detail");
-    expect(screen.getByText("Council discussed utilities planning.")).toBeInTheDocument();
+    expect(main).toHaveAttribute(
+      "data-render-fallback",
+      "missing_outcomes_block",
+    );
+    expect(container.textContent).not.toContain(
+      "Unable to load meeting detail",
+    );
+    expect(
+      screen.getByText("Council discussed utilities planning."),
+    ).toBeInTheDocument();
   });
 
   it("falls back safely when additive payloads are structurally malformed", async () => {
@@ -564,11 +664,24 @@ describe("MeetingDetailPage", () => {
     const main = container.querySelector("main[data-render-mode]");
 
     expect(main).toHaveAttribute("data-render-mode", "baseline");
-    expect(main).toHaveAttribute("data-render-fallback", "invalid_planned_block");
-    expect(container.textContent).not.toContain("Unable to load meeting detail");
-    expect(screen.getByText("Malformed additive data should not break baseline rendering.")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
+    expect(main).toHaveAttribute(
+      "data-render-fallback",
+      "invalid_planned_block",
+    );
+    expect(container.textContent).not.toContain(
+      "Unable to load meeting detail",
+    );
+    expect(
+      screen.getByText(
+        "Malformed additive data should not break baseline rendering.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Planned" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Outcomes" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders an explicit neutral state when mismatch entries are unsupported", async () => {
@@ -651,13 +764,17 @@ describe("MeetingDetailPage", () => {
       }),
     );
 
-    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Mismatch indicators" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "Mismatch comparisons are available, but none have evidence-backed support yet.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Deferred instead of approved.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Deferred instead of approved."),
+    ).not.toBeInTheDocument();
   });
 
   it("renders an explicit empty state when no mismatches are present", async () => {
@@ -729,9 +846,13 @@ describe("MeetingDetailPage", () => {
       }),
     );
 
-    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
     expect(
-      screen.getByText("No evidence-backed mismatches were detected for this meeting."),
+      screen.getByRole("heading", { name: "Mismatch indicators" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No evidence-backed mismatches were detected for this meeting.",
+      ),
     ).toBeInTheDocument();
   });
 });
@@ -744,12 +865,14 @@ afterAll(() => {
   if (originalPlannedOutcomesFlag === undefined) {
     delete process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
   } else {
-    process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED = originalPlannedOutcomesFlag;
+    process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED =
+      originalPlannedOutcomesFlag;
   }
 
   if (originalMismatchSignalsFlag === undefined) {
     delete process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
   } else {
-    process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED = originalMismatchSignalsFlag;
+    process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED =
+      originalMismatchSignalsFlag;
   }
 });

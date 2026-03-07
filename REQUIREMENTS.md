@@ -322,16 +322,66 @@ MVP is defined as the first end-to-end production slice that works reliably for 
 - Uses retrieval over processed and/or source content with grounded citations.
 - Should be loosely coupled so it can be added later without reworking core ETL + summaries.
 
-## 13) Acceptance Criteria for MVP Exit
+## 13) First-Principles MVP Success Criteria
+
+MVP success is not just "the system runs". It is defined by whether a normal resident can reliably understand what happened in local government, trust the explanation, and decide whether to care or act without becoming a process expert.
+
+### 13.1 Resident Outcome
+
+- A resident can discover that a meeting happened or is about to happen.
+- A resident can open one meeting page and understand the important outcomes in under 2 minutes.
+- A resident can tell what happened, what decisions were made, and whether the meeting appears relevant to them.
+
+### 13.2 Trust Outcome
+
+- Summaries are materially accurate and do not overstate certainty.
+- Important decisions/actions are not omitted from the user-facing output.
+- Key claims are traceable to source evidence with low friction.
+- When source evidence is weak, incomplete, or conflicting, the product clearly communicates limited confidence.
+
+### 13.3 Timeliness Outcome
+
+- Published meeting output appears soon enough that users still find it useful.
+- Notifications arrive while the meeting outcome is still timely, not after the relevance window has largely passed.
+- Source or processing delays are visible operationally rather than silently degrading freshness.
+
+### 13.4 Coverage Outcome
+
+- The pilot city and targeted meeting types are covered consistently enough that users can form a dependable habit.
+- Coverage gaps are explicit when a meeting cannot be processed to normal quality.
+- Product trust is favored over broad-but-inconsistent scope.
+
+### 13.5 Clarity Outcome
+
+- The reader experience separates summary, decisions/actions, notable topics, and evidence in a way a non-expert can follow.
+- Limited-confidence states are understandable and do not read like internal system errors.
+- The product reduces cognitive load rather than merely reformatting city documents.
+
+### 13.6 Notification Outcome
+
+- Users receive timely, relevant, non-duplicative notifications.
+- Notifications deep-link to the exact meeting detail page they describe.
+- User pause/unsubscribe preferences are always respected.
+
+### 13.7 Operational Outcome
+
+- Pipeline failures, freshness gaps, and low-confidence outputs are visible to operators.
+- Silent failure is treated as unacceptable; explicit degraded states are preferred.
+- The pilot city can be operated with clear first-line triage for ingestion, summarization, and notification issues.
+
+## 14) Acceptance Criteria for MVP Exit
 
 MVP is complete when all are true:
 
 1. New user can sign in with managed auth (Google at minimum) and set home city.
 2. At least one pilot city has recurring meeting ingestion and successful processing.
-3. Processed meetings are visible in app with readable summaries and evidence pointers.
+3. Processed meetings are visible in app with readable summaries, clear decisions/actions, and evidence pointers.
 4. Subscribed users receive one correct push notification per new meeting in their city.
 5. Unsubscribe/pause works and is respected.
 6. Basic operational dashboard/logs exist for ingestion + notification health.
 7. Notification reliability baseline is validated for MVP (deterministic dedupe key + bounded retry/backoff policy in operation); dead-letter/replay tooling is Phase 1.5.
 8. Summary baseline quality controls are in place for MVP (evidence pointers for key claims where possible, and low-evidence claims are labeled limited-confidence); regular audited ECR operations (>= 85% weekly sample gate) are Phase 1.5.
 9. Source health visibility and manual-review workflow are operational for pilot cities at a basic level; parser drift monitoring and advanced operational tooling are Phase 1.5.
+10. A resident can open a processed meeting and reach a materially accurate understanding of what happened in under 2 minutes.
+11. Important decisions/actions are represented in the published output or the meeting is explicitly marked limited-confidence.
+12. Notifications deep-link to the exact meeting detail they describe and do not duplicate for the same user/meeting/type.
