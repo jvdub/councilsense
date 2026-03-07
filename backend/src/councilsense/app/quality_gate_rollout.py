@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
@@ -28,6 +28,7 @@ GateMode = Literal["report_only", "enforced"]
 EnforcementAction = Literal["downgrade", "block"]
 PolicyDecision = Literal["observe", "enforce_pass", "enforce_downgrade", "enforce_block"]
 DiagnosticGateStatus = Literal["pass", "fail"]
+GateReasonFamily = Literal["shadow_gate", "document_aware_gate"]
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,33 @@ class PromotionStatus:
 class EnforcementOutcome:
     decision: PolicyDecision
     reason_codes: tuple[str, ...]
+    gate_reason_details: tuple["GateReasonDetail", ...] = ()
+
+
+@dataclass(frozen=True)
+class GateReasonDetail:
+    gate_family: GateReasonFamily
+    gate_id: str
+    policy_action: EnforcementAction
+    reason_codes: tuple[str, ...]
+    score: float | None = None
+    threshold: float | None = None
+    details: dict[str, object] = field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "gate_family": self.gate_family,
+            "gate_id": self.gate_id,
+            "policy_action": self.policy_action,
+            "reason_codes": list(self.reason_codes),
+        }
+        if self.score is not None:
+            payload["score"] = self.score
+        if self.threshold is not None:
+            payload["threshold"] = self.threshold
+        if self.details:
+            payload["details"] = dict(self.details)
+        return payload
 
 
 def _parse_bool_field(*, payload: dict[str, object], key: str) -> bool | None:
@@ -396,9 +424,10 @@ def evaluate_shadow_gates(
     all_gates_green = all(gate.passed for gate in diagnostics)
     document_aware_report = None
     if document_aware_gate_input is not None:
-        document_aware_report = _build_document_aware_report_only_diagnostics(
+        document_aware_report = _build_document_aware_diagnostics(
             gate_input=document_aware_gate_input,
             thresholds=config.document_aware_thresholds,
+            evaluation_mode=config.mode,
         )
     return ShadowGateDiagnostics(
         schema_version=QUALITY_GATE_ROLLOUT_SCHEMA_VERSION,
@@ -419,17 +448,18 @@ def evaluate_shadow_gates(
     )
 
 
-def _build_document_aware_report_only_diagnostics(
+def _build_document_aware_diagnostics(
     *,
     gate_input: DocumentAwareGateInput,
     thresholds: DocumentAwareGateThresholds,
+    evaluation_mode: GateMode,
 ) -> DocumentAwareReportOnlyDiagnostics:
     evaluation = evaluate_document_aware_gates(gate_input=gate_input, thresholds=thresholds)
     return DocumentAwareReportOnlyDiagnostics(
         schema_version=DOCUMENT_AWARE_DIAGNOSTICS_SCHEMA_VERSION,
         contract_version=evaluation.schema_version,
-        evaluation_mode="report_only",
-        decision_impact="non_blocking",
+        evaluation_mode=evaluation_mode,
+        decision_impact=("non_blocking" if evaluation_mode == "report_only" else "policy_driven"),
         diagnostics_complete=True,
         all_gates_green=evaluation.all_dimensions_passed,
         thresholds=thresholds.to_payload(),
@@ -551,13 +581,97 @@ def decide_enforcement_outcome(
     if config.promotion_required and not promotion_status.eligible:
         return EnforcementOutcome(decision="observe", reason_codes=("promotion_prerequisites_not_met",))
 
-    if diagnostics.all_gates_green:
+    gate_reason_details = _collect_gate_reason_details(config=config, diagnostics=diagnostics)
+
+    if not gate_reason_details:
         return EnforcementOutcome(decision="enforce_pass", reason_codes=("all_gates_green",))
 
-    if config.enforcement_action == "block":
-        return EnforcementOutcome(decision="enforce_block", reason_codes=("gate_failure_blocked_publish",))
+    if any(detail.policy_action == "block" for detail in gate_reason_details):
+        return EnforcementOutcome(
+            decision="enforce_block",
+            reason_codes=_build_enforcement_reason_codes(
+                default_reason_code="gate_failure_blocked_publish",
+                gate_reason_details=gate_reason_details,
+            ),
+            gate_reason_details=gate_reason_details,
+        )
 
-    return EnforcementOutcome(decision="enforce_downgrade", reason_codes=("gate_failure_downgraded_publish",))
+    return EnforcementOutcome(
+        decision="enforce_downgrade",
+        reason_codes=_build_enforcement_reason_codes(
+            default_reason_code="gate_failure_downgraded_publish",
+            gate_reason_details=gate_reason_details,
+        ),
+        gate_reason_details=gate_reason_details,
+    )
+
+
+def _collect_gate_reason_details(
+    *,
+    config: QualityGateRolloutConfig,
+    diagnostics: ShadowGateDiagnostics,
+) -> tuple[GateReasonDetail, ...]:
+    details: list[GateReasonDetail] = []
+
+    for gate in diagnostics.gates:
+        if gate.passed:
+            continue
+        details.append(
+            GateReasonDetail(
+                gate_family="shadow_gate",
+                gate_id=gate.gate_id,
+                policy_action=config.enforcement_action,
+                reason_codes=gate.reason_codes,
+            )
+        )
+
+    if diagnostics.document_aware_report is not None:
+        for gate in diagnostics.document_aware_report.gates:
+            if gate.passed:
+                continue
+            details.append(
+                GateReasonDetail(
+                    gate_family="document_aware_gate",
+                    gate_id=gate.gate_id,
+                    policy_action=_document_aware_policy_action(gate_id=gate.gate_id),
+                    reason_codes=gate.reason_codes,
+                    score=gate.score,
+                    threshold=gate.threshold,
+                    details=gate.details,
+                )
+            )
+
+    return tuple(details)
+
+
+def _document_aware_policy_action(*, gate_id: DocumentAwareGateDimension) -> EnforcementAction:
+    if gate_id == "authority_alignment":
+        return "block"
+    return "downgrade"
+
+
+def _build_enforcement_reason_codes(
+    *,
+    default_reason_code: str,
+    gate_reason_details: tuple[GateReasonDetail, ...],
+) -> tuple[str, ...]:
+    reason_codes: list[str] = [default_reason_code]
+
+    for detail in gate_reason_details:
+        if detail.gate_family != "document_aware_gate":
+            continue
+        policy_reason_code = (
+            f"document_aware_{detail.gate_id}_blocked_publish"
+            if detail.policy_action == "block"
+            else f"document_aware_{detail.gate_id}_downgraded_publish"
+        )
+        if policy_reason_code not in reason_codes:
+            reason_codes.append(policy_reason_code)
+        for reason_code in detail.reason_codes:
+            if reason_code not in reason_codes:
+                reason_codes.append(reason_code)
+
+    return tuple(reason_codes)
 
 
 def build_quality_gate_rollout_metadata(
@@ -584,6 +698,7 @@ def build_quality_gate_rollout_metadata(
         "enforcement_outcome": {
             "decision": enforcement_outcome.decision,
             "reason_codes": list(enforcement_outcome.reason_codes),
+            "gate_reason_details": [detail.to_payload() for detail in enforcement_outcome.gate_reason_details],
         },
     }
 
