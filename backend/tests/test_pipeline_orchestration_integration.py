@@ -16,6 +16,7 @@ from councilsense.app.pipeline_contracts import (
     produce_ingest_payload,
 )
 from councilsense.app.pipeline_retry import (
+    PIPELINE_RETRY_POLICY_VERSION,
     PermanentStageError,
     StageExecutionService,
     StageRetryPolicy,
@@ -144,6 +145,7 @@ def test_orchestration_retry_failure_isolation_and_lifecycle_persistence(connect
             city_id=action.city_id,
             meeting_id=f"meeting-{action.city_id}",
             source_id="source-city-feed",
+            source_type="minutes",
         )
         for action in queue.enqueued_actions
     )
@@ -164,9 +166,10 @@ def test_orchestration_retry_failure_isolation_and_lifecycle_persistence(connect
     assert result_by_city[PILOT_CITY_ID].status == "processed"
     assert result_by_city[PILOT_CITY_ID].attempts == 2
     assert result_by_city[PILOT_CITY_ID].failure_classification is None
+    assert result_by_city[PILOT_CITY_ID].retry_policy_version == PIPELINE_RETRY_POLICY_VERSION
     assert result_by_city["city-second"].status == "failed"
     assert result_by_city["city-second"].attempts == 1
-    assert result_by_city["city-second"].failure_classification == "permanent"
+    assert result_by_city["city-second"].failure_classification == "terminal"
 
     pilot_run = repository.get_run(run_id=run_id_by_city[PILOT_CITY_ID])
     second_run = repository.get_run(run_id=run_id_by_city["city-second"])
@@ -195,5 +198,7 @@ def test_orchestration_retry_failure_isolation_and_lifecycle_persistence(connect
     second_metadata = json.loads(second_outcomes[0].metadata_json or "{}")
     assert pilot_metadata["attempts"] == 2
     assert pilot_metadata["failure_classification"] is None
+    assert pilot_metadata["retry_policy_version"] == PIPELINE_RETRY_POLICY_VERSION
     assert second_metadata["attempts"] == 1
-    assert second_metadata["failure_classification"] == "permanent"
+    assert second_metadata["failure_classification"] == "terminal"
+    assert second_metadata["terminal_reason"] == "non_retryable"

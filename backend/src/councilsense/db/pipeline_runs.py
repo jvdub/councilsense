@@ -356,6 +356,49 @@ class ProcessingRunRepository:
             for row in rows
         )
 
+    def get_stage_outcome(
+        self,
+        *,
+        run_id: str,
+        city_id: str,
+        meeting_id: str,
+        stage_name: str,
+    ) -> StageOutcomeRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                run_id,
+                city_id,
+                meeting_id,
+                stage_name,
+                status,
+                metadata_json,
+                started_at,
+                finished_at
+            FROM processing_stage_outcomes
+            WHERE run_id = ?
+              AND city_id = ?
+              AND meeting_id = ?
+              AND stage_name = ?
+            """,
+            (run_id, city_id, meeting_id, stage_name),
+        ).fetchone()
+        if row is None:
+            return None
+
+        return StageOutcomeRecord(
+            id=str(row[0]),
+            run_id=str(row[1]),
+            city_id=str(row[2]),
+            meeting_id=str(row[3]),
+            stage_name=str(row[4]),
+            status=str(row[5]),
+            metadata_json=str(row[6]) if row[6] is not None else None,
+            started_at=str(row[7]) if row[7] is not None else None,
+            finished_at=str(row[8]) if row[8] is not None else None,
+        )
+
     def list_parser_drift_events(
         self,
         *,

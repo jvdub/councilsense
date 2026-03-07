@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from councilsense.app.pipeline_retry import (
+    PIPELINE_RETRY_POLICY_VERSION,
     PermanentStageError,
     StageExecutionService,
     StageRetryPolicy,
@@ -56,6 +57,7 @@ def test_transient_failure_retries_until_success(connection: sqlite3.Connection)
         city_id=run.city_id,
         meeting_id="meeting-retry-success",
         source_id="source-agenda",
+        source_type="agenda",
     )
 
     state = {"attempts": 0}
@@ -69,6 +71,9 @@ def test_transient_failure_retries_until_success(connection: sqlite3.Connection)
 
     assert result.status == "processed"
     assert result.attempts == 3
+    assert result.max_attempts == 3
+    assert result.final_disposition == "success"
+    assert result.retry_policy_version == PIPELINE_RETRY_POLICY_VERSION
     assert state["attempts"] == 3
     assert repository.get_run(run_id=run.id).status == "processed"
 
@@ -77,6 +82,10 @@ def test_transient_failure_retries_until_success(connection: sqlite3.Connection)
     metadata = json.loads(outcomes[0].metadata_json or "{}")
     assert metadata["attempts"] == 3
     assert metadata["failure_classification"] is None
+    assert metadata["final_disposition"] == "success"
+    assert metadata["retry_policy_version"] == PIPELINE_RETRY_POLICY_VERSION
+    assert metadata["policy_key"] == "ingest:agenda"
+    assert metadata["source_attempts"]["source-agenda"]["attempts"] == 3
 
 
 def test_permanent_failure_skips_retry_and_marks_failed(connection: sqlite3.Connection) -> None:
@@ -101,6 +110,7 @@ def test_permanent_failure_skips_retry_and_marks_failed(connection: sqlite3.Conn
         city_id=run.city_id,
         meeting_id="meeting-permanent-failure",
         source_id="source-minutes",
+        source_type="minutes",
     )
 
     state = {"attempts": 0}
@@ -112,8 +122,10 @@ def test_permanent_failure_skips_retry_and_marks_failed(connection: sqlite3.Conn
     result = execution.execute_one(stage_name="extract", item=item, worker=_worker)
 
     assert result.status == "failed"
-    assert result.failure_classification == "permanent"
+    assert result.failure_classification == "terminal"
     assert result.attempts == 1
+    assert result.max_attempts == 3
+    assert result.final_disposition == "terminal"
     assert state["attempts"] == 1
     assert repository.get_run(run_id=run.id).status == "failed"
 
@@ -121,7 +133,10 @@ def test_permanent_failure_skips_retry_and_marks_failed(connection: sqlite3.Conn
     assert [outcome.status for outcome in outcomes] == ["failed"]
     metadata = json.loads(outcomes[0].metadata_json or "{}")
     assert metadata["attempts"] == 1
-    assert metadata["failure_classification"] == "permanent"
+    assert metadata["failure_classification"] == "terminal"
+    assert metadata["final_disposition"] == "terminal"
+    assert metadata["terminal_reason"] == "non_retryable"
+    assert metadata["policy_key"] == "extract:minutes"
 
 
 def test_city_failure_does_not_block_other_city_runs(connection: sqlite3.Connection) -> None:
@@ -164,6 +179,7 @@ def test_city_failure_does_not_block_other_city_runs(connection: sqlite3.Connect
             city_id=action.city_id,
             meeting_id=f"meeting-{action.city_id}",
             source_id="source-city-feed",
+            source_type="minutes",
         )
         for action in queue.enqueued_actions
     )
@@ -223,6 +239,7 @@ def test_ingest_source_health_transitions_from_failure_to_success(connection: sq
         city_id=run.city_id,
         meeting_id="meeting-health-transition",
         source_id=PILOT_CITY_SOURCE_ID,
+        source_type="minutes",
     )
 
     execution.execute_one(stage_name="ingest", item=item, worker=lambda _: None)
@@ -303,12 +320,14 @@ def test_ingest_single_source_failure_does_not_block_other_source(connection: sq
             city_id=PILOT_CITY_ID,
             meeting_id="meeting-source-failed",
             source_id=PILOT_CITY_SOURCE_ID,
+            source_type="minutes",
         ),
         StageWorkItem(
             run_id=second_run.id,
             city_id=PILOT_CITY_ID,
             meeting_id="meeting-source-success",
             source_id="source-second-minutes",
+            source_type="agenda",
         ),
     )
 
