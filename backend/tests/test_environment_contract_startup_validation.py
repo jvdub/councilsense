@@ -5,6 +5,7 @@ import pytest
 from councilsense.app.main import create_app
 from councilsense.app.notification_delivery_worker import validate_worker_startup_environment
 from councilsense.app.settings import (
+    DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED,
     DEFAULT_SESSION_SECRET,
     MappingSecretSource,
     get_settings,
@@ -21,6 +22,18 @@ def test_local_runtime_uses_safe_defaults_for_api_startup(monkeypatch: pytest.Mo
     assert settings.runtime_env == "local"
     assert settings.secret_source == "env"
     assert settings.auth_session_secret == DEFAULT_SESSION_SECRET
+    assert (
+        settings.meeting_detail_legacy_evidence_references_enabled
+        == DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED
+    )
+
+
+def test_meeting_detail_legacy_evidence_flag_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED", "false")
+
+    settings = get_settings(service_name="api")
+
+    assert settings.meeting_detail_legacy_evidence_references_enabled is False
 
 
 def test_aws_runtime_requires_auth_session_secret_for_api(monkeypatch: pytest.MonkeyPatch) -> None:

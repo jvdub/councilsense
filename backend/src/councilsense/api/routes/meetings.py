@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
+from councilsense.app.settings import Settings
 from councilsense.db import InvalidMeetingListCursorError, MeetingListCursor, MeetingReadRepository
 
 
@@ -48,9 +49,27 @@ class MeetingEvidencePointerResponse(BaseModel):
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_id: str | None = Field(default=None, exclude=True)
+    span_id: str | None = Field(default=None, exclude=True)
     document_kind: str | None = Field(default=None, exclude=True)
     section_path: str | None = Field(default=None, exclude=True)
     precision: str | None = Field(default=None, exclude=True)
+    confidence: str | None = Field(default=None, exclude=True)
+
+
+class MeetingEvidenceReferenceV2Response(BaseModel):
+    evidence_id: str
+    document_id: str | None
+    artifact_id: str
+    document_kind: str
+    section_path: str
+    page_start: int | None = None
+    page_end: int | None = None
+    char_start: int | None
+    char_end: int | None
+    precision: str
+    confidence: str | None
+    excerpt: str
 
 
 class MeetingClaimResponse(BaseModel):
@@ -76,6 +95,7 @@ class MeetingDetailResponse(BaseModel):
     key_decisions: list[str]
     key_actions: list[str]
     notable_topics: list[str]
+    evidence_references_v2: list[MeetingEvidenceReferenceV2Response]
     evidence_references: list[str]
     claims: list[MeetingClaimResponse]
 
@@ -124,12 +144,46 @@ def _equivalence_key(evidence: MeetingEvidencePointerResponse) -> tuple[str, str
     return (evidence.artifact_id, _normalize_reference_text(evidence.excerpt))
 
 
+def _supports_v2_projection(evidence: MeetingEvidencePointerResponse) -> bool:
+    return all(
+        value is not None and value.strip()
+        for value in (evidence.document_kind, evidence.section_path, evidence.precision)
+    )
+
+
+def _metadata_completeness_score(evidence: MeetingEvidencePointerResponse) -> int:
+    score = 0
+    for value in (
+        evidence.document_id,
+        evidence.span_id,
+        evidence.document_kind,
+        evidence.section_path,
+        evidence.precision,
+        evidence.confidence,
+    ):
+        if value is not None and value.strip():
+            score += 1
+    return score
+
+
+def _evidence_preference_key(evidence: MeetingEvidencePointerResponse) -> tuple[int, int, int, str, int, int, str]:
+    return (
+        _precision_rank(evidence),
+        0 if _supports_v2_projection(evidence) else 1,
+        -_metadata_completeness_score(evidence),
+        _stable_section_locator(evidence),
+        evidence.char_start if evidence.char_start is not None else 10**9,
+        evidence.char_end if evidence.char_end is not None else 10**9,
+        evidence.id,
+    )
+
+
 def _prefer_evidence_pointer(
     *,
     current: MeetingEvidencePointerResponse,
     challenger: MeetingEvidencePointerResponse,
 ) -> MeetingEvidencePointerResponse:
-    if _evidence_order_key(challenger) < _evidence_order_key(current):
+    if _evidence_preference_key(challenger) < _evidence_preference_key(current):
         return challenger
     return current
 
@@ -162,12 +216,49 @@ def _build_evidence_references(claims: list[MeetingClaimResponse]) -> list[str]:
     return [_serialize_evidence_reference(evidence) for evidence in ordered]
 
 
+def _build_evidence_references_v2(claims: list[MeetingClaimResponse]) -> list[MeetingEvidenceReferenceV2Response]:
+    deduped_references: dict[tuple[str, str], MeetingEvidencePointerResponse] = {}
+    for claim in claims:
+        for evidence in claim.evidence:
+            key = _equivalence_key(evidence)
+            seen = deduped_references.get(key)
+            if seen is None:
+                deduped_references[key] = evidence
+                continue
+
+            deduped_references[key] = _prefer_evidence_pointer(current=seen, challenger=evidence)
+
+    ordered = sorted(
+        (evidence for evidence in deduped_references.values() if _supports_v2_projection(evidence)),
+        key=_evidence_order_key,
+    )
+    return [
+        MeetingEvidenceReferenceV2Response(
+            evidence_id=evidence.id,
+            document_id=evidence.document_id,
+            artifact_id=evidence.artifact_id,
+            document_kind=evidence.document_kind or "",
+            section_path=evidence.section_path or "",
+            char_start=evidence.char_start,
+            char_end=evidence.char_end,
+            precision=evidence.precision or "",
+            confidence=evidence.confidence,
+            excerpt=evidence.excerpt,
+        )
+        for evidence in ordered
+    ]
+
+
 def get_profile_service(request: Request) -> UserProfileService:
     return request.app.state.profile_service
 
 
 def get_meeting_read_repository(request: Request) -> MeetingReadRepository:
     return request.app.state.meeting_read_repository
+
+
+def get_app_settings(request: Request) -> Settings:
+    return request.app.state.settings
 
 
 def _city_access_denied_response() -> JSONResponse:
@@ -249,6 +340,7 @@ def get_meeting_detail(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     profile_service: Annotated[UserProfileService, Depends(get_profile_service)],
     repository: Annotated[MeetingReadRepository, Depends(get_meeting_read_repository)],
+    settings: Annotated[Settings, Depends(get_app_settings)],
 ) -> MeetingDetailResponse:
     profile = profile_service.get_profile(user.user_id)
     if profile.home_city_id is None:
@@ -275,9 +367,12 @@ def get_meeting_detail(
                     char_start=evidence.char_start,
                     char_end=evidence.char_end,
                     excerpt=evidence.excerpt,
+                    document_id=evidence.document_id,
+                    span_id=evidence.span_id,
                     document_kind=evidence.document_kind,
                     section_path=evidence.section_path,
                     precision=evidence.precision,
+                    confidence=evidence.confidence,
                 )
                 for evidence in claim.evidence
             ],
@@ -301,6 +396,11 @@ def get_meeting_detail(
         key_decisions=list(detail.key_decisions),
         key_actions=list(detail.key_actions),
         notable_topics=list(detail.notable_topics),
-        evidence_references=_build_evidence_references(claims),
+        evidence_references_v2=_build_evidence_references_v2(claims),
+        evidence_references=(
+            _build_evidence_references(claims)
+            if settings.meeting_detail_legacy_evidence_references_enabled
+            else []
+        ),
         claims=claims,
     )

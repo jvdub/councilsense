@@ -46,6 +46,7 @@ class Settings:
     local_dev_auth_user_id: str
     notification_replay_operator_user_ids: tuple[str, ...]
     notification_replay_allow_permanent_invalid_override: bool
+    meeting_detail_legacy_evidence_references_enabled: bool
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -59,6 +60,7 @@ DEFAULT_WARN_CONFIDENCE_THRESHOLD = 0.8
 DEFAULT_NOTIFICATION_DELIVERY_MAX_ATTEMPTS = 5
 DEFAULT_NOTIFICATION_RETRY_BACKOFF_SECONDS = (15, 60, 300, 900, 3600)
 DEFAULT_NOTIFICATION_RETRY_JITTER_FACTOR = 0.0
+DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED = True
 
 
 def _parse_supported_city_ids(raw: str | None) -> tuple[str, ...]:
@@ -274,6 +276,11 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
             raw=os.getenv("NOTIFICATION_REPLAY_ALLOW_PERMANENT_INVALID_OVERRIDE"),
             default=False,
             env_name="NOTIFICATION_REPLAY_ALLOW_PERMANENT_INVALID_OVERRIDE",
+        ),
+        meeting_detail_legacy_evidence_references_enabled=_parse_bool(
+            raw=os.getenv("MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED"),
+            default=DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED,
+            env_name="MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED",
         ),
         disable_auth_guard=_parse_bool(
             raw=os.getenv("COUNCILSENSE_DISABLE_AUTH_GUARD"),

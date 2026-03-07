@@ -141,11 +141,111 @@ def _insert_evidence_pointer(
     char_start: int | None,
     char_end: int | None,
     excerpt: str,
+    document_id: str | None = None,
+    span_id: str | None = None,
     document_kind: str | None = None,
     section_path: str | None = None,
     precision: str | None = None,
+    confidence: str | None = None,
 ) -> None:
     app = cast(Any, client.app)
+    if document_id is not None:
+        resolved_document_kind = document_kind or "minutes"
+        authority_level = "authoritative" if resolved_document_kind == "minutes" else "supplemental"
+        meeting_id = cast(
+            str,
+            app.state.db_connection.execute(
+                """
+                SELECT sp.meeting_id
+                FROM publication_claims pc
+                INNER JOIN summary_publications sp ON sp.id = pc.publication_id
+                WHERE pc.id = ?
+                """,
+                (claim_id,),
+            ).fetchone()[0],
+        )
+        current_revision = cast(
+            int,
+            app.state.db_connection.execute(
+                """
+                SELECT COALESCE(MAX(revision_number), 0)
+                FROM canonical_documents
+                WHERE meeting_id = ? AND document_kind = ?
+                """,
+                (meeting_id, resolved_document_kind),
+            ).fetchone()[0],
+        )
+        revision_number = current_revision + 1
+        is_active_revision = 1 if current_revision == 0 else 0
+        app.state.db_connection.execute(
+            """
+            INSERT OR IGNORE INTO canonical_documents (
+                id,
+                meeting_id,
+                document_kind,
+                revision_id,
+                revision_number,
+                is_active_revision,
+                authority_level,
+                authority_source,
+                parser_name,
+                parser_version,
+                extraction_status,
+                extraction_confidence,
+                extracted_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                document_id,
+                meeting_id,
+                resolved_document_kind,
+                f"revision-{document_id}",
+                revision_number,
+                is_active_revision,
+                authority_level,
+                "test-fixture",
+                "test-parser",
+                "v1",
+                "processed",
+                0.95,
+                "2026-03-01T00:00:00Z",
+            ),
+        )
+
+    if span_id is not None and document_id is not None:
+        app.state.db_connection.execute(
+            """
+            INSERT OR IGNORE INTO canonical_document_spans (
+                id,
+                canonical_document_id,
+                artifact_id,
+                artifact_scope,
+                stable_section_path,
+                start_char_offset,
+                end_char_offset,
+                locator_fingerprint,
+                parser_name,
+                parser_version,
+                span_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                span_id,
+                document_id,
+                artifact_id,
+                "body",
+                section_path or section_ref or "artifact",
+                char_start,
+                char_end,
+                f"fingerprint-{span_id}",
+                "test-parser",
+                "v1",
+                excerpt,
+            ),
+        )
+
     app.state.db_connection.execute(
         """
         INSERT INTO claim_evidence_pointers (
@@ -156,11 +256,14 @@ def _insert_evidence_pointer(
             char_start,
             char_end,
             excerpt,
+            document_id,
+            span_id,
             document_kind,
             section_path,
-            precision
+            precision,
+            confidence
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             pointer_id,
@@ -170,9 +273,12 @@ def _insert_evidence_pointer(
             char_start,
             char_end,
             excerpt,
+            document_id,
+            span_id,
             document_kind,
             section_path,
             precision,
+            confidence,
         ),
     )
 
@@ -277,6 +383,12 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         char_start=100,
         char_end=170,
         excerpt="Council voted 6-1 to approve the annual safety plan.",
+        document_id="canon-minutes-1",
+        span_id="span-minutes-1",
+        document_kind="minutes",
+        section_path="minutes/section/3",
+        precision="offset",
+        confidence="high",
     )
     _insert_evidence_pointer(
         client,
@@ -287,6 +399,12 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         char_start=100,
         char_end=170,
         excerpt="Council voted 6-1 to approve the annual safety plan.",
+        document_id="canon-minutes-1",
+        span_id="span-minutes-1-dup",
+        document_kind="minutes",
+        section_path="minutes/section/3",
+        precision="offset",
+        confidence="high",
     )
     _insert_evidence_pointer(
         client,
@@ -297,6 +415,12 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         char_start=300,
         char_end=360,
         excerpt="Staff will publish the implementation memo by Friday.",
+        document_id="canon-minutes-2",
+        span_id="span-minutes-2",
+        document_kind="minutes",
+        section_path="minutes/section/4",
+        precision="offset",
+        confidence="medium",
     )
     _insert_ingest_stage_outcome(
         client,
@@ -327,6 +451,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         "key_decisions",
         "key_actions",
         "notable_topics",
+        "evidence_references_v2",
         "evidence_references",
         "claims",
     }
@@ -338,6 +463,36 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert payload["key_decisions"] == ["Approved annual safety plan"]
     assert payload["key_actions"] == ["Staff to publish implementation memo"]
     assert payload["notable_topics"] == ["Public safety", "Budget"]
+    assert payload["evidence_references_v2"] == [
+        {
+            "evidence_id": "ptr-detail-1",
+            "document_id": "canon-minutes-1",
+            "artifact_id": "artifact-minutes-1",
+            "document_kind": "minutes",
+            "section_path": "minutes/section/3",
+            "page_start": None,
+            "page_end": None,
+            "char_start": 100,
+            "char_end": 170,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Council voted 6-1 to approve the annual safety plan.",
+        },
+        {
+            "evidence_id": "ptr-detail-3",
+            "document_id": "canon-minutes-2",
+            "artifact_id": "artifact-minutes-2",
+            "document_kind": "minutes",
+            "section_path": "minutes/section/4",
+            "page_start": None,
+            "page_end": None,
+            "char_start": 300,
+            "char_end": 360,
+            "precision": "offset",
+            "confidence": "medium",
+            "excerpt": "Staff will publish the implementation memo by Friday.",
+        },
+    ]
     assert payload["evidence_references"] == [
         "Council voted 6-1 to approve the annual safety plan. | artifact-minutes-1#minutes.section.3:100-170",
         "Staff will publish the implementation memo by Friday. | artifact-minutes-2#minutes.section.4:300-360",
@@ -431,9 +586,11 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         char_start=None,
         char_end=None,
         excerpt="File-level appendix note.",
+        document_id="canon-packet-zeta",
         document_kind="packet",
         section_path="packet",
         precision="file",
+        confidence="low",
     )
     _insert_evidence_pointer(
         client,
@@ -444,9 +601,11 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         char_start=None,
         char_end=None,
         excerpt="Agenda section note.",
+        document_id="canon-agenda-beta",
         document_kind="agenda",
         section_path="agenda/section/8",
         precision="section",
+        confidence="medium",
     )
     _insert_evidence_pointer(
         client,
@@ -457,9 +616,11 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         char_start=None,
         char_end=None,
         excerpt="Later page reference.",
+        document_id="canon-minutes-gamma",
         document_kind="minutes",
         section_path="minutes/page/7",
         precision="span",
+        confidence="medium",
     )
     _insert_evidence_pointer(
         client,
@@ -470,9 +631,12 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         char_start=10,
         char_end=42,
         excerpt="Precise minutes excerpt.",
+        document_id="canon-minutes-alpha",
+        span_id="span-minutes-alpha",
         document_kind="minutes",
         section_path="minutes/section/2",
         precision="offset",
+        confidence="high",
     )
     _insert_evidence_pointer(
         client,
@@ -483,9 +647,11 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         char_start=None,
         char_end=None,
         excerpt="Earlier page reference.",
+        document_id="canon-minutes-delta",
         document_kind="minutes",
         section_path="minutes/page/3",
         precision="span",
+        confidence="medium",
     )
     _insert_ingest_stage_outcome(
         client,
@@ -502,12 +668,20 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
     assert first_response.status_code == 200
     assert second_response.status_code == 200
     assert first_response.json()["evidence_references"] == second_response.json()["evidence_references"]
+    assert first_response.json()["evidence_references_v2"] == second_response.json()["evidence_references_v2"]
     assert first_response.json()["evidence_references"] == [
         "Precise minutes excerpt. | artifact-alpha#minutes.section.2:10-42",
         "Earlier page reference. | artifact-delta#minutes.section.3:?-?",
         "Later page reference. | artifact-gamma#minutes.section.7:?-?",
         "Agenda section note. | artifact-beta#agenda.section.8:?-?",
         "File-level appendix note. | artifact-zeta#artifact.html:?-?",
+    ]
+    assert [item["evidence_id"] for item in first_response.json()["evidence_references_v2"]] == [
+        "ptr-detail-offset",
+        "ptr-detail-span-a",
+        "ptr-detail-span-b",
+        "ptr-detail-section",
+        "ptr-detail-file",
     ]
     first_evidence = first_response.json()["claims"][0]["evidence"][0]
     assert set(first_evidence.keys()) == {
@@ -519,6 +693,204 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
         "char_end",
         "excerpt",
     }
+
+
+def test_meeting_detail_evidence_references_v2_supports_partial_metadata(monkeypatch) -> None:
+    client = _client_with_configured_cities(monkeypatch, secret="partial-v2-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-detail-partial-v2", secret="partial-v2-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-partial-v2",
+        meeting_uid="uid-detail-partial-v2",
+        title="Partial V2 Meeting",
+        created_at="2026-03-06 09:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-partial-v2",
+        meeting_id="meeting-detail-partial-v2",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Summary",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-06 10:00:00",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-detail-partial-v2",
+        publication_id="pub-detail-partial-v2",
+        claim_order=1,
+        claim_text="Claim",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-partial-v2",
+        claim_id="claim-detail-partial-v2",
+        artifact_id="artifact-partial",
+        section_ref="agenda.section.5",
+        char_start=None,
+        char_end=None,
+        excerpt="Agenda preview supports the topic.",
+        document_kind="agenda",
+        section_path="agenda/section/5",
+        precision="section",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-partial-v2", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["evidence_references_v2"] == [
+        {
+            "evidence_id": "ptr-detail-partial-v2",
+            "document_id": None,
+            "artifact_id": "artifact-partial",
+            "document_kind": "agenda",
+            "section_path": "agenda/section/5",
+            "page_start": None,
+            "page_end": None,
+            "char_start": None,
+            "char_end": None,
+            "precision": "section",
+            "confidence": None,
+            "excerpt": "Agenda preview supports the topic.",
+        }
+    ]
+    assert payload["evidence_references"] == [
+        "Agenda preview supports the topic. | artifact-partial#agenda.section.5:?-?"
+    ]
+
+
+def test_meeting_detail_evidence_references_v2_is_empty_for_legacy_only_pointers(monkeypatch) -> None:
+    client = _client_with_configured_cities(monkeypatch, secret="legacy-v2-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-detail-legacy-v2", secret="legacy-v2-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-legacy-v2",
+        meeting_uid="uid-detail-legacy-v2",
+        title="Legacy Evidence Meeting",
+        created_at="2026-03-06 11:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-legacy-v2",
+        meeting_id="meeting-detail-legacy-v2",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Summary",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-06 12:00:00",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-detail-legacy-v2",
+        publication_id="pub-detail-legacy-v2",
+        claim_order=1,
+        claim_text="Claim",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-legacy-v2",
+        claim_id="claim-detail-legacy-v2",
+        artifact_id="artifact-legacy",
+        section_ref="minutes.section.9",
+        char_start=20,
+        char_end=60,
+        excerpt="Legacy pointer without v2 metadata.",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-legacy-v2", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["evidence_references_v2"] == []
+    assert payload["evidence_references"] == [
+        "Legacy pointer without v2 metadata. | artifact-legacy#minutes.section.9:20-60"
+    ]
+
+
+def test_meeting_detail_legacy_evidence_compatibility_mapping_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED", "false")
+    client = _client_with_configured_cities(monkeypatch, secret="compat-off-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-detail-compat-off", secret="compat-off-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-compat-off",
+        meeting_uid="uid-detail-compat-off",
+        title="Compatibility Off Meeting",
+        created_at="2026-03-06 13:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-compat-off",
+        meeting_id="meeting-detail-compat-off",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Summary",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-06 14:00:00",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-detail-compat-off",
+        publication_id="pub-detail-compat-off",
+        claim_order=1,
+        claim_text="Claim",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-compat-off",
+        claim_id="claim-detail-compat-off",
+        artifact_id="artifact-compat-off",
+        section_ref="minutes.section.1",
+        char_start=1,
+        char_end=20,
+        excerpt="Canonical v2 evidence remains available.",
+        document_id="canon-minutes-compat-off",
+        span_id="span-minutes-compat-off",
+        document_kind="minutes",
+        section_path="minutes/section/1",
+        precision="offset",
+        confidence="high",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-compat-off", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processed"
+    assert payload["evidence_references_v2"] == [
+        {
+            "evidence_id": "ptr-detail-compat-off",
+            "document_id": "canon-minutes-compat-off",
+            "artifact_id": "artifact-compat-off",
+            "document_kind": "minutes",
+            "section_path": "minutes/section/1",
+            "page_start": None,
+            "page_end": None,
+            "char_start": 1,
+            "char_end": 20,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Canonical v2 evidence remains available.",
+        }
+    ]
+    assert payload["evidence_references"] == []
 
 
 def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) -> None:

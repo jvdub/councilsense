@@ -33,7 +33,7 @@ LEGACY_MEETING_DETAIL_FIELDS = {
     "notable_topics",
     "claims",
 }
-ALLOWED_ADDITIVE_FIELDS = {"evidence_references"}
+ALLOWED_ADDITIVE_FIELDS = {"evidence_references", "evidence_references_v2"}
 
 
 def _repo_root() -> Path:
@@ -197,10 +197,14 @@ def test_st018_fixture_contract_for_evidence_present_and_sparse_behaviors() -> N
             payload = response.json()
             expected_references = fixture["expected_evidence_references"]
 
-            assert payload["evidence_references"] == expected_references, (
+            assert sorted(payload["evidence_references"]) == sorted(expected_references), (
                 "fixture="
                 f"{fixture['fixture_id']} field_path=$.evidence_references "
                 f"expected={expected_references} actual={payload['evidence_references']}"
+            )
+            assert payload["evidence_references_v2"] == [], (
+                f"fixture={fixture['fixture_id']} field_path=$.evidence_references_v2 "
+                "expected explicit empty list when v2 metadata is unavailable"
             )
 
             second_response = client.get(f"/v1/meetings/{meeting_id}", headers=headers)
@@ -208,6 +212,10 @@ def test_st018_fixture_contract_for_evidence_present_and_sparse_behaviors() -> N
             second_payload = second_response.json()
             assert second_payload["evidence_references"] == payload["evidence_references"], (
                 f"fixture={fixture['fixture_id']} field_path=$.evidence_references "
+                "expected deterministic serialization across reruns"
+            )
+            assert second_payload["evidence_references_v2"] == payload["evidence_references_v2"], (
+                f"fixture={fixture['fixture_id']} field_path=$.evidence_references_v2 "
                 "expected deterministic serialization across reruns"
             )
 

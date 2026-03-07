@@ -14,9 +14,12 @@ class MeetingDetailEvidencePointer:
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_id: str | None = None
+    span_id: str | None = None
     document_kind: str | None = None
     section_path: str | None = None
     precision: str | None = None
+    confidence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -376,9 +379,12 @@ class MeetingReadRepository:
                         char_start,
                         char_end,
                         excerpt,
+                        document_id,
+                        span_id,
                         document_kind,
                         section_path,
-                        precision
+                        precision,
+                        confidence
                     FROM claim_evidence_pointers
                     WHERE claim_id = ?
                     ORDER BY id ASC
@@ -394,9 +400,12 @@ class MeetingReadRepository:
                         char_start=int(evidence_row[3]) if evidence_row[3] is not None else None,
                         char_end=int(evidence_row[4]) if evidence_row[4] is not None else None,
                         excerpt=str(evidence_row[5]),
-                        document_kind=str(evidence_row[6]) if evidence_row[6] is not None else None,
-                        section_path=str(evidence_row[7]) if evidence_row[7] is not None else None,
-                        precision=str(evidence_row[8]) if evidence_row[8] is not None else None,
+                        document_id=str(evidence_row[6]) if evidence_row[6] is not None else None,
+                        span_id=str(evidence_row[7]) if evidence_row[7] is not None else None,
+                        document_kind=str(evidence_row[8]) if evidence_row[8] is not None else None,
+                        section_path=str(evidence_row[9]) if evidence_row[9] is not None else None,
+                        precision=str(evidence_row[10]) if evidence_row[10] is not None else None,
+                        confidence=str(evidence_row[11]) if evidence_row[11] is not None else None,
                     )
                     for evidence_row in evidence_rows
                 )
