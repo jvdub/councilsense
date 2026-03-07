@@ -14,6 +14,7 @@ from typing import Callable
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
+from councilsense.app.multi_document_observability import derive_artifact_id, emit_multi_document_stage_event
 from councilsense.db import CityRegistryRepository, MeetingWriteRepository, PILOT_CITY_ID
 
 
@@ -189,6 +190,23 @@ def fetch_latest_meeting(
             "fingerprint": fingerprint,
         },
     }
+    emit_multi_document_stage_event(
+        event_name="pipeline_stage_finished",
+        stage="ingest",
+        outcome="success",
+        status="processed",
+        city_id=city_id,
+        meeting_id=meeting.id,
+        run_id=fingerprint,
+        source_id=selected_source_id,
+        source_type=source_type,
+        artifact_id=derive_artifact_id(artifact_path=artifact_path, meeting_id=meeting.id),
+        extra_fields={
+            "candidate_document_kind": candidate.document_kind or "unknown",
+            "meeting_temporal_status": _classify_meeting_temporal_status(candidate.meeting_date_iso) or "unknown",
+            "source_url": source_url,
+        },
+    )
 
     warnings: tuple[str, ...] = ()
     warning_items: list[str] = []

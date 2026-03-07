@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -33,6 +34,12 @@ from councilsense.app.multi_document_compose import (
     SourceCoverageStatus,
     SummarizeComposeInput,
     assemble_summarize_compose_input,
+)
+from councilsense.app.multi_document_observability import (
+    MultiDocumentLogContractError,
+    derive_artifact_id,
+    emit_multi_document_stage_event,
+    resolve_stage_source_type,
 )
 from councilsense.app.st030_document_aware_gates import DocumentAwareGateInput
 from councilsense.app.summarization import (
@@ -149,6 +156,9 @@ _MEETING_OPERATIONS_MARKERS: tuple[str, ...] = (
     "city recorder",
     "attendance",
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _load_topic_token_config(*, env_key: str, defaults: frozenset[str]) -> frozenset[str]:
@@ -373,6 +383,7 @@ class LocalPipelineOrchestrator:
         stage_outcomes: list[dict[str, object]] = []
         warnings: list[str] = []
         resolved_meeting_id: str | None = None
+        extracted_artifact_id: str | None = None
         source_id, source_type, source_url = self._resolve_source(city_id=city_id)
         cycle_id = _now_iso_utc()
         self._run_repository.create_pending_run(run_id=run_id, city_id=city_id, cycle_id=cycle_id)
@@ -415,6 +426,7 @@ class LocalPipelineOrchestrator:
                 source_type=source_type,
                 source_url=source_url,
             )
+            extracted_artifact_id = extract_payload.artifact_id
             stage_outcomes.append(
                 {
                     "stage": "extract",
@@ -478,6 +490,7 @@ class LocalPipelineOrchestrator:
                 city_id=city_id,
                 source_id=source_id,
                 source_type=source_type,
+                artifact_id=extract_payload.artifact_id,
                 meeting_id=meeting.meeting_id,
                 output=summarize_payload.output,
                 source_text=extract_payload.text,
@@ -506,6 +519,36 @@ class LocalPipelineOrchestrator:
                 error_summary=None,
             )
         except LocalPipelineError as exc:
+            failure_meeting_id = resolved_meeting_id or "meeting-unknown"
+            failure_artifact_id = extracted_artifact_id or derive_artifact_id(
+                artifact_path=(
+                    str(ingest_stage_metadata.get("artifact_path"))
+                    if isinstance(ingest_stage_metadata, dict) and isinstance(ingest_stage_metadata.get("artifact_path"), str)
+                    else None
+                ),
+                meeting_id=failure_meeting_id,
+            )
+            failure_source_id = source_id or "source-unknown"
+            if exc.stage != "publish":
+                try:
+                    emit_multi_document_stage_event(
+                        event_name="pipeline_stage_error",
+                        stage=exc.stage,
+                        outcome="failure",
+                        status="failed",
+                        city_id=city_id,
+                        meeting_id=failure_meeting_id,
+                        run_id=run_id,
+                        source_id=failure_source_id,
+                        source_type=resolve_stage_source_type(stage=exc.stage, source_type=source_type),
+                        artifact_id=failure_artifact_id,
+                        extra_fields={
+                            "error_code": exc.__class__.__name__,
+                            "error_message": str(exc),
+                        },
+                    )
+                except MultiDocumentLogContractError:
+                    logger.exception("pipeline_multi_document_failure_log_contract_error")
             self._lifecycle_service.mark_failed(run_id=run_id)
             return ProcessLatestResult(
                 run_id=run_id,
@@ -715,6 +758,21 @@ class LocalPipelineOrchestrator:
             started_at=started_at,
             finished_at=finished_at,
         )
+        emit_multi_document_stage_event(
+            event_name="pipeline_stage_finished",
+            stage="extract",
+            outcome="success",
+            status=status,
+            city_id=city_id,
+            meeting_id=meeting.meeting_id,
+            run_id=run_id,
+            source_id=source_id or "source-unknown",
+            source_type=source_type,
+            artifact_id=payload.artifact_id,
+            extra_fields={
+                "extract_mode": str(payload.metadata.get("extract_mode") or "unknown"),
+            },
+        )
         return payload, status
 
     def _summarize_stage(
@@ -741,6 +799,23 @@ class LocalPipelineOrchestrator:
             meeting_id=meeting_id,
             fallback_source_type=source_type,
             fallback_text=extracted.text,
+        )
+        emit_multi_document_stage_event(
+            event_name="pipeline_stage_finished",
+            stage="compose",
+            outcome="success",
+            status="processed",
+            city_id=city_id,
+            meeting_id=meeting_id,
+            run_id=run_id,
+            source_id=source_id or "source-unknown",
+            source_type=source_type,
+            artifact_id=extracted.artifact_id,
+            extra_fields={
+                "coverage_ratio": compose_input.source_coverage.coverage_ratio,
+                "available_source_types": list(compose_input.source_coverage.available_source_types),
+                "missing_source_types": list(compose_input.source_coverage.missing_source_types),
+            },
         )
         authority_policy = _evaluate_authority_policy(compose_input=compose_input)
         summarize_text = authority_policy.summarize_text
@@ -821,6 +896,22 @@ class LocalPipelineOrchestrator:
             started_at=started_at,
             finished_at=finished_at,
         )
+        emit_multi_document_stage_event(
+            event_name="pipeline_stage_finished",
+            stage="summarize",
+            outcome="success",
+            status=status,
+            city_id=city_id,
+            meeting_id=meeting_id,
+            run_id=run_id,
+            source_id=source_id or "source-unknown",
+            source_type=source_type,
+            artifact_id=extracted.artifact_id,
+            extra_fields={
+                "provider_used": provider_used,
+                "claim_count": len(output.claims),
+            },
+        )
         return _SummarizePayload(
             output=output,
             provider_used=provider_used,
@@ -835,6 +926,7 @@ class LocalPipelineOrchestrator:
         city_id: str,
         source_id: str | None,
         source_type: str | None,
+        artifact_id: str,
         meeting_id: str,
         output: SummarizationOutput,
         source_text: str,
@@ -989,6 +1081,22 @@ class LocalPipelineOrchestrator:
                 started_at=started_at,
                 finished_at=finished_at,
             )
+            emit_multi_document_stage_event(
+                event_name="pipeline_stage_error",
+                stage="publish",
+                outcome="failure",
+                status="failed",
+                city_id=city_id,
+                meeting_id=meeting_id,
+                run_id=run_id,
+                source_id=source_id or "source-unknown",
+                source_type=source_type,
+                artifact_id=artifact_id,
+                extra_fields={
+                    "error_code": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+            )
             raise LocalPipelineError(
                 stage="publish",
                 message=f"Failed to publish summarization output: {exc}",
@@ -1011,6 +1119,22 @@ class LocalPipelineOrchestrator:
             },
             started_at=started_at,
             finished_at=finished_at,
+        )
+        emit_multi_document_stage_event(
+            event_name="pipeline_stage_finished",
+            stage="publish",
+            outcome="success",
+            status=publication_result.publication.publication_status,
+            city_id=city_id,
+            meeting_id=meeting_id,
+            run_id=run_id,
+            source_id=source_id or "source-unknown",
+            source_type=source_type,
+            artifact_id=artifact_id,
+            extra_fields={
+                "publication_id": publication_result.publication.id,
+                "quality_gate_reason_codes": list(publication_result.quality_gate.reason_codes),
+            },
         )
         return {
             "stage": "publish",
