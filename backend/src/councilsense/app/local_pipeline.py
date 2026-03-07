@@ -25,7 +25,12 @@ from councilsense.app.quality_gate_rollout import (
     resolve_rollout_config,
 )
 from councilsense.app.canonical_persistence import EvidenceSpanInput, persist_pipeline_canonical_records
-from councilsense.app.multi_document_compose import ComposedSourceDocument, SummarizeComposeInput, assemble_summarize_compose_input
+from councilsense.app.multi_document_compose import (
+    ComposedSourceDocument,
+    ComposedSourceSpan,
+    SummarizeComposeInput,
+    assemble_summarize_compose_input,
+)
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
     QualityGateEnforcementOverride,
@@ -734,6 +739,7 @@ class LocalPipelineOrchestrator:
                     text=summarize_text,
                     artifact_id=extracted.artifact_id,
                     section_ref=compose_section_ref,
+                    compose_input=compose_input,
                     material_context=material_context,
                     authority_policy=authority_policy,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
@@ -750,6 +756,7 @@ class LocalPipelineOrchestrator:
                     text=summarize_text,
                     artifact_id=extracted.artifact_id,
                     section_ref=compose_section_ref,
+                    compose_input=compose_input,
                     material_context=material_context,
                     authority_policy=authority_policy,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
@@ -764,6 +771,7 @@ class LocalPipelineOrchestrator:
                 text=summarize_text,
                 artifact_id=extracted.artifact_id,
                 section_ref=compose_section_ref,
+                compose_input=compose_input,
                 material_context=material_context,
                 authority_policy=authority_policy,
                 topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
@@ -1125,6 +1133,7 @@ def _deterministic_summarize(
     text: str,
     artifact_id: str,
     section_ref: str,
+    compose_input: SummarizeComposeInput | None,
     material_context: _MeetingMaterialContext,
     authority_policy: _AuthorityPolicyResult,
     topic_hardening_enabled: bool,
@@ -1162,6 +1171,7 @@ def _deterministic_summarize(
         source_text=excerpt_source,
         artifact_id=artifact_id,
         section_ref=section_ref,
+        compose_input=compose_input,
         fallback_claim=claim_text,
         evidence_projection_enabled=evidence_projection_enabled,
     )
@@ -1180,6 +1190,7 @@ def _summarize_with_ollama(
     text: str,
     artifact_id: str,
     section_ref: str,
+    compose_input: SummarizeComposeInput | None,
     material_context: _MeetingMaterialContext,
     authority_policy: _AuthorityPolicyResult,
     topic_hardening_enabled: bool,
@@ -1281,6 +1292,7 @@ def _summarize_with_ollama(
         source_text=excerpt_source,
         artifact_id=artifact_id,
         section_ref=section_ref,
+        compose_input=compose_input,
         fallback_claim=claim_text,
         evidence_projection_enabled=evidence_projection_enabled,
     )
@@ -2103,6 +2115,7 @@ def _build_claims_from_findings(
     source_text: str,
     artifact_id: str,
     section_ref: str,
+    compose_input: SummarizeComposeInput | None,
     fallback_claim: str,
     evidence_projection_enabled: bool = True,
 ) -> tuple[SummaryClaim, ...]:
@@ -2117,29 +2130,30 @@ def _build_claims_from_findings(
 
     claims: list[SummaryClaim] = []
     for finding in findings[:4]:
-        if evidence_projection_enabled:
-            evidence_match = _best_evidence_match_for_finding(
-                source_text=source_text,
-                finding=finding,
-                default_section_ref=section_ref,
-            )
-        else:
-            evidence_match = _EvidenceMatch(
-                excerpt=_normalize_generated_text(finding)[:280],
-                section_ref=section_ref,
-                char_start=None,
-                char_end=None,
-            )
+        evidence_match = _build_evidence_match_for_finding(
+            source_text=source_text,
+            finding=finding,
+            artifact_id=artifact_id,
+            default_section_ref=section_ref,
+            compose_input=compose_input,
+            evidence_projection_enabled=evidence_projection_enabled,
+        )
         claims.append(
             SummaryClaim(
                 claim_text=finding,
                 evidence=(
                     ClaimEvidencePointer(
-                        artifact_id=artifact_id,
+                        artifact_id=evidence_match.artifact_id,
                         section_ref=evidence_match.section_ref,
                         char_start=evidence_match.char_start,
                         char_end=evidence_match.char_end,
                         excerpt=evidence_match.excerpt,
+                        document_id=evidence_match.document_id,
+                        span_id=evidence_match.span_id,
+                        document_kind=evidence_match.document_kind,
+                        section_path=evidence_match.section_path,
+                        precision=evidence_match.precision,
+                        confidence=evidence_match.confidence,
                     ),
                 ),
                 evidence_gap=False,
@@ -2150,17 +2164,253 @@ def _build_claims_from_findings(
 
 @dataclass(frozen=True)
 class _EvidenceMatch:
+    artifact_id: str
     excerpt: str
     section_ref: str
     char_start: int | None
     char_end: int | None
+    document_id: str | None = None
+    span_id: str | None = None
+    document_kind: str | None = None
+    section_path: str | None = None
+    precision: str | None = None
+    confidence: str | None = None
 
 
-def _best_evidence_match_for_finding(*, source_text: str, finding: str, default_section_ref: str) -> _EvidenceMatch:
+def _build_evidence_match_for_finding(
+    *,
+    source_text: str,
+    finding: str,
+    artifact_id: str,
+    default_section_ref: str,
+    compose_input: SummarizeComposeInput | None,
+    evidence_projection_enabled: bool,
+) -> _EvidenceMatch:
+    if compose_input is not None:
+        composed_match = _best_composed_evidence_match_for_finding(
+            finding=finding,
+            fallback_artifact_id=artifact_id,
+            fallback_section_ref=default_section_ref,
+            compose_input=compose_input,
+            include_offsets=evidence_projection_enabled,
+        )
+        if composed_match is not None:
+            return composed_match
+
+    if evidence_projection_enabled:
+        return _best_evidence_match_for_finding(
+            source_text=source_text,
+            finding=finding,
+            fallback_artifact=artifact_id,
+            default_section_ref=default_section_ref,
+        )
+
+    return _EvidenceMatch(
+        artifact_id=artifact_id,
+        excerpt=_normalize_generated_text(finding)[:280],
+        section_ref=default_section_ref,
+        char_start=None,
+        char_end=None,
+    )
+
+
+def _best_composed_evidence_match_for_finding(
+    *,
+    finding: str,
+    fallback_artifact_id: str,
+    fallback_section_ref: str,
+    compose_input: SummarizeComposeInput,
+    include_offsets: bool,
+) -> _EvidenceMatch | None:
+    source_rank = {source_type: index for index, source_type in enumerate(compose_input.source_order)}
+    available_sources = tuple(source for source in compose_input.sources if source.text.strip())
+    if not available_sources:
+        return None
+
+    best_source: ComposedSourceDocument | None = None
+    best_span: ComposedSourceSpan | None = None
+    best_score = -1
+    best_source_rank = 10**9
+    best_span_rank = 10**9
+
+    for source in available_sources:
+        current_source_rank = source_rank.get(source.source_type, 10**9)
+        candidate_spans = source.spans or ()
+        if candidate_spans:
+            for span_index, span in enumerate(candidate_spans):
+                score = _score_finding_match(finding=finding, candidate_text=span.span_text)
+                if (
+                    score > best_score
+                    or (score == best_score and current_source_rank < best_source_rank)
+                    or (
+                        score == best_score
+                        and current_source_rank == best_source_rank
+                        and span_index < best_span_rank
+                    )
+                ):
+                    best_source = source
+                    best_span = span
+                    best_score = score
+                    best_source_rank = current_source_rank
+                    best_span_rank = span_index
+            continue
+
+        score = _score_finding_match(finding=finding, candidate_text=source.text)
+        if score > best_score or (score == best_score and current_source_rank < best_source_rank):
+            best_source = source
+            best_span = None
+            best_score = score
+            best_source_rank = current_source_rank
+            best_span_rank = 10**9
+
+    if best_source is None:
+        return None
+
+    return _compose_evidence_match(
+        source=best_source,
+        span=best_span,
+        fallback_artifact_id=fallback_artifact_id,
+        fallback_section_ref=fallback_section_ref,
+        include_offsets=include_offsets,
+    )
+
+
+def _compose_evidence_match(
+    *,
+    source: ComposedSourceDocument,
+    span: ComposedSourceSpan | None,
+    fallback_artifact_id: str,
+    fallback_section_ref: str,
+    include_offsets: bool,
+) -> _EvidenceMatch:
+    artifact_id = fallback_artifact_id
+    excerpt = _normalize_generated_text(source.text)[:280]
+    section_ref = fallback_section_ref
+    char_start: int | None = None
+    char_end: int | None = None
+    section_path: str | None = None
+    span_id: str | None = None
+
+    if span is not None:
+        artifact_id = span.artifact_id or artifact_id
+        excerpt = _normalize_generated_text(span.span_text)[:280]
+        section_path = span.stable_section_path
+        section_ref = _section_ref_from_section_path(section_path) or fallback_section_ref
+        span_id = span.span_id
+        if (
+            include_offsets
+            and span.start_char_offset is not None
+            and span.end_char_offset is not None
+            and span.end_char_offset > span.start_char_offset
+        ):
+            char_start = span.start_char_offset
+            char_end = span.end_char_offset
+    else:
+        artifact_id = fallback_artifact_id
+        section_path = source.source_type
+        section_ref = fallback_section_ref
+
+    precision = _classify_linkage_precision(
+        source_type=source.source_type,
+        span=span,
+        include_offsets=include_offsets,
+    )
+    confidence = _classify_linkage_confidence(source=source, precision=precision)
+
+    return _EvidenceMatch(
+        artifact_id=artifact_id,
+        excerpt=excerpt,
+        section_ref=section_ref,
+        char_start=char_start,
+        char_end=char_end,
+        document_id=source.canonical_document_id,
+        span_id=span_id,
+        document_kind=source.source_type,
+        section_path=section_path,
+        precision=precision,
+        confidence=confidence,
+    )
+
+
+def _score_finding_match(*, finding: str, candidate_text: str) -> int:
+    finding_tokens = set(re.findall(r"[a-zA-Z][a-zA-Z\-]{2,}", finding.lower()))
+    candidate_tokens = set(re.findall(r"[a-zA-Z][a-zA-Z\-]{2,}", candidate_text.lower()))
+    score = len(finding_tokens.intersection(candidate_tokens))
+    normalized_finding = _normalize_generated_text(finding).lower()
+    normalized_candidate = _normalize_generated_text(candidate_text).lower()
+    if normalized_finding and normalized_finding in normalized_candidate:
+        score += 2
+    return score
+
+
+def _section_ref_from_section_path(section_path: str | None) -> str | None:
+    if section_path is None:
+        return None
+    normalized = ".".join(segment for segment in section_path.strip().replace("\\", "/").split("/") if segment)
+    return normalized or None
+
+
+def _classify_linkage_precision(
+    *,
+    source_type: str,
+    span: ComposedSourceSpan | None,
+    include_offsets: bool,
+) -> str:
+    if span is None:
+        return "file"
+    if (
+        include_offsets
+        and span.start_char_offset is not None
+        and span.end_char_offset is not None
+        and span.end_char_offset > span.start_char_offset
+    ):
+        return "offset"
+    if span.page_number is not None or span.line_index is not None:
+        return "span"
+    if _has_precise_section_path(source_type=source_type, section_path=span.stable_section_path):
+        return "section"
+    return "file"
+
+
+def _has_precise_section_path(*, source_type: str, section_path: str | None) -> bool:
+    normalized = (section_path or "").strip().lower()
+    if not normalized or normalized == source_type:
+        return False
+    segments = tuple(segment for segment in normalized.split("/") if segment)
+    if not segments:
+        return False
+    return not any("unknown" in segment for segment in segments)
+
+
+def _classify_linkage_confidence(*, source: ComposedSourceDocument, precision: str) -> str:
+    if source.source_origin != "canonical":
+        base = "low" if precision == "file" else "medium"
+    elif precision == "file":
+        base = "low"
+    elif source.source_type == "minutes":
+        base = "high"
+    else:
+        base = "medium"
+
+    if source.locator_precision == "weak":
+        return {"high": "medium", "medium": "low", "low": "low"}[base]
+    if source.locator_precision == "unknown" and base == "high":
+        return "medium"
+    return base
+
+
+def _best_evidence_match_for_finding(
+    *,
+    source_text: str,
+    finding: str,
+    fallback_artifact: str,
+    default_section_ref: str,
+) -> _EvidenceMatch:
     sentence_spans = _split_sentences_with_offsets(source_text)
     if not sentence_spans:
         fallback_excerpt = (source_text or finding)[:280]
         return _EvidenceMatch(
+            artifact_id=fallback_artifact,
             excerpt=fallback_excerpt,
             section_ref=default_section_ref,
             char_start=None,
@@ -2182,6 +2432,7 @@ def _best_evidence_match_for_finding(*, source_text: str, finding: str, default_
 
     precise_section = f"{default_section_ref}.sentence.{best_index + 1}"
     return _EvidenceMatch(
+        artifact_id=fallback_artifact,
         excerpt=_normalize_generated_text(best_sentence)[:280],
         section_ref=precise_section,
         char_start=best_start,

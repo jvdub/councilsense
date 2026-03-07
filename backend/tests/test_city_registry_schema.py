@@ -44,6 +44,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0022_st024_canonical_document_artifacts_lineage.sql" in before.pending
     assert "0023_st024_canonical_document_artifacts_lineage.sql" in before.pending
     assert "0023_st024_canonical_document_spans.sql" in before.pending
+    assert "0024_st026_claim_evidence_linkage_contract.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -71,6 +72,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0022_st024_canonical_document_artifacts_lineage.sql",
         "0023_st024_canonical_document_artifacts_lineage.sql",
         "0023_st024_canonical_document_spans.sql",
+        "0024_st026_claim_evidence_linkage_contract.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -134,6 +136,8 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_publication_claims_publication_order" in index_names
     assert "idx_claim_evidence_claim_id" in index_names
     assert "idx_claim_evidence_artifact" in index_names
+    assert "idx_claim_evidence_document_id" in index_names
+    assert "idx_claim_evidence_span_id" in index_names
     assert "idx_meetings_city_created_id" in index_names
     assert "idx_summary_publications_meeting_published_id" in index_names
     assert "idx_notification_outbox_status_next_retry" in index_names

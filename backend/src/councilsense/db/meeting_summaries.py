@@ -46,6 +46,12 @@ class ClaimEvidencePointerRecord:
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_id: str | None
+    span_id: str | None
+    document_kind: str | None
+    section_path: str | None
+    precision: str | None
+    confidence: str | None
 
 
 class MeetingSummaryRepository:
@@ -244,6 +250,12 @@ class MeetingSummaryRepository:
         char_start: int | None,
         char_end: int | None,
         excerpt: str,
+        document_id: str | None = None,
+        span_id: str | None = None,
+        document_kind: str | None = None,
+        section_path: str | None = None,
+        precision: str | None = None,
+        confidence: str | None = None,
     ) -> ClaimEvidencePointerRecord:
         with self._connection:
             return self.add_claim_evidence_pointer_in_transaction(
@@ -254,6 +266,12 @@ class MeetingSummaryRepository:
                 char_start=char_start,
                 char_end=char_end,
                 excerpt=excerpt,
+                document_id=document_id,
+                span_id=span_id,
+                document_kind=document_kind,
+                section_path=section_path,
+                precision=precision,
+                confidence=confidence,
             )
 
     def add_claim_evidence_pointer_in_transaction(
@@ -266,6 +284,12 @@ class MeetingSummaryRepository:
         char_start: int | None,
         char_end: int | None,
         excerpt: str,
+        document_id: str | None = None,
+        span_id: str | None = None,
+        document_kind: str | None = None,
+        section_path: str | None = None,
+        precision: str | None = None,
+        confidence: str | None = None,
     ) -> ClaimEvidencePointerRecord:
         self._connection.execute(
             """
@@ -276,11 +300,31 @@ class MeetingSummaryRepository:
                 section_ref,
                 char_start,
                 char_end,
-                excerpt
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (pointer_id, claim_id, artifact_id, section_ref, char_start, char_end, excerpt),
+            (
+                pointer_id,
+                claim_id,
+                artifact_id,
+                section_ref,
+                char_start,
+                char_end,
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence,
+            ),
         )
 
         row = self._connection.execute(
@@ -292,7 +336,13 @@ class MeetingSummaryRepository:
                 section_ref,
                 char_start,
                 char_end,
-                excerpt
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence
             FROM claim_evidence_pointers
             WHERE id = ?
             """,
@@ -307,6 +357,12 @@ class MeetingSummaryRepository:
             char_start=int(row[4]) if row[4] is not None else None,
             char_end=int(row[5]) if row[5] is not None else None,
             excerpt=str(row[6]),
+            document_id=str(row[7]) if row[7] is not None else None,
+            span_id=str(row[8]) if row[8] is not None else None,
+            document_kind=str(row[9]) if row[9] is not None else None,
+            section_path=str(row[10]) if row[10] is not None else None,
+            precision=str(row[11]) if row[11] is not None else None,
+            confidence=str(row[12]) if row[12] is not None else None,
         )
 
     def list_evidence_for_claim(self, *, claim_id: str) -> tuple[ClaimEvidencePointerRecord, ...]:
@@ -319,7 +375,13 @@ class MeetingSummaryRepository:
                 section_ref,
                 char_start,
                 char_end,
-                excerpt
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence
             FROM claim_evidence_pointers
             WHERE claim_id = ?
             ORDER BY id ASC
@@ -335,6 +397,12 @@ class MeetingSummaryRepository:
                 char_start=int(row[4]) if row[4] is not None else None,
                 char_end=int(row[5]) if row[5] is not None else None,
                 excerpt=str(row[6]),
+                document_id=str(row[7]) if row[7] is not None else None,
+                span_id=str(row[8]) if row[8] is not None else None,
+                document_kind=str(row[9]) if row[9] is not None else None,
+                section_path=str(row[10]) if row[10] is not None else None,
+                precision=str(row[11]) if row[11] is not None else None,
+                confidence=str(row[12]) if row[12] is not None else None,
             )
             for row in rows
         )

@@ -14,7 +14,12 @@ from councilsense.app.local_pipeline import (
     _normalize_decision_sentence,
     _normalize_generated_text,
 )
-from councilsense.app.multi_document_compose import ComposedSourceDocument, SourceCoverageSummary, SummarizeComposeInput
+from councilsense.app.multi_document_compose import (
+    ComposedSourceDocument,
+    ComposedSourceSpan,
+    SourceCoverageSummary,
+    SummarizeComposeInput,
+)
 
 
 def test_normalize_generated_text_removes_think_blocks() -> None:
@@ -274,6 +279,7 @@ def test_build_claims_from_findings_returns_multiple_claims() -> None:
         ),
         artifact_id="artifact-local:test.txt",
         section_ref="artifact.txt",
+        compose_input=None,
         fallback_claim="Fallback claim",
     )
 
@@ -291,6 +297,7 @@ def test_build_claims_from_findings_prefers_sentence_level_locator_and_offsets()
         ),
         artifact_id="artifact-local:test.txt",
         section_ref="artifact.html",
+        compose_input=None,
         fallback_claim="Fallback claim",
     )
 
@@ -300,6 +307,90 @@ def test_build_claims_from_findings_prefers_sentence_level_locator_and_offsets()
     assert ".sentence." in pointer.section_ref
     assert pointer.char_start is not None
     assert pointer.char_end is not None
+
+
+def test_build_claims_from_findings_attaches_canonical_document_and_span_linkage_with_safe_degradation() -> None:
+    claims = _build_claims_from_findings(
+        key_decisions=("Motion carried to authorize the temporary road closure permit for the parade route.",),
+        key_actions=(),
+        source_text="[minutes] Motion carried to authorize the temporary road closure permit for the parade route.",
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=_build_compose_input(
+            sources=(
+                _compose_source(
+                    "minutes",
+                    "Motion carried to authorize the temporary road closure permit for the parade route.",
+                    locator_precision="weak",
+                    spans=(
+                        ComposedSourceSpan(
+                            span_id="span-minutes-weak",
+                            artifact_id="artifact-minutes-weak",
+                            stable_section_path="minutes/page/unknown",
+                            page_number=None,
+                            line_index=None,
+                            start_char_offset=None,
+                            end_char_offset=None,
+                            span_text="Motion carried to authorize the temporary road closure permit for the parade route.",
+                        ),
+                    ),
+                ),
+            ),
+            statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+        ),
+        fallback_claim="Fallback claim",
+    )
+
+    pointer = claims[0].evidence[0]
+    assert pointer.document_id == "canon-minutes"
+    assert pointer.span_id == "span-minutes-weak"
+    assert pointer.document_kind == "minutes"
+    assert pointer.section_path == "minutes/page/unknown"
+    assert pointer.precision == "file"
+    assert pointer.confidence == "low"
+
+
+def test_build_claims_from_findings_attaches_precise_canonical_span_linkage() -> None:
+    claims = _build_claims_from_findings(
+        key_decisions=("Council adopted ordinance 2026-12.",),
+        key_actions=(),
+        source_text="[minutes] Council adopted ordinance 2026-12.",
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=_build_compose_input(
+            sources=(
+                _compose_source(
+                    "minutes",
+                    "Council adopted ordinance 2026-12.",
+                    spans=(
+                        ComposedSourceSpan(
+                            span_id="span-minutes-precise",
+                            artifact_id="artifact-minutes-precise",
+                            stable_section_path="minutes/section/2",
+                            page_number=6,
+                            line_index=3,
+                            start_char_offset=42,
+                            end_char_offset=76,
+                            span_text="Council adopted ordinance 2026-12.",
+                        ),
+                    ),
+                ),
+            ),
+            statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+        ),
+        fallback_claim="Fallback claim",
+    )
+
+    pointer = claims[0].evidence[0]
+    assert pointer.artifact_id == "artifact-minutes-precise"
+    assert pointer.document_id == "canon-minutes"
+    assert pointer.span_id == "span-minutes-precise"
+    assert pointer.document_kind == "minutes"
+    assert pointer.section_path == "minutes/section/2"
+    assert pointer.precision == "offset"
+    assert pointer.confidence == "high"
+    assert pointer.char_start == 42
+    assert pointer.char_end == 76
 
 
 def _build_compose_input(
@@ -326,7 +417,12 @@ def _build_compose_input(
     )
 
 
-def _compose_source(source_type: str, text: str, locator_precision: str = "precise") -> ComposedSourceDocument:
+def _compose_source(
+    source_type: str,
+    text: str,
+    locator_precision: str = "precise",
+    spans: tuple[ComposedSourceSpan, ...] = (),
+) -> ComposedSourceDocument:
     return ComposedSourceDocument(
         source_type=source_type,
         source_origin="canonical",
@@ -338,5 +434,6 @@ def _compose_source(source_type: str, text: str, locator_precision: str = "preci
         revision_number=1,
         extraction_status="processed",
         extracted_at="2026-03-06T00:00:00Z",
-        span_count=1,
+        span_count=len(spans),
+        spans=spans,
     )

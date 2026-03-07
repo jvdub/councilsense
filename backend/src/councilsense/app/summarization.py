@@ -21,6 +21,9 @@ from councilsense.db.meeting_summaries import DEFAULT_SUMMARY_CALIBRATION_POLICY
 
 SUMMARIZATION_CONTRACT_VERSION = "st-005-v1"
 EMPTY_SUMMARY_TEXT = "No summary available."
+_LINKAGE_DOCUMENT_KINDS = frozenset({"minutes", "agenda", "packet"})
+_LINKAGE_PRECISIONS = frozenset({"offset", "span", "section", "file"})
+_LINKAGE_CONFIDENCES = frozenset({"high", "medium", "low"})
 
 
 def _normalize_summary(summary: str) -> str:
@@ -72,6 +75,12 @@ class ClaimEvidencePointer:
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_id: str | None = None
+    span_id: str | None = None
+    document_kind: str | None = None
+    section_path: str | None = None
+    precision: str | None = None
+    confidence: str | None = None
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, object]) -> ClaimEvidencePointer:
@@ -83,6 +92,12 @@ class ClaimEvidencePointer:
         char_start = char_start_raw if isinstance(char_start_raw, int) else None
         char_end = char_end_raw if isinstance(char_end_raw, int) else None
         excerpt = _normalize_excerpt(payload.get("excerpt"))
+        document_id = _normalize_location_ref(payload.get("document_id"))
+        span_id = _normalize_location_ref(payload.get("span_id"))
+        document_kind = _normalize_location_ref(payload.get("document_kind"))
+        section_path = _normalize_location_ref(payload.get("section_path"))
+        precision = _normalize_location_ref(payload.get("precision"))
+        confidence = _normalize_location_ref(payload.get("confidence"))
 
         pointer = cls(
             artifact_id=artifact_id,
@@ -90,6 +105,12 @@ class ClaimEvidencePointer:
             char_start=char_start,
             char_end=char_end,
             excerpt=excerpt,
+            document_id=document_id,
+            span_id=span_id,
+            document_kind=document_kind,
+            section_path=section_path,
+            precision=precision,
+            confidence=confidence,
         )
         pointer.validate()
         return pointer
@@ -112,6 +133,14 @@ class ClaimEvidencePointer:
         has_offset_pair = self.char_start is not None and self.char_end is not None
         if not has_section_ref and not has_offset_pair:
             raise ClaimEvidenceValidationError("section_ref or char_start/char_end is required")
+        if self.span_id is not None and self.document_id is None:
+            raise ClaimEvidenceValidationError("document_id is required when span_id is provided")
+        if self.document_kind is not None and self.document_kind not in _LINKAGE_DOCUMENT_KINDS:
+            raise ClaimEvidenceValidationError("document_kind must be minutes, agenda, or packet")
+        if self.precision is not None and self.precision not in _LINKAGE_PRECISIONS:
+            raise ClaimEvidenceValidationError("precision must be offset, span, section, or file")
+        if self.confidence is not None and self.confidence not in _LINKAGE_CONFIDENCES:
+            raise ClaimEvidenceValidationError("confidence must be high, medium, or low")
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -120,6 +149,12 @@ class ClaimEvidencePointer:
             "char_start": self.char_start,
             "char_end": self.char_end,
             "excerpt": self.excerpt,
+            "document_id": self.document_id,
+            "span_id": self.span_id,
+            "document_kind": self.document_kind,
+            "section_path": self.section_path,
+            "precision": self.precision,
+            "confidence": self.confidence,
         }
 
 
@@ -396,6 +431,12 @@ def attach_claim_evidence(
                     char_start=pointer.char_start,
                     char_end=pointer.char_end,
                     excerpt=pointer.excerpt,
+                    document_id=pointer.document_id,
+                    span_id=pointer.span_id,
+                    document_kind=pointer.document_kind,
+                    section_path=pointer.section_path,
+                    precision=pointer.precision,
+                    confidence=pointer.confidence,
                 )
             else:
                 repository.add_claim_evidence_pointer(
@@ -406,6 +447,12 @@ def attach_claim_evidence(
                     char_start=pointer.char_start,
                     char_end=pointer.char_end,
                     excerpt=pointer.excerpt,
+                    document_id=pointer.document_id,
+                    span_id=pointer.span_id,
+                    document_kind=pointer.document_kind,
+                    section_path=pointer.section_path,
+                    precision=pointer.precision,
+                    confidence=pointer.confidence,
                 )
             created_pointer_ids.append(pointer_id)
 

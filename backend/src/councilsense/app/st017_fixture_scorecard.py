@@ -321,7 +321,18 @@ def _load_publication_claims(*, connection: sqlite3.Connection, publication_id: 
         claim_id = str(claim_row[0])
         pointer_rows = connection.execute(
             """
-            SELECT artifact_id, section_ref, char_start, char_end, excerpt
+            SELECT
+                artifact_id,
+                section_ref,
+                char_start,
+                char_end,
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence
             FROM claim_evidence_pointers
             WHERE claim_id = ?
             ORDER BY id ASC
@@ -335,6 +346,12 @@ def _load_publication_claims(*, connection: sqlite3.Connection, publication_id: 
                 char_start=(int(row[2]) if row[2] is not None else None),
                 char_end=(int(row[3]) if row[3] is not None else None),
                 excerpt=str(row[4]),
+                document_id=(str(row[5]) if row[5] is not None else None),
+                span_id=(str(row[6]) if row[6] is not None else None),
+                document_kind=(str(row[7]) if row[7] is not None else None),
+                section_path=(str(row[8]) if row[8] is not None else None),
+                precision=(str(row[9]) if row[9] is not None else None),
+                confidence=(str(row[10]) if row[10] is not None else None),
             )
             for row in pointer_rows
         )

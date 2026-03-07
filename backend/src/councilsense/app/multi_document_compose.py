@@ -16,6 +16,18 @@ LocatorPrecision = Literal["precise", "weak", "unknown"]
 
 
 @dataclass(frozen=True)
+class ComposedSourceSpan:
+    span_id: str
+    artifact_id: str | None
+    stable_section_path: str
+    page_number: int | None
+    line_index: int | None
+    start_char_offset: int | None
+    end_char_offset: int | None
+    span_text: str
+
+
+@dataclass(frozen=True)
 class ComposedSourceDocument:
     source_type: str
     source_origin: ComposeSourceOrigin
@@ -28,6 +40,7 @@ class ComposedSourceDocument:
     extraction_status: str | None
     extracted_at: str | None
     span_count: int
+    spans: tuple[ComposedSourceSpan, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +91,19 @@ class SummarizeComposeInput:
                 "extracted_at": source.extracted_at,
                 "span_count": source.span_count,
                 "text_char_count": len(source.text),
+                "spans": [
+                    {
+                        "span_id": span.span_id,
+                        "artifact_id": span.artifact_id,
+                        "stable_section_path": span.stable_section_path,
+                        "page_number": span.page_number,
+                        "line_index": span.line_index,
+                        "start_char_offset": span.start_char_offset,
+                        "end_char_offset": span.end_char_offset,
+                        "span_text": span.span_text,
+                    }
+                    for span in source.spans
+                ],
             }
             for source in self.sources
         ]
@@ -106,7 +132,7 @@ def assemble_summarize_compose_input(
     for source_type in EXPECTED_SOURCE_TYPES:
         selected = _select_preferred_document(documents=documents, source_type=source_type)
         if selected is not None:
-            canonical_text, span_count, locator_precision = _compose_document_text(
+            canonical_text, spans, locator_precision = _compose_document_text(
                 connection=connection,
                 canonical_document_id=selected.id,
             )
@@ -129,7 +155,8 @@ def assemble_summarize_compose_input(
                     revision_number=selected.revision_number,
                     extraction_status=selected.extraction_status,
                     extracted_at=selected.extracted_at,
-                    span_count=span_count,
+                    span_count=len(spans),
+                    spans=spans,
                 )
             )
             continue
@@ -153,6 +180,7 @@ def assemble_summarize_compose_input(
                     extraction_status=None,
                     extracted_at=None,
                     span_count=0,
+                    spans=(),
                 )
             )
             continue
@@ -170,6 +198,7 @@ def assemble_summarize_compose_input(
                 extraction_status=None,
                 extracted_at=None,
                 span_count=0,
+                spans=(),
             )
         )
 
@@ -214,10 +243,12 @@ def _compose_document_text(
     *,
     connection: sqlite3.Connection,
     canonical_document_id: str,
-) -> tuple[str, int, LocatorPrecision]:
+) -> tuple[str, tuple[ComposedSourceSpan, ...], LocatorPrecision]:
     rows = connection.execute(
         """
         SELECT
+            id,
+            artifact_id,
             span_text,
             stable_section_path,
             page_number,
@@ -245,20 +276,33 @@ def _compose_document_text(
     ).fetchall()
 
     parts: list[str] = []
+    spans: list[ComposedSourceSpan] = []
     has_precise_locator = False
     for row in rows:
-        raw = row[0]
+        raw = row[2]
         if raw is None:
             continue
         normalized = " ".join(str(raw).split())
         if normalized:
             parts.append(normalized)
+            spans.append(
+                ComposedSourceSpan(
+                    span_id=str(row[0]),
+                    artifact_id=str(row[1]) if row[1] is not None else None,
+                    stable_section_path=str(row[3]),
+                    page_number=int(row[4]) if row[4] is not None else None,
+                    line_index=int(row[5]) if row[5] is not None else None,
+                    start_char_offset=int(row[6]) if row[6] is not None else None,
+                    end_char_offset=int(row[7]) if row[7] is not None else None,
+                    span_text=normalized,
+                )
+            )
             has_precise_locator = has_precise_locator or _span_has_precise_locator(
-                stable_section_path=str(row[1]) if row[1] is not None else None,
-                page_number=int(row[2]) if row[2] is not None else None,
-                line_index=int(row[3]) if row[3] is not None else None,
-                start_char_offset=int(row[4]) if row[4] is not None else None,
-                end_char_offset=int(row[5]) if row[5] is not None else None,
+                stable_section_path=str(row[3]) if row[3] is not None else None,
+                page_number=int(row[4]) if row[4] is not None else None,
+                line_index=int(row[5]) if row[5] is not None else None,
+                start_char_offset=int(row[6]) if row[6] is not None else None,
+                end_char_offset=int(row[7]) if row[7] is not None else None,
             )
 
     locator_precision: LocatorPrecision
@@ -269,7 +313,7 @@ def _compose_document_text(
     else:
         locator_precision = "weak"
 
-    return " ".join(parts), len(parts), locator_precision
+    return " ".join(parts), tuple(spans), locator_precision
 
 
 def _span_has_precise_locator(

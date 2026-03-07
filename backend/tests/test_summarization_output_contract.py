@@ -245,6 +245,70 @@ def test_claim_evidence_records_reject_malformed_offsets() -> None:
         )
 
 
+def test_claim_evidence_records_accept_additive_canonical_linkage_fields() -> None:
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "Summary",
+            "key_decisions": [],
+            "key_actions": [],
+            "notable_topics": [],
+            "claims": [
+                {
+                    "claim_text": "The council approved Resolution 77.",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-77",
+                            "section_ref": "minutes.section.4",
+                            "char_start": 412,
+                            "char_end": 503,
+                            "excerpt": "Motion carried unanimously for Resolution 77.",
+                            "document_id": "canon-minutes-77",
+                            "span_id": "span-minutes-77",
+                            "document_kind": "minutes",
+                            "section_path": "minutes/section/4",
+                            "precision": "offset",
+                            "confidence": "high",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    evidence = output.claims[0].evidence[0]
+    assert evidence.document_id == "canon-minutes-77"
+    assert evidence.span_id == "span-minutes-77"
+    assert evidence.document_kind == "minutes"
+    assert evidence.section_path == "minutes/section/4"
+    assert evidence.precision == "offset"
+    assert evidence.confidence == "high"
+
+
+def test_claim_evidence_records_reject_span_without_document_id() -> None:
+    with pytest.raises(ClaimEvidenceValidationError, match="document_id is required when span_id is provided"):
+        SummarizationOutput.from_payload(
+            {
+                "summary": "Summary",
+                "key_decisions": [],
+                "key_actions": [],
+                "notable_topics": [],
+                "claims": [
+                    {
+                        "claim_text": "The council approved Resolution 77.",
+                        "evidence": [
+                            {
+                                "artifact_id": "artifact-minutes-77",
+                                "section_ref": "minutes.section.4",
+                                "excerpt": "Motion carried unanimously for Resolution 77.",
+                                "span_id": "span-minutes-77",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
 def test_end_to_end_processing_run_persists_summarization_sections(
     connection: sqlite3.Connection,
 ) -> None:
