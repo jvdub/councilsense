@@ -1,0 +1,316 @@
+{
+  "schema_version": "st-031-staging-alert-simulation-evidence-v1",
+  "story_id": "ST-031",
+  "task_id": "TASK-ST-031-05",
+  "execution_date": "2026-03-07",
+  "environment": "staging",
+  "simulation_owner": "release-owner",
+  "overall_result": "pass_with_follow_up_actions",
+  "release_readiness": {
+    "status": "ready_with_follow_up_actions",
+    "reviewed_by": "release-owner",
+    "reviewed_at_utc": "2026-03-07T18:40:00Z",
+    "blocking_issues": 0,
+    "evidence_bundle_paths": [
+      "docs/runbooks/st-031-staging-alert-simulation-evidence.md",
+      "docs/runbooks/st-031-staging-alert-simulation-evidence.sample.json"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario_id": "st031-parser-drift-staging-critical",
+      "fixture_scenario_id": "parser-drift-critical",
+      "alert_class": "parser_drift_spike",
+      "selected_alert_id": "st031-parser-drift-spike-critical",
+      "severity": "critical",
+      "simulation_method": "Seed an unplanned parser version change for the active minutes source through the staging alert-manager replay input using the controlled ST-031 parser drift fixture.",
+      "repeatable_artifacts": [
+        "backend/tests/fixtures/st031_alert_policy_validation.json",
+        "config/ops/st-031-source-aware-alert-rules.json",
+        "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json"
+      ],
+      "trigger_result": {
+        "status": "fired",
+        "fired_alert_ids": [
+          "st031-parser-drift-spike-warning",
+          "st031-parser-drift-spike-critical"
+        ],
+        "triggered_at_utc": "2026-03-07T17:05:00Z",
+        "observed_value": 2,
+        "threshold_value": 2,
+        "evidence_note": "Critical parser drift fired after the second unplanned version-change event in the staging replay window."
+      },
+      "route_result": {
+        "status": "delivered",
+        "delivery_channel": "ops-multi-document-alerts",
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "route_validated_by": "release-owner"
+      },
+      "ack_result": {
+        "status": "acknowledged",
+        "acknowledged_by": "ops-ingestion-oncall",
+        "acknowledged_at_utc": "2026-03-07T17:09:00Z",
+        "acknowledgment_note": "Confirmed unplanned parser rollout on minutes source; holding impacted outputs at limited confidence pending parser override reversion."
+      },
+      "escalation_result": {
+        "status": "escalated",
+        "escalated_at_utc": "2026-03-07T17:28:00Z",
+        "escalated_to": "platform-owner",
+        "reason": "Repeated unplanned parser change affected more than one active staging bundle and required rollout control confirmation."
+      },
+      "walkthrough_result": {
+        "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+        "started_at_utc": "2026-03-07T17:12:00Z",
+        "completed_at_utc": "2026-03-07T17:36:00Z",
+        "facilitator": "release-owner",
+        "responders": [
+          "ops-ingestion-oncall",
+          "backend-oncall",
+          "platform-owner"
+        ],
+        "result": "completed",
+        "remediation_outcome": "Parser override reverted for the affected source and impacted bundles remained in limited-confidence status until post-reversion verification completed.",
+        "closure_status": "resolved_with_follow_up",
+        "supporting_paths": [
+          "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
+          "docs/runbooks/st-010-health-and-confidence-policy.md"
+        ],
+        "follow_up_action_ids": [
+          "st031-follow-up-001"
+        ]
+      }
+    },
+    {
+      "scenario_id": "st031-missing-minutes-staging-critical",
+      "fixture_scenario_id": "missing-minutes-critical",
+      "alert_class": "missing_minutes_surge",
+      "selected_alert_id": "st031-missing-minutes-surge-critical",
+      "severity": "critical",
+      "simulation_method": "Replay the controlled low-coverage compose bundle with minutes absent and supplemental agenda plus packet sources present to force the staging missing-minutes surge route.",
+      "repeatable_artifacts": [
+        "backend/tests/fixtures/st031_alert_policy_validation.json",
+        "config/ops/st-031-source-aware-alert-rules.json",
+        "docs/runbooks/st-031-source-aware-dashboard.json"
+      ],
+      "trigger_result": {
+        "status": "fired",
+        "fired_alert_ids": [
+          "st031-missing-minutes-surge-warning",
+          "st031-missing-minutes-surge-critical"
+        ],
+        "triggered_at_utc": "2026-03-07T17:42:00Z",
+        "observed_value": 2,
+        "threshold_value": 2,
+        "evidence_note": "The low-coverage compose bundle breached the critical threshold with authoritative minutes absent and supplemental sources still available."
+      },
+      "route_result": {
+        "status": "delivered",
+        "delivery_channel": "ops-multi-document-alerts",
+        "primary_role": "ops-ingestion-oncall",
+        "secondary_role": "source-operations-owner",
+        "escalate_to": "platform-owner",
+        "route_validated_by": "release-owner"
+      },
+      "ack_result": {
+        "status": "acknowledged",
+        "acknowledged_by": "ops-ingestion-oncall",
+        "acknowledged_at_utc": "2026-03-07T17:45:00Z",
+        "acknowledgment_note": "Confirmed authoritative minutes are missing in staging; source owner contacted and affected bundle left at limited confidence."
+      },
+      "escalation_result": {
+        "status": "not_required",
+        "reason": "The source gap was isolated to one city and one source, with a source-owner incident opened inside the primary SLA."
+      },
+      "walkthrough_result": {
+        "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+        "started_at_utc": "2026-03-07T17:47:00Z",
+        "completed_at_utc": "2026-03-07T18:04:00Z",
+        "facilitator": "release-owner",
+        "responders": [
+          "ops-ingestion-oncall",
+          "source-operations-owner"
+        ],
+        "result": "completed",
+        "remediation_outcome": "Source-owner incident opened, source configuration verified as correct, and the affected bundle remained limited-confidence without replay until authoritative minutes return.",
+        "closure_status": "mitigated_with_follow_up",
+        "supporting_paths": [
+          "docs/runbooks/st-010-health-and-confidence-policy.md",
+          "docs/runbooks/st-031-source-aware-observability-contract.md"
+        ],
+        "follow_up_action_ids": [
+          "st031-follow-up-002"
+        ]
+      }
+    },
+    {
+      "scenario_id": "st031-summarize-failure-staging-critical",
+      "fixture_scenario_id": "summarize-failure-critical",
+      "alert_class": "summarize_failure_spike",
+      "selected_alert_id": "st031-summarize-failure-spike-critical",
+      "severity": "critical",
+      "simulation_method": "Inject a provider timeout burst for summarize on the staging bundle replay path using the controlled ST-031 summarize failure fixture.",
+      "repeatable_artifacts": [
+        "backend/tests/fixtures/st031_alert_policy_validation.json",
+        "config/ops/st-031-source-aware-alert-rules.json",
+        "docs/runbooks/st-011-baseline-dashboards.json",
+        "docs/runbooks/st-031-source-aware-dashboard.json"
+      ],
+      "trigger_result": {
+        "status": "fired",
+        "fired_alert_ids": [
+          "st031-summarize-failure-spike-warning",
+          "st031-summarize-failure-spike-critical"
+        ],
+        "triggered_at_utc": "2026-03-07T18:09:00Z",
+        "observed_value": 0.25,
+        "threshold_value": 0.2,
+        "evidence_note": "Summarize failure rate exceeded the critical threshold once the provider timeout burst reached two failures in eight runs."
+      },
+      "route_result": {
+        "status": "delivered",
+        "delivery_channel": "ops-multi-document-alerts",
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "route_validated_by": "release-owner"
+      },
+      "ack_result": {
+        "status": "acknowledged",
+        "acknowledged_by": "ops-pipeline-oncall",
+        "acknowledged_at_utc": "2026-03-07T18:11:00Z",
+        "acknowledgment_note": "Provider timeout burst confirmed; using confidence-policy decision tree while replay remains blocked on mitigation verification."
+      },
+      "escalation_result": {
+        "status": "escalated",
+        "escalated_at_utc": "2026-03-07T18:23:00Z",
+        "escalated_to": "platform-owner",
+        "reason": "Failure mode was provider-wide in staging and required a rollback-versus-limited-confidence decision from the platform owner."
+      },
+      "walkthrough_result": {
+        "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+        "started_at_utc": "2026-03-07T18:13:00Z",
+        "completed_at_utc": "2026-03-07T18:31:00Z",
+        "facilitator": "release-owner",
+        "responders": [
+          "ops-pipeline-oncall",
+          "backend-oncall",
+          "platform-owner"
+        ],
+        "result": "completed",
+        "remediation_outcome": "Fallback provider configuration was validated, one source-scoped replay batch succeeded after mitigation, and no broad rollback was required.",
+        "closure_status": "resolved_with_follow_up",
+        "supporting_paths": [
+          "docs/runbooks/st-029-pipeline-dlq-contract.md",
+          "docs/runbooks/st-021-quality-gates-rollout-and-rollback.md",
+          "docs/runbooks/st-010-health-and-confidence-policy.md"
+        ],
+        "follow_up_action_ids": [
+          "st031-follow-up-003"
+        ]
+      }
+    },
+    {
+      "scenario_id": "st031-stale-dlq-staging-critical",
+      "fixture_scenario_id": "stale-dlq-critical",
+      "alert_class": "stale_pipeline_dlq_backlog",
+      "selected_alert_id": "st031-stale-pipeline-dlq-backlog-critical",
+      "severity": "critical",
+      "simulation_method": "Hold a source-scoped extract backlog in staging until the oldest DLQ age exceeds the critical threshold, then validate replay and closure handling against the alert rule.",
+      "repeatable_artifacts": [
+        "backend/tests/fixtures/st031_alert_policy_validation.json",
+        "config/ops/st-031-source-aware-alert-rules.json",
+        "docs/runbooks/st-031-source-aware-dashboard.json",
+        "docs/runbooks/st-029-pipeline-dlq-contract.md"
+      ],
+      "trigger_result": {
+        "status": "fired",
+        "fired_alert_ids": [
+          "st031-stale-pipeline-dlq-backlog-warning",
+          "st031-stale-pipeline-dlq-backlog-critical"
+        ],
+        "triggered_at_utc": "2026-03-07T18:34:00Z",
+        "observed_value": 3600,
+        "threshold_value": 3600,
+        "evidence_note": "Staging extract backlog reached the critical local threshold with two replayable DLQ entries still open."
+      },
+      "route_result": {
+        "status": "delivered",
+        "delivery_channel": "ops-multi-document-alerts",
+        "primary_role": "ops-pipeline-oncall",
+        "secondary_role": "backend-oncall",
+        "escalate_to": "platform-owner",
+        "route_validated_by": "release-owner"
+      },
+      "ack_result": {
+        "status": "acknowledged",
+        "acknowledged_by": "backend-oncall",
+        "acknowledged_at_utc": "2026-03-07T18:36:00Z",
+        "acknowledgment_note": "DLQ backlog confirmed as replayable after source repair; replay pre-checks passed and closure will wait for audit confirmation."
+      },
+      "escalation_result": {
+        "status": "not_required",
+        "reason": "A single replay batch drained the backlog and oldest age stopped increasing before the escalation SLA expired."
+      },
+      "walkthrough_result": {
+        "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+        "started_at_utc": "2026-03-07T18:37:00Z",
+        "completed_at_utc": "2026-03-07T18:43:00Z",
+        "facilitator": "release-owner",
+        "responders": [
+          "ops-pipeline-oncall",
+          "backend-oncall"
+        ],
+        "result": "completed",
+        "remediation_outcome": "The replay batch drained the source-scoped DLQ backlog, audit events reached a terminal replayed outcome, and no duplicate side effects were observed.",
+        "closure_status": "resolved_with_follow_up",
+        "supporting_paths": [
+          "docs/runbooks/st-029-pipeline-dlq-contract.md",
+          "docs/runbooks/st-021-quality-gates-rollout-and-rollback.md"
+        ],
+        "follow_up_action_ids": [
+          "st031-follow-up-004"
+        ]
+      }
+    }
+  ],
+  "follow_up_actions": [
+    {
+      "action_id": "st031-follow-up-001",
+      "scenario_id": "st031-parser-drift-staging-critical",
+      "owner": "backend-oncall",
+      "priority": "high",
+      "status": "open",
+      "target_date": "2026-03-12",
+      "summary": "Automate planned parser rollout-window annotation for staging source overrides so parser drift simulations can verify suppression versus live escalation without manual toggles."
+    },
+    {
+      "action_id": "st031-follow-up-002",
+      "scenario_id": "st031-missing-minutes-staging-critical",
+      "owner": "source-operations-owner",
+      "priority": "medium",
+      "status": "open",
+      "target_date": "2026-03-14",
+      "summary": "Add a staging source-silence probe for authoritative minutes feeds so missing-minutes incidents are detected before the second compose bundle degrades."
+    },
+    {
+      "action_id": "st031-follow-up-003",
+      "scenario_id": "st031-summarize-failure-staging-critical",
+      "owner": "platform-owner",
+      "priority": "high",
+      "status": "open",
+      "target_date": "2026-03-10",
+      "summary": "Document provider fallback readiness gates and rollback decision ownership in the release checklist before the next summarize replay drill."
+    },
+    {
+      "action_id": "st031-follow-up-004",
+      "scenario_id": "st031-stale-dlq-staging-critical",
+      "owner": "ops-pipeline-oncall",
+      "priority": "medium",
+      "status": "open",
+      "target_date": "2026-03-11",
+      "summary": "Add oldest-age delta verification to the replay closure checklist so stale DLQ incidents require a post-drain regression check before closure."
+    }
+  ]
+}

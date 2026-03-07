@@ -89,4 +89,4 @@ This task validates:
 - dedupe and suppression behavior for repeated failures and planned-noise windows
 - single-runbook linkage and document completeness via `docs/runbooks/st-031-runbook-walkthrough-checklist.md`
 
-Staging simulation evidence remains deferred to TASK-ST-031-05.
+Staging simulation evidence is captured in `docs/runbooks/st-031-staging-alert-simulation-evidence.md` and `docs/runbooks/st-031-staging-alert-simulation-evidence.sample.json`.

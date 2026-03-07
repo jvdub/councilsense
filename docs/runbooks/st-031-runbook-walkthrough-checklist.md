@@ -26,8 +26,9 @@ Purpose: document-only walkthrough coverage for ST-031 runbook completeness. Fin
 - Desk walkthrough completed against the TASK-ST-031-03 alert matrix and current ST-029/ST-030/ST-010 support docs.
 - No staging alert injection or end-to-end simulation was executed in this task.
 - Runbook language is scoped to source-aware, source-scoped remediation and avoids destructive rollback guidance.
+- TASK-ST-031-05 completed the staging simulation follow-through in `docs/runbooks/st-031-staging-alert-simulation-evidence.md`.
 
 ## Open Action List
 
-- TASK-ST-031-05 must capture staging alert simulation evidence for each alert class.
-- TASK-ST-031-05 must record live on-call walkthrough timestamps and any follow-up operational tuning.
+- Closed by TASK-ST-031-05: staging alert simulation evidence now exists for each required alert class.
+- Closed by TASK-ST-031-05: live walkthrough timestamps and follow-up operational tuning are recorded in the ST-031 staging evidence bundle.
