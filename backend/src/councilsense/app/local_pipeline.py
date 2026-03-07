@@ -28,9 +28,12 @@ from councilsense.app.canonical_persistence import EvidenceSpanInput, persist_pi
 from councilsense.app.multi_document_compose import (
     ComposedSourceDocument,
     ComposedSourceSpan,
+    LocatorPrecision,
+    SourceCoverageStatus,
     SummarizeComposeInput,
     assemble_summarize_compose_input,
 )
+from councilsense.app.st030_document_aware_gates import DocumentAwareGateInput
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
     QualityGateEnforcementOverride,
@@ -269,7 +272,9 @@ class _AuthorityPolicyResult:
     reason_codes: tuple[str, ...]
     summarize_text: str
     authoritative_source_type: str | None
+    authoritative_locator_precision: LocatorPrecision | None
     outcome_source_types: tuple[str, ...]
+    source_statuses: dict[str, SourceCoverageStatus]
     preview_only: bool
     conflicts: tuple[_AuthorityConflictSignal, ...]
 
@@ -279,7 +284,9 @@ class _AuthorityPolicyResult:
             "publication_status": self.publication_status,
             "reason_codes": list(self.reason_codes),
             "authoritative_source_type": self.authoritative_source_type,
+            "authoritative_locator_precision": self.authoritative_locator_precision,
             "outcome_source_types": list(self.outcome_source_types),
+            "source_statuses": dict(self.source_statuses),
             "preview_only": self.preview_only,
             "has_conflicts": bool(self.conflicts),
             "conflicts": [signal.to_metadata_payload() for signal in self.conflicts],
@@ -302,7 +309,9 @@ def _build_authority_policy_result(
     reason_codes: tuple[str, ...],
     summarize_text: str,
     authoritative_source_type: str | None,
+    authoritative_locator_precision: LocatorPrecision | None,
     outcome_source_types: tuple[str, ...],
+    source_statuses: dict[str, SourceCoverageStatus],
     preview_only: bool,
     conflicts: tuple[_AuthorityConflictSignal, ...],
 ) -> _AuthorityPolicyResult:
@@ -312,7 +321,9 @@ def _build_authority_policy_result(
         reason_codes=_ordered_unique_codes(*reason_codes),
         summarize_text=summarize_text,
         authoritative_source_type=authoritative_source_type,
+        authoritative_locator_precision=authoritative_locator_precision,
         outcome_source_types=tuple(dict.fromkeys(outcome_source_types)),
+        source_statuses=dict(source_statuses),
         preview_only=preview_only,
         conflicts=conflicts,
     )
@@ -465,6 +476,7 @@ class LocalPipelineOrchestrator:
                 run_id=run_id,
                 city_id=city_id,
                 source_id=source_id,
+                source_type=source_type,
                 meeting_id=meeting.meeting_id,
                 output=summarize_payload.output,
                 source_text=extract_payload.text,
@@ -821,6 +833,7 @@ class LocalPipelineOrchestrator:
         run_id: str,
         city_id: str,
         source_id: str | None,
+        source_type: str | None,
         meeting_id: str,
         output: SummarizationOutput,
         source_text: str,
@@ -838,12 +851,18 @@ class LocalPipelineOrchestrator:
             run_id=run_id,
             city_id=city_id,
             meeting_id=meeting_id,
+            source_id=source_id,
+            source_type=source_type,
             config=rollout_config,
             source_text=source_text,
             output=output,
             summarize_status=summarize_status,
             extract_status=extract_status,
             summarize_fallback_used=summarize_fallback_used,
+            document_aware_gate_input=_build_document_aware_gate_input(
+                output=output,
+                authority_policy=authority_policy,
+            ),
         )
         append_shadow_diagnostics_artifact(
             artifact_path=rollout_config.diagnostics_artifact_path,
@@ -1037,6 +1056,55 @@ class LocalPipelineOrchestrator:
 
 def _now_iso_utc() -> str:
     return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _build_document_aware_gate_input(
+    *,
+    output: SummarizationOutput,
+    authority_policy: _AuthorityPolicyResult,
+) -> DocumentAwareGateInput:
+    citation_pointer_count, citation_precision_ratio = _summarization_pointer_metrics(output=output)
+    return DocumentAwareGateInput(
+        authority_outcome=authority_policy.authority_outcome,
+        authority_reason_codes=authority_policy.reason_codes,
+        authority_conflict_count=len(authority_policy.conflicts),
+        source_statuses=dict(authority_policy.source_statuses),
+        authoritative_locator_precision=authority_policy.authoritative_locator_precision,
+        citation_precision_ratio=citation_precision_ratio,
+        citation_pointer_count=citation_pointer_count,
+    )
+
+
+def _summarization_pointer_metrics(*, output: SummarizationOutput) -> tuple[int, float | None]:
+    pointers = _list_unique_evidence_pointers(output=output)
+    pointer_count = len(pointers)
+    if pointer_count == 0:
+        return 0, None
+
+    precise_count = sum(1 for pointer in pointers if _pointer_is_precise(pointer))
+    return pointer_count, precise_count / float(pointer_count)
+
+
+def _list_unique_evidence_pointers(*, output: SummarizationOutput) -> tuple[ClaimEvidencePointer, ...]:
+    seen: set[tuple[str, str | None, int | None, int | None, str]] = set()
+    unique: list[ClaimEvidencePointer] = []
+    for claim in output.claims:
+        for pointer in claim.evidence:
+            key = (pointer.artifact_id, pointer.section_ref, pointer.char_start, pointer.char_end, pointer.excerpt)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(pointer)
+    return tuple(unique)
+
+
+def _pointer_is_precise(pointer: ClaimEvidencePointer) -> bool:
+    if pointer.precision is not None:
+        return pointer.precision in {"offset", "span", "section"}
+    if pointer.char_start is not None and pointer.char_end is not None:
+        return True
+    section_ref = (pointer.section_ref or "").strip().lower()
+    return section_ref not in {"", "artifact.html", "artifact.pdf", "meeting.metadata"}
 
 
 def _extract_text_from_html(html_text: str) -> str:
@@ -1404,6 +1472,7 @@ def _derive_grounded_sections(
 
 def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _AuthorityPolicyResult:
     source_by_type = {source.source_type: source for source in compose_input.sources}
+    source_statuses = dict(compose_input.source_coverage.statuses)
     minutes_source = _select_available_source(source_by_type.get("minutes"))
     agenda_source = _select_available_source(source_by_type.get("agenda"))
     packet_source = _select_available_source(source_by_type.get("packet"))
@@ -1435,7 +1504,9 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
             reason_codes=tuple(reason_codes),
             summarize_text=minutes_source.text,
             authoritative_source_type="minutes",
+            authoritative_locator_precision=minutes_source.locator_precision,
             outcome_source_types=("minutes",),
+            source_statuses=source_statuses,
             preview_only=False,
             conflicts=conflicts,
         )
@@ -1450,7 +1521,9 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
                 reason_codes=("missing_authoritative_minutes", "unresolved_source_conflict"),
                 summarize_text=_compose_authority_text(supplemental_available),
                 authoritative_source_type=None,
+                authoritative_locator_precision=None,
                 outcome_source_types=tuple(source.source_type for source in supplemental_available),
+                source_statuses=source_statuses,
                 preview_only=True,
                 conflicts=conflicts,
             )
@@ -1466,7 +1539,9 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
             ),
             summarize_text=_compose_authority_text(supplemental_available),
             authoritative_source_type=None,
+            authoritative_locator_precision=None,
             outcome_source_types=tuple(source.source_type for source in supplemental_available),
+            source_statuses=source_statuses,
             preview_only=True,
             conflicts=(),
         )
@@ -1477,7 +1552,9 @@ def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _Auth
         reason_codes=("missing_authoritative_minutes",),
         summarize_text=compose_input.composed_text,
         authoritative_source_type=None,
+        authoritative_locator_precision=None,
         outcome_source_types=(),
+        source_statuses=source_statuses,
         preview_only=False,
         conflicts=(),
     )

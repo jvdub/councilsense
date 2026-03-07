@@ -10,18 +10,24 @@ from typing import Literal, cast
 
 from councilsense.app.summarization import SUMMARIZATION_CONTRACT_VERSION, SummarizationOutput
 from councilsense.app.st030_document_aware_gates import (
+    DocumentAwareGateDimension,
+    DocumentAwareGateEvaluation,
+    DocumentAwareGateInput,
     DocumentAwareGateThresholds,
     default_document_aware_thresholds_payload,
+    evaluate_document_aware_gates,
     parse_document_aware_thresholds,
 )
 
 
 QUALITY_GATE_ROLLOUT_SCHEMA_VERSION = "st-021-quality-gate-rollout-v1"
+DOCUMENT_AWARE_DIAGNOSTICS_SCHEMA_VERSION = "st-030-report-only-gate-diagnostics-v1"
 
 GateIdentifier = Literal["gate_a_contract_safety", "gate_b_quality_parity", "gate_c_operational_reliability"]
 GateMode = Literal["report_only", "enforced"]
 EnforcementAction = Literal["downgrade", "block"]
 PolicyDecision = Literal["observe", "enforce_pass", "enforce_downgrade", "enforce_block"]
+DiagnosticGateStatus = Literal["pass", "fail"]
 
 
 @dataclass(frozen=True)
@@ -51,18 +57,68 @@ class GateDiagnostic:
 
 
 @dataclass(frozen=True)
+class DocumentAwareGateDiagnostic:
+    gate_id: DocumentAwareGateDimension
+    status: DiagnosticGateStatus
+    score: float
+    threshold: float
+    passed: bool
+    reason_codes: tuple[str, ...]
+    details: dict[str, object]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "gate_id": self.gate_id,
+            "status": self.status,
+            "score": self.score,
+            "threshold": self.threshold,
+            "passed": self.passed,
+            "reason_codes": list(self.reason_codes),
+            "details": dict(self.details),
+        }
+
+
+@dataclass(frozen=True)
+class DocumentAwareReportOnlyDiagnostics:
+    schema_version: str
+    contract_version: str
+    evaluation_mode: str
+    decision_impact: str
+    diagnostics_complete: bool
+    all_gates_green: bool
+    thresholds: dict[str, object]
+    gates: tuple[DocumentAwareGateDiagnostic, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "contract_version": self.contract_version,
+            "evaluation_mode": self.evaluation_mode,
+            "decision_impact": self.decision_impact,
+            "diagnostics_complete": self.diagnostics_complete,
+            "all_gates_green": self.all_gates_green,
+            "thresholds": dict(self.thresholds),
+            "gates": [gate.to_payload() for gate in self.gates],
+        }
+
+
+@dataclass(frozen=True)
 class ShadowGateDiagnostics:
     schema_version: str
     generated_at_utc: str
     run_id: str
     city_id: str
     meeting_id: str
+    source_id: str | None
+    source_type: str | None
     environment: str
     cohort: str
+    promotion_scope_key: str
     gate_mode: GateMode
     diagnostics_complete: bool
     all_gates_green: bool
     gates: tuple[GateDiagnostic, ...]
+    document_aware_report: DocumentAwareReportOnlyDiagnostics | None = None
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -71,8 +127,11 @@ class ShadowGateDiagnostics:
             "run_id": self.run_id,
             "city_id": self.city_id,
             "meeting_id": self.meeting_id,
+            "source_id": self.source_id,
+            "source_type": self.source_type,
             "environment": self.environment,
             "cohort": self.cohort,
+            "promotion_scope_key": self.promotion_scope_key,
             "gate_mode": self.gate_mode,
             "diagnostics_complete": self.diagnostics_complete,
             "all_gates_green": self.all_gates_green,
@@ -84,6 +143,9 @@ class ShadowGateDiagnostics:
                 }
                 for gate in self.gates
             ],
+            "document_aware_report": (
+                None if self.document_aware_report is None else self.document_aware_report.to_payload()
+            ),
         }
 
 
@@ -274,12 +336,15 @@ def evaluate_shadow_gates(
     run_id: str,
     city_id: str,
     meeting_id: str,
+    source_id: str | None,
+    source_type: str | None,
     config: QualityGateRolloutConfig,
     source_text: str,
     output: SummarizationOutput,
     summarize_status: str,
     extract_status: str,
     summarize_fallback_used: bool,
+    document_aware_gate_input: DocumentAwareGateInput | None = None,
 ) -> ShadowGateDiagnostics:
     from councilsense.app.st017_fixture_scorecard import compute_dimension_scores
 
@@ -329,18 +394,64 @@ def evaluate_shadow_gates(
     )
 
     all_gates_green = all(gate.passed for gate in diagnostics)
+    document_aware_report = None
+    if document_aware_gate_input is not None:
+        document_aware_report = _build_document_aware_report_only_diagnostics(
+            gate_input=document_aware_gate_input,
+            thresholds=config.document_aware_thresholds,
+        )
     return ShadowGateDiagnostics(
         schema_version=QUALITY_GATE_ROLLOUT_SCHEMA_VERSION,
         generated_at_utc=datetime.now(UTC).replace(microsecond=0).isoformat(),
         run_id=run_id,
         city_id=city_id,
         meeting_id=meeting_id,
+        source_id=source_id,
+        source_type=source_type,
         environment=config.environment,
         cohort=config.cohort,
+        promotion_scope_key=f"{config.environment}:{config.cohort}",
         gate_mode=config.mode,
         diagnostics_complete=True,
         all_gates_green=all_gates_green,
         gates=diagnostics,
+        document_aware_report=document_aware_report,
+    )
+
+
+def _build_document_aware_report_only_diagnostics(
+    *,
+    gate_input: DocumentAwareGateInput,
+    thresholds: DocumentAwareGateThresholds,
+) -> DocumentAwareReportOnlyDiagnostics:
+    evaluation = evaluate_document_aware_gates(gate_input=gate_input, thresholds=thresholds)
+    return DocumentAwareReportOnlyDiagnostics(
+        schema_version=DOCUMENT_AWARE_DIAGNOSTICS_SCHEMA_VERSION,
+        contract_version=evaluation.schema_version,
+        evaluation_mode="report_only",
+        decision_impact="non_blocking",
+        diagnostics_complete=True,
+        all_gates_green=evaluation.all_dimensions_passed,
+        thresholds=thresholds.to_payload(),
+        gates=_document_aware_gate_diagnostics(evaluation=evaluation),
+    )
+
+
+def _document_aware_gate_diagnostics(
+    *,
+    evaluation: DocumentAwareGateEvaluation,
+) -> tuple[DocumentAwareGateDiagnostic, ...]:
+    return tuple(
+        DocumentAwareGateDiagnostic(
+            gate_id=result.dimension,
+            status=("pass" if result.passed else "fail"),
+            score=result.score,
+            threshold=result.min_score,
+            passed=result.passed,
+            reason_codes=result.reason_codes,
+            details=result.details,
+        )
+        for result in evaluation.dimensions
     )
 
 

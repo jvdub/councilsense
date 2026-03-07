@@ -116,6 +116,8 @@ def test_st021_shadow_mode_emits_failures_but_policy_decision_remains_observe() 
         run_id="run-shadow-1",
         city_id="city-eagle-mountain-ut",
         meeting_id="meeting-shadow-1",
+        source_id="source-shadow-1",
+        source_type="minutes",
         config=config,
         source_text="",
         output=SummarizationOutput.from_sections(

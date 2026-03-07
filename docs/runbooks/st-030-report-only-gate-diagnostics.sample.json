@@ -1,0 +1,118 @@
+{
+  "schema_version": "st-021-quality-gate-rollout-v1",
+  "generated_at_utc": "2026-03-07T18:10:00+00:00",
+  "run_id": "run-st030-sample-001",
+  "city_id": "city-eagle-mountain-ut",
+  "meeting_id": "meeting-st030-sample-001",
+  "source_id": "source-st030-sample",
+  "source_type": "minutes",
+  "environment": "local",
+  "cohort": "city-eagle-mountain-ut",
+  "promotion_scope_key": "local:city-eagle-mountain-ut",
+  "gate_mode": "report_only",
+  "diagnostics_complete": true,
+  "all_gates_green": true,
+  "gates": [
+    {
+      "gate_id": "gate_a_contract_safety",
+      "passed": true,
+      "reason_codes": [
+        "gate_pass"
+      ]
+    },
+    {
+      "gate_id": "gate_b_quality_parity",
+      "passed": true,
+      "reason_codes": [
+        "gate_pass"
+      ]
+    },
+    {
+      "gate_id": "gate_c_operational_reliability",
+      "passed": true,
+      "reason_codes": [
+        "gate_pass"
+      ]
+    }
+  ],
+  "document_aware_report": {
+    "schema_version": "st-030-report-only-gate-diagnostics-v1",
+    "contract_version": "st-030-document-aware-gates-v1",
+    "evaluation_mode": "report_only",
+    "decision_impact": "non_blocking",
+    "diagnostics_complete": true,
+    "all_gates_green": false,
+    "thresholds": {
+      "schema_version": "st-030-document-aware-gates-v1",
+      "authoritative_source_type": "minutes",
+      "authority_alignment": {
+        "min_score": 1.0
+      },
+      "document_coverage_balance": {
+        "min_score": 1.0,
+        "partial_status_credit": 0.5,
+        "supporting_source_types": [
+          "agenda",
+          "packet"
+        ]
+      },
+      "citation_precision": {
+        "min_score": 0.5
+      }
+    },
+    "gates": [
+      {
+        "gate_id": "authority_alignment",
+        "status": "pass",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "reason_codes": [
+          "document_aware_gate_pass"
+        ],
+        "details": {
+          "authority_outcome": "minutes_authoritative",
+          "authoritative_source_status": "present",
+          "authority_conflict_count": 0,
+          "authority_reason_codes": []
+        }
+      },
+      {
+        "gate_id": "document_coverage_balance",
+        "status": "fail",
+        "score": 0.5,
+        "threshold": 1.0,
+        "passed": false,
+        "reason_codes": [
+          "document_coverage_balance_below_threshold"
+        ],
+        "details": {
+          "source_statuses": {
+            "agenda": "present",
+            "packet": "missing"
+          },
+          "partial_status_credit": 0.5,
+          "supporting_source_types": [
+            "agenda",
+            "packet"
+          ]
+        }
+      },
+      {
+        "gate_id": "citation_precision",
+        "status": "pass",
+        "score": 1.0,
+        "threshold": 0.5,
+        "passed": true,
+        "reason_codes": [
+          "document_aware_gate_pass"
+        ],
+        "details": {
+          "citation_pointer_count": 2,
+          "citation_precision_ratio": 1.0,
+          "authoritative_locator_precision": "precise"
+        }
+      }
+    ]
+  }
+}
