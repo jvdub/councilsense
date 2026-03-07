@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Literal, cast
 
 from councilsense.app.summarization import SUMMARIZATION_CONTRACT_VERSION, SummarizationOutput
+from councilsense.app.st030_document_aware_gates import (
+    DocumentAwareGateThresholds,
+    default_document_aware_thresholds_payload,
+    parse_document_aware_thresholds,
+)
 
 
 QUALITY_GATE_ROLLOUT_SCHEMA_VERSION = "st-021-quality-gate-rollout-v1"
@@ -35,6 +40,7 @@ class QualityGateRolloutConfig:
     promotion_required: bool
     behavior_flags: QualityGateBehaviorFlags
     diagnostics_artifact_path: str | None
+    document_aware_thresholds: DocumentAwareGateThresholds
 
 
 @dataclass(frozen=True)
@@ -145,7 +151,10 @@ def _merge_profile(*, base: dict[str, object], override: dict[str, object]) -> d
     merged = dict(base)
     for key, value in override.items():
         if value is not None:
-            merged[key] = value
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = _merge_profile(base=cast(dict[str, object], merged[key]), override=value)
+            else:
+                merged[key] = value
     return merged
 
 
@@ -161,6 +170,7 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
         "enforcement_action": "downgrade",
         "promotion_required": True,
         "diagnostics_artifact_path": os.getenv("COUNCILSENSE_QG_DIAGNOSTICS_ARTIFACT_PATH"),
+        "document_aware_thresholds": default_document_aware_thresholds_payload(),
     }
 
     raw_json = os.getenv("COUNCILSENSE_QG_CONFIG_JSON")
@@ -233,6 +243,12 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
         evidence_projection_enabled = True
 
     diagnostics_artifact_path = _parse_path_field(payload=defaults, key="diagnostics_artifact_path")
+    raw_document_aware_thresholds = defaults.get("document_aware_thresholds")
+    if raw_document_aware_thresholds is not None and not isinstance(raw_document_aware_thresholds, dict):
+        raise ValueError("document_aware_thresholds must be an object when provided")
+    document_aware_thresholds = parse_document_aware_thresholds(
+        payload=cast(dict[str, object] | None, raw_document_aware_thresholds),
+    )
 
     if mode == "report_only" and enforcement_action == "block":
         raise ValueError("enforcement_action=block is not valid when gate_mode=report_only")
@@ -249,6 +265,7 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
             evidence_projection_enabled=evidence_projection_enabled,
         ),
         diagnostics_artifact_path=diagnostics_artifact_path,
+        document_aware_thresholds=document_aware_thresholds,
     )
 
 
