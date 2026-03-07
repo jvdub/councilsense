@@ -22,6 +22,9 @@ BASELINE_SCHEMA_VERSION = "st-017-fixture-baseline-v1"
 GATE_B_SCHEMA_VERSION = "st-017-gate-b-verification-v1"
 TOPIC_GAP_MATRIX_SCHEMA_VERSION = "st-019-topic-gap-matrix-v1"
 SPECIFICITY_LOCATOR_GAP_MATRIX_SCHEMA_VERSION = "st-020-specificity-locator-gap-matrix-v1"
+PRECISION_DISTRIBUTION_REPORT_SCHEMA_VERSION = "st-026-precision-distribution-report-v1"
+
+_PRECISION_CLASSES = ("offset", "span", "section", "file")
 
 GENERIC_TOPIC_TOKENS = frozenset(
     {
@@ -660,11 +663,13 @@ def _evidence_count_precision_score(*, output: SummarizationOutput, min_evidence
 
     precision_ratio = precise_count / evidence_count if evidence_count else 0.0
     score = (count_ratio + precision_ratio) / 2.0
+    precision_distribution = _build_precision_distribution_details(output=output)
     return score, {
         "evidence_pointer_count": evidence_count,
         "precision_ratio": precision_ratio,
         "precise_pointer_count": precise_count,
         "minimum_evidence_count": min_evidence_count,
+        **precision_distribution,
     }
 
 
@@ -683,6 +688,151 @@ def _list_unique_pointers(output: SummarizationOutput) -> tuple[ClaimEvidencePoi
             seen.add(key)
             unique.append(pointer)
     return tuple(unique)
+
+
+def _build_precision_distribution_details(*, output: SummarizationOutput) -> dict[str, object]:
+    groups = _group_pointers_by_reference(output=output)
+    projected = _select_projected_precision_pointers(groups=groups)
+
+    grounded_reference_count = len(groups)
+    projected_reference_count = len(projected)
+    metadata_unavailable_count = grounded_reference_count - projected_reference_count
+
+    counts = {precision: 0 for precision in _PRECISION_CLASSES}
+    for pointer in projected:
+        precision = _normalized_precision(pointer.precision)
+        if precision is None:
+            continue
+        counts[precision] += 1
+
+    if grounded_reference_count == 0:
+        availability = "none"
+    elif projected_reference_count == 0:
+        availability = "unavailable"
+    elif projected_reference_count == grounded_reference_count:
+        availability = "available"
+    else:
+        availability = "partial"
+
+    finer_than_file_count = counts["offset"] + counts["span"] + counts["section"]
+    projected_ratios = {
+        precision: round((count / projected_reference_count), 4) if projected_reference_count else 0.0
+        for precision, count in counts.items()
+    }
+    finer_than_file_ratio = round((finer_than_file_count / projected_reference_count), 4) if projected_reference_count else None
+    metadata_coverage_ratio = round((projected_reference_count / grounded_reference_count), 4) if grounded_reference_count else 0.0
+
+    return {
+        "grounded_reference_count": grounded_reference_count,
+        "projected_reference_count": projected_reference_count,
+        "projected_reference_ratio": metadata_coverage_ratio,
+        "precision_metadata_unavailable_count": metadata_unavailable_count,
+        "precision_metadata_availability": availability,
+        "precision_class_counts": counts,
+        "precision_class_ratios": projected_ratios,
+        "finer_than_file_count": finer_than_file_count,
+        "finer_than_file_ratio": finer_than_file_ratio,
+        "majority_finer_than_file_applicable": projected_reference_count > 0,
+        "majority_finer_than_file": (finer_than_file_ratio is not None and finer_than_file_ratio > 0.5),
+    }
+
+
+def _group_pointers_by_reference(*, output: SummarizationOutput) -> dict[tuple[str, str], list[ClaimEvidencePointer]]:
+    groups: dict[tuple[str, str], list[ClaimEvidencePointer]] = {}
+    for claim in output.claims:
+        for pointer in claim.evidence:
+            key = (pointer.artifact_id, _normalize_reference_text(pointer.excerpt))
+            groups.setdefault(key, []).append(pointer)
+    return groups
+
+
+def _select_projected_precision_pointers(
+    *,
+    groups: dict[tuple[str, str], list[ClaimEvidencePointer]],
+) -> tuple[ClaimEvidencePointer, ...]:
+    projected: list[ClaimEvidencePointer] = []
+    for key in sorted(groups):
+        candidates = [pointer for pointer in groups[key] if _supports_precision_projection(pointer)]
+        if not candidates:
+            continue
+        projected.append(sorted(candidates, key=_pointer_preference_key)[0])
+
+    return tuple(sorted(projected, key=_pointer_order_key))
+
+
+def _normalize_reference_text(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
+def _normalized_precision(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if normalized == "document":
+        normalized = "file"
+    if normalized in _PRECISION_CLASSES:
+        return normalized
+    return None
+
+
+def _supports_precision_projection(pointer: ClaimEvidencePointer) -> bool:
+    return all(
+        value is not None and value.strip()
+        for value in (pointer.document_kind, pointer.section_path)
+    ) and _normalized_precision(pointer.precision) is not None
+
+
+def _pointer_precision_rank(pointer: ClaimEvidencePointer) -> int:
+    precision = _normalized_precision(pointer.precision)
+    if precision is not None:
+        return _PRECISION_CLASSES.index(precision)
+    return len(_PRECISION_CLASSES)
+
+
+def _pointer_metadata_completeness(pointer: ClaimEvidencePointer) -> int:
+    score = 0
+    for value in (
+        pointer.document_id,
+        pointer.span_id,
+        pointer.document_kind,
+        pointer.section_path,
+        pointer.precision,
+        pointer.confidence,
+        pointer.section_ref,
+    ):
+        if value is not None and value.strip():
+            score += 1
+    if pointer.char_start is not None:
+        score += 1
+    if pointer.char_end is not None:
+        score += 1
+    return score
+
+
+def _stable_pointer_section(pointer: ClaimEvidencePointer) -> str:
+    return ((pointer.section_path or pointer.section_ref) or "").strip().lower()
+
+
+def _pointer_preference_key(pointer: ClaimEvidencePointer) -> tuple[int, int, str, int, int, str, str]:
+    return (
+        _pointer_precision_rank(pointer),
+        -_pointer_metadata_completeness(pointer),
+        _stable_pointer_section(pointer),
+        pointer.char_start if pointer.char_start is not None else 10**9,
+        pointer.char_end if pointer.char_end is not None else 10**9,
+        _normalize_reference_text(pointer.excerpt),
+        pointer.artifact_id,
+    )
+
+
+def _pointer_order_key(pointer: ClaimEvidencePointer) -> tuple[int, str, str, str, int, int, str]:
+    return (
+        _pointer_precision_rank(pointer),
+        (pointer.document_kind or "").strip().lower(),
+        pointer.artifact_id,
+        _stable_pointer_section(pointer),
+        pointer.char_start if pointer.char_start is not None else 10**9,
+        pointer.char_end if pointer.char_end is not None else 10**9,
+        _normalize_reference_text(pointer.excerpt),
+    )
 
 
 def build_scorecard(
@@ -712,6 +862,7 @@ def build_scorecard(
                 "meeting_id": item.fixture.meeting_id,
                 "meeting_datetime_utc": item.fixture.meeting_datetime_utc,
                 "source_locator": item.fixture.source_locator,
+                "source_type": item.fixture.source_type,
                 "structural_profile": item.fixture.structural_profile,
                 "process_status": item.process_status,
                 "dimensions": {
@@ -915,6 +1066,178 @@ def build_specificity_locator_gap_matrix(
 
 def serialize_specificity_locator_gap_matrix(matrix: dict[str, object]) -> str:
     return f"{json.dumps(matrix, indent=2, sort_keys=True)}\n"
+
+
+def build_precision_distribution_report(
+    *,
+    scorecard: dict[str, object],
+    generated_at_utc: datetime | None = None,
+) -> dict[str, object]:
+    timestamp = (generated_at_utc or datetime.now(UTC)).replace(microsecond=0).isoformat()
+    fixture_rows = sorted(
+        _read_scorecard_fixture_rows(cast_payload=scorecard),
+        key=lambda row: (
+            str(row.get("city_id") or ""),
+            str(row.get("source_type") or ""),
+            str(row.get("source_locator") or ""),
+            str(row.get("fixture_id") or ""),
+        ),
+    )
+
+    run_rows: list[dict[str, object]] = []
+    city_groups: dict[str, list[dict[str, object]]] = {}
+    source_groups: dict[str, list[dict[str, object]]] = {}
+    city_source_groups: dict[tuple[str, str], list[dict[str, object]]] = {}
+    category_totals = {
+        "runs_with_full_precision_metadata": 0,
+        "runs_with_partial_precision_metadata": 0,
+        "runs_without_precision_metadata": 0,
+        "runs_without_grounded_references": 0,
+        "runs_meeting_majority_finer_than_file": 0,
+        "runs_below_majority_finer_than_file": 0,
+    }
+
+    for row in fixture_rows:
+        dimensions = row.get("dimensions") if isinstance(row.get("dimensions"), dict) else {}
+        evidence = dimensions.get("evidence_count_precision") if isinstance(dimensions, dict) else {}
+        details = evidence.get("details") if isinstance(evidence, dict) else {}
+        metrics = _read_precision_distribution_metrics(details if isinstance(details, dict) else {})
+
+        run_row = {
+            "fixture_id": str(row.get("fixture_id") or ""),
+            "city_id": str(row.get("city_id") or ""),
+            "meeting_id": str(row.get("meeting_id") or ""),
+            "source_type": str(row.get("source_type") or ""),
+            "source_locator": str(row.get("source_locator") or ""),
+            "process_status": str(row.get("process_status") or ""),
+            **metrics,
+        }
+        run_rows.append(run_row)
+
+        city_id = str(run_row["city_id"])
+        source_type = str(run_row["source_type"])
+        city_groups.setdefault(city_id, []).append(run_row)
+        source_groups.setdefault(source_type, []).append(run_row)
+        city_source_groups.setdefault((city_id, source_type), []).append(run_row)
+
+        availability = str(metrics["precision_metadata_availability"])
+        if availability == "available":
+            category_totals["runs_with_full_precision_metadata"] += 1
+        elif availability == "partial":
+            category_totals["runs_with_partial_precision_metadata"] += 1
+        elif availability == "unavailable":
+            category_totals["runs_without_precision_metadata"] += 1
+        else:
+            category_totals["runs_without_grounded_references"] += 1
+
+        if bool(metrics["majority_finer_than_file"]):
+            category_totals["runs_meeting_majority_finer_than_file"] += 1
+        elif bool(metrics["majority_finer_than_file_applicable"]):
+            category_totals["runs_below_majority_finer_than_file"] += 1
+
+    return {
+        "schema_version": PRECISION_DISTRIBUTION_REPORT_SCHEMA_VERSION,
+        "generated_at_utc": timestamp,
+        "rubric_version": scorecard.get("rubric_version"),
+        "manifest_path": scorecard.get("manifest_path"),
+        "fixture_count": len(run_rows),
+        "category_totals": category_totals,
+        "run_summary": _aggregate_precision_distribution(rows=run_rows),
+        "city_summaries": [
+            {
+                "city_id": city_id,
+                **_aggregate_precision_distribution(rows=rows),
+            }
+            for city_id, rows in sorted(city_groups.items())
+        ],
+        "source_summaries": [
+            {
+                "source_type": source_type,
+                **_aggregate_precision_distribution(rows=rows),
+            }
+            for source_type, rows in sorted(source_groups.items())
+        ],
+        "city_source_summaries": [
+            {
+                "city_id": city_id,
+                "source_type": source_type,
+                **_aggregate_precision_distribution(rows=rows),
+            }
+            for (city_id, source_type), rows in sorted(city_source_groups.items())
+        ],
+        "runs": run_rows,
+    }
+
+
+def serialize_precision_distribution_report(report: dict[str, object]) -> str:
+    return f"{json.dumps(report, indent=2, sort_keys=True)}\n"
+
+
+def _read_precision_distribution_metrics(details: dict[str, object]) -> dict[str, object]:
+    counts_raw = details.get("precision_class_counts") if isinstance(details.get("precision_class_counts"), dict) else {}
+    ratios_raw = details.get("precision_class_ratios") if isinstance(details.get("precision_class_ratios"), dict) else {}
+
+    counts = {precision: int(counts_raw.get(precision, 0) or 0) for precision in _PRECISION_CLASSES}
+    ratios = {precision: float(ratios_raw.get(precision, 0.0) or 0.0) for precision in _PRECISION_CLASSES}
+
+    finer_than_file_ratio = details.get("finer_than_file_ratio")
+    return {
+        "grounded_reference_count": int(details.get("grounded_reference_count", 0) or 0),
+        "projected_reference_count": int(details.get("projected_reference_count", 0) or 0),
+        "projected_reference_ratio": float(details.get("projected_reference_ratio", 0.0) or 0.0),
+        "precision_metadata_unavailable_count": int(details.get("precision_metadata_unavailable_count", 0) or 0),
+        "precision_metadata_availability": str(details.get("precision_metadata_availability") or "none"),
+        "precision_class_counts": counts,
+        "precision_class_ratios": ratios,
+        "finer_than_file_count": int(details.get("finer_than_file_count", 0) or 0),
+        "finer_than_file_ratio": (float(finer_than_file_ratio) if finer_than_file_ratio is not None else None),
+        "majority_finer_than_file_applicable": bool(details.get("majority_finer_than_file_applicable", False)),
+        "majority_finer_than_file": bool(details.get("majority_finer_than_file", False)),
+    }
+
+
+def _aggregate_precision_distribution(*, rows: list[dict[str, object]]) -> dict[str, object]:
+    counts = {precision: 0 for precision in _PRECISION_CLASSES}
+    grounded_reference_count = 0
+    projected_reference_count = 0
+    metadata_unavailable_count = 0
+    run_count = len(rows)
+    majority_met = 0
+    majority_applicable = 0
+
+    for row in rows:
+        grounded_reference_count += int(row.get("grounded_reference_count", 0) or 0)
+        projected_reference_count += int(row.get("projected_reference_count", 0) or 0)
+        metadata_unavailable_count += int(row.get("precision_metadata_unavailable_count", 0) or 0)
+        row_counts = row.get("precision_class_counts") if isinstance(row.get("precision_class_counts"), dict) else {}
+        for precision in _PRECISION_CLASSES:
+            counts[precision] += int(row_counts.get(precision, 0) or 0)
+        if bool(row.get("majority_finer_than_file_applicable", False)):
+            majority_applicable += 1
+        if bool(row.get("majority_finer_than_file", False)):
+            majority_met += 1
+
+    finer_than_file_count = counts["offset"] + counts["span"] + counts["section"]
+    ratios = {
+        precision: round((count / projected_reference_count), 4) if projected_reference_count else 0.0
+        for precision, count in counts.items()
+    }
+    finer_than_file_ratio = round((finer_than_file_count / projected_reference_count), 4) if projected_reference_count else None
+    projected_reference_ratio = round((projected_reference_count / grounded_reference_count), 4) if grounded_reference_count else 0.0
+
+    return {
+        "run_count": run_count,
+        "grounded_reference_count": grounded_reference_count,
+        "projected_reference_count": projected_reference_count,
+        "projected_reference_ratio": projected_reference_ratio,
+        "precision_metadata_unavailable_count": metadata_unavailable_count,
+        "precision_class_counts": counts,
+        "precision_class_ratios": ratios,
+        "finer_than_file_count": finer_than_file_count,
+        "finer_than_file_ratio": finer_than_file_ratio,
+        "majority_finer_than_file_run_count": majority_met,
+        "majority_finer_than_file_applicable_run_count": majority_applicable,
+    }
 
 
 def build_baseline_snapshot(

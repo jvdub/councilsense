@@ -1,0 +1,328 @@
+{
+  "category_totals": {
+    "runs_below_majority_finer_than_file": 1,
+    "runs_meeting_majority_finer_than_file": 1,
+    "runs_with_full_precision_metadata": 1,
+    "runs_with_partial_precision_metadata": 1,
+    "runs_without_grounded_references": 0,
+    "runs_without_precision_metadata": 1
+  },
+  "city_source_summaries": [
+    {
+      "city_id": "city-alpha",
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": null,
+      "grounded_reference_count": 2,
+      "majority_finer_than_file_applicable_run_count": 0,
+      "majority_finer_than_file_run_count": 0,
+      "precision_class_counts": {
+        "file": 0,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 0.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_unavailable_count": 2,
+      "projected_reference_count": 0,
+      "projected_reference_ratio": 0.0,
+      "run_count": 1,
+      "source_type": "agenda"
+    },
+    {
+      "city_id": "city-alpha",
+      "finer_than_file_count": 3,
+      "finer_than_file_ratio": 0.75,
+      "grounded_reference_count": 5,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 1,
+      "precision_class_counts": {
+        "file": 1,
+        "offset": 1,
+        "section": 1,
+        "span": 1
+      },
+      "precision_class_ratios": {
+        "file": 0.25,
+        "offset": 0.25,
+        "section": 0.25,
+        "span": 0.25
+      },
+      "precision_metadata_unavailable_count": 1,
+      "projected_reference_count": 4,
+      "projected_reference_ratio": 0.8,
+      "run_count": 1,
+      "source_type": "minutes"
+    },
+    {
+      "city_id": "city-beta",
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": 0.0,
+      "grounded_reference_count": 2,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 0,
+      "precision_class_counts": {
+        "file": 2,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 1.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_unavailable_count": 0,
+      "projected_reference_count": 2,
+      "projected_reference_ratio": 1.0,
+      "run_count": 1,
+      "source_type": "packet"
+    }
+  ],
+  "city_summaries": [
+    {
+      "city_id": "city-alpha",
+      "finer_than_file_count": 3,
+      "finer_than_file_ratio": 0.75,
+      "grounded_reference_count": 7,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 1,
+      "precision_class_counts": {
+        "file": 1,
+        "offset": 1,
+        "section": 1,
+        "span": 1
+      },
+      "precision_class_ratios": {
+        "file": 0.25,
+        "offset": 0.25,
+        "section": 0.25,
+        "span": 0.25
+      },
+      "precision_metadata_unavailable_count": 3,
+      "projected_reference_count": 4,
+      "projected_reference_ratio": 0.5714,
+      "run_count": 2
+    },
+    {
+      "city_id": "city-beta",
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": 0.0,
+      "grounded_reference_count": 2,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 0,
+      "precision_class_counts": {
+        "file": 2,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 1.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_unavailable_count": 0,
+      "projected_reference_count": 2,
+      "projected_reference_ratio": 1.0,
+      "run_count": 1
+    }
+  ],
+  "fixture_count": 3,
+  "generated_at_utc": "2026-03-07T16:00:00+00:00",
+  "manifest_path": "synthetic://st-026-precision-distribution-report",
+  "rubric_version": "st-017-rubric-v1",
+  "run_summary": {
+    "finer_than_file_count": 3,
+    "finer_than_file_ratio": 0.5,
+    "grounded_reference_count": 9,
+    "majority_finer_than_file_applicable_run_count": 2,
+    "majority_finer_than_file_run_count": 1,
+    "precision_class_counts": {
+      "file": 3,
+      "offset": 1,
+      "section": 1,
+      "span": 1
+    },
+    "precision_class_ratios": {
+      "file": 0.5,
+      "offset": 0.1667,
+      "section": 0.1667,
+      "span": 0.1667
+    },
+    "precision_metadata_unavailable_count": 3,
+    "projected_reference_count": 6,
+    "projected_reference_ratio": 0.6667,
+    "run_count": 3
+  },
+  "runs": [
+    {
+      "city_id": "city-alpha",
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": null,
+      "fixture_id": "fx-alpha-agenda",
+      "grounded_reference_count": 2,
+      "majority_finer_than_file": false,
+      "majority_finer_than_file_applicable": false,
+      "meeting_id": "meeting-alpha-agenda",
+      "precision_class_counts": {
+        "file": 0,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 0.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_availability": "unavailable",
+      "precision_metadata_unavailable_count": 2,
+      "process_status": "processed",
+      "projected_reference_count": 0,
+      "projected_reference_ratio": 0.0,
+      "source_locator": "fixture://alpha/agenda",
+      "source_type": "agenda"
+    },
+    {
+      "city_id": "city-alpha",
+      "finer_than_file_count": 3,
+      "finer_than_file_ratio": 0.75,
+      "fixture_id": "fx-alpha-minutes",
+      "grounded_reference_count": 5,
+      "majority_finer_than_file": true,
+      "majority_finer_than_file_applicable": true,
+      "meeting_id": "meeting-alpha-minutes",
+      "precision_class_counts": {
+        "file": 1,
+        "offset": 1,
+        "section": 1,
+        "span": 1
+      },
+      "precision_class_ratios": {
+        "file": 0.25,
+        "offset": 0.25,
+        "section": 0.25,
+        "span": 0.25
+      },
+      "precision_metadata_availability": "partial",
+      "precision_metadata_unavailable_count": 1,
+      "process_status": "processed",
+      "projected_reference_count": 4,
+      "projected_reference_ratio": 0.8,
+      "source_locator": "fixture://alpha/minutes",
+      "source_type": "minutes"
+    },
+    {
+      "city_id": "city-beta",
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": 0.0,
+      "fixture_id": "fx-beta-packet",
+      "grounded_reference_count": 2,
+      "majority_finer_than_file": false,
+      "majority_finer_than_file_applicable": true,
+      "meeting_id": "meeting-beta-packet",
+      "precision_class_counts": {
+        "file": 2,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 1.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_availability": "available",
+      "precision_metadata_unavailable_count": 0,
+      "process_status": "processed",
+      "projected_reference_count": 2,
+      "projected_reference_ratio": 1.0,
+      "source_locator": "fixture://beta/packet",
+      "source_type": "packet"
+    }
+  ],
+  "schema_version": "st-026-precision-distribution-report-v1",
+  "source_summaries": [
+    {
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": null,
+      "grounded_reference_count": 2,
+      "majority_finer_than_file_applicable_run_count": 0,
+      "majority_finer_than_file_run_count": 0,
+      "precision_class_counts": {
+        "file": 0,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 0.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_unavailable_count": 2,
+      "projected_reference_count": 0,
+      "projected_reference_ratio": 0.0,
+      "run_count": 1,
+      "source_type": "agenda"
+    },
+    {
+      "finer_than_file_count": 3,
+      "finer_than_file_ratio": 0.75,
+      "grounded_reference_count": 5,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 1,
+      "precision_class_counts": {
+        "file": 1,
+        "offset": 1,
+        "section": 1,
+        "span": 1
+      },
+      "precision_class_ratios": {
+        "file": 0.25,
+        "offset": 0.25,
+        "section": 0.25,
+        "span": 0.25
+      },
+      "precision_metadata_unavailable_count": 1,
+      "projected_reference_count": 4,
+      "projected_reference_ratio": 0.8,
+      "run_count": 1,
+      "source_type": "minutes"
+    },
+    {
+      "finer_than_file_count": 0,
+      "finer_than_file_ratio": 0.0,
+      "grounded_reference_count": 2,
+      "majority_finer_than_file_applicable_run_count": 1,
+      "majority_finer_than_file_run_count": 0,
+      "precision_class_counts": {
+        "file": 2,
+        "offset": 0,
+        "section": 0,
+        "span": 0
+      },
+      "precision_class_ratios": {
+        "file": 1.0,
+        "offset": 0.0,
+        "section": 0.0,
+        "span": 0.0
+      },
+      "precision_metadata_unavailable_count": 0,
+      "projected_reference_count": 2,
+      "projected_reference_ratio": 1.0,
+      "run_count": 1,
+      "source_type": "packet"
+    }
+  ]
+}
