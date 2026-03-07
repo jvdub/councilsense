@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { fetchBootstrap } from "../../../lib/api/bootstrap";
 import { fetchMeetingDetail } from "../../../lib/api/meetings";
 import { getAuthTokenFromCookie } from "../../../lib/auth/session";
+import { getMeetingDetailFeatureFlags, resolveMeetingDetailRenderState } from "../../../lib/meetings/detailRenderMode";
 import { getOnboardingRedirectPath } from "../../../lib/onboarding/guard";
 import { ConfidenceBanner } from "./ConfidenceBanner";
 import { EvidenceReferences } from "./EvidenceReferences";
@@ -82,8 +83,19 @@ export default async function MeetingDetailPage({
     );
   }
 
+  const renderState = resolveMeetingDetailRenderState(
+    detailResponse,
+    getMeetingDetailFeatureFlags(),
+  );
+
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <main
+      className="mx-auto flex w-full max-w-5xl flex-col gap-6"
+      data-render-mode={renderState.mode}
+      data-render-fallback={renderState.modeFallbackReason ?? undefined}
+      data-mismatch-signals={renderState.mismatchSignalsEnabled ? "enabled" : "disabled"}
+      data-mismatch-fallback={renderState.mismatchFallbackReason ?? undefined}
+    >
       <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-xl shadow-slate-200/60 backdrop-blur">
         <p>
           <Link href="/meetings" className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline">

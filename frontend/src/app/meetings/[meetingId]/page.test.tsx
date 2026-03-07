@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MeetingDetailPage from "./page";
+import {
+  MEETING_DETAIL_MISMATCH_SIGNALS_FLAG,
+  MEETING_DETAIL_PLANNED_OUTCOMES_FLAG,
+} from "../../../lib/meetings/detailRenderMode";
 
 const redirectMock = vi.fn((path: string) => {
   throw new Error(`REDIRECT:${path}`);
@@ -11,6 +15,8 @@ const getAuthTokenFromCookieMock = vi.fn();
 const fetchBootstrapMock = vi.fn();
 const getOnboardingRedirectPathMock = vi.fn();
 const fetchMeetingDetailMock = vi.fn();
+const originalPlannedOutcomesFlag = process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
+const originalMismatchSignalsFlag = process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
@@ -51,6 +57,8 @@ describe("MeetingDetailPage", () => {
     getAuthTokenFromCookieMock.mockResolvedValue("token-abc");
     fetchBootstrapMock.mockResolvedValue(returningBootstrap);
     getOnboardingRedirectPathMock.mockReturnValue(null);
+    delete process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
+    delete process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
   });
 
   it("redirects unauthenticated users to sign-in", async () => {
@@ -98,11 +106,13 @@ describe("MeetingDetailPage", () => {
       ],
     });
 
-    render(
+    const { container } = render(
       await MeetingDetailPage({
         params: Promise.resolve({ meetingId: "meeting-1" }),
       }),
     );
+
+    const main = container.querySelector("main[data-render-mode]");
 
     expect(screen.getByRole("heading", { name: "Council Session" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
@@ -120,6 +130,8 @@ describe("MeetingDetailPage", () => {
       "href",
       "/meetings",
     );
+    expect(main).toHaveAttribute("data-render-mode", "baseline");
+    expect(main).toHaveAttribute("data-render-fallback", "planned_outcomes_flag_disabled");
     expect(fetchMeetingDetailMock).toHaveBeenCalledWith("token-abc", "meeting-1");
     expect(redirectMock).not.toHaveBeenCalled();
   });
@@ -176,4 +188,160 @@ describe("MeetingDetailPage", () => {
       screen.getByText("Unable to load meeting detail. Service unavailable"),
     ).toBeInTheDocument();
   });
+
+  it("resolves additive mode when flags are on and additive payloads are complete", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+    process.env[MEETING_DETAIL_MISMATCH_SIGNALS_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-4",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-4",
+      title: "Transit Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-4",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Council reviewed transit procurement.",
+      key_decisions: ["Accepted report"],
+      key_actions: ["Staff to return with revisions"],
+      notable_topics: ["Transit"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        source_coverage: {
+          minutes: "present",
+          agenda: "present",
+          packet: "present",
+        },
+        items: [
+          {
+            planned_id: "planned-4",
+            title: "Approve transit procurement",
+            category: "procurement",
+            status: "planned",
+            confidence: "high",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      outcomes: {
+        generated_at: "2026-03-07T14:05:00Z",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-4",
+            title: "Transit procurement deferred",
+            result: "deferred",
+            confidence: "high",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      planned_outcome_mismatches: {
+        summary: {
+          total: 1,
+          high: 1,
+          medium: 0,
+          low: 0,
+        },
+        items: [
+          {
+            mismatch_id: "mismatch-4",
+            planned_id: "planned-4",
+            outcome_id: "outcome-4",
+            severity: "high",
+            mismatch_type: "disposition_change",
+            description: "Deferred instead of approved.",
+            reason_codes: ["outcome_changed"],
+            evidence_references_v2: [],
+          },
+        ],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-4" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-render-mode]");
+
+    expect(main).toHaveAttribute("data-render-mode", "additive");
+    expect(main).toHaveAttribute("data-mismatch-signals", "enabled");
+    expect(main).not.toHaveAttribute("data-render-fallback");
+  });
+
+  it("falls back to baseline without a user-visible error when additive payloads are partial", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+    process.env[MEETING_DETAIL_MISMATCH_SIGNALS_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-5",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-5",
+      title: "Utilities Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "medium",
+      reader_low_confidence: false,
+      publication_id: "publication-5",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Council discussed utilities planning.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Utilities"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        source_coverage: {
+          minutes: "missing",
+          agenda: "present",
+          packet: "present",
+        },
+        items: [
+          {
+            planned_id: "planned-5",
+            title: "Rate adjustment resolution",
+            category: "ordinance",
+            status: "planned",
+            confidence: "medium",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-5" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-render-mode]");
+
+    expect(main).toHaveAttribute("data-render-mode", "baseline");
+    expect(main).toHaveAttribute("data-render-fallback", "missing_outcomes_block");
+    expect(container.textContent).not.toContain("Unable to load meeting detail");
+    expect(screen.getByText("Council discussed utilities planning.")).toBeInTheDocument();
+  });
+});
+
+afterAll(() => {
+  if (originalPlannedOutcomesFlag === undefined) {
+    delete process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
+  } else {
+    process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED = originalPlannedOutcomesFlag;
+  }
+
+  if (originalMismatchSignalsFlag === undefined) {
+    delete process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
+  } else {
+    process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED = originalMismatchSignalsFlag;
+  }
 });
