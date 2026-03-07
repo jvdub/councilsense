@@ -44,6 +44,17 @@ Evidence references are arrays of objects with these semantics.
 | `confidence`    | `"high" \| "medium" \| "low"`               | yes      | not nullable | Evidence confidence for the specific locator.                   |
 | `excerpt`       | `string`                                    | yes      | not nullable | Human-readable supporting excerpt.                              |
 
+Equal-precision ordering for serialized evidence references uses this deterministic tie-break chain:
+
+- `document_kind` ascending
+- `artifact_id` ascending
+- `section_path` when present, otherwise `section_ref`, ascending
+- `char_start` ascending when present
+- `char_end` ascending when present
+- normalized excerpt text ascending
+
+This ordering is comparator-based and remains stable across reruns for identical source inputs.
+
 ## `planned` block shape
 
 ```json

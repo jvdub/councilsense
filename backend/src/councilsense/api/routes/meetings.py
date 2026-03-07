@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
@@ -48,6 +48,9 @@ class MeetingEvidencePointerResponse(BaseModel):
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_kind: str | None = Field(default=None, exclude=True)
+    section_path: str | None = Field(default=None, exclude=True)
+    precision: str | None = Field(default=None, exclude=True)
 
 
 class MeetingClaimResponse(BaseModel):
@@ -92,13 +95,29 @@ def _is_file_level_section(section_ref: str | None) -> bool:
     return (section_ref or "").strip().lower() in {"", "artifact.html", "artifact.pdf", "meeting.metadata"}
 
 
+_PRECISION_RANKS = {
+    "offset": 0,
+    "span": 1,
+    "section": 2,
+    "file": 3,
+}
+
+
+def _stable_section_locator(evidence: MeetingEvidencePointerResponse) -> str:
+    value = evidence.section_path or evidence.section_ref or ""
+    return value.strip().lower()
+
+
 def _precision_rank(evidence: MeetingEvidencePointerResponse) -> int:
+    if evidence.precision in _PRECISION_RANKS:
+        return _PRECISION_RANKS[evidence.precision]
+
     has_offsets = evidence.char_start is not None and evidence.char_end is not None
     if has_offsets:
         return 0
     if not _is_file_level_section(evidence.section_ref):
-        return 1
-    return 2
+        return 2
+    return 3
 
 
 def _equivalence_key(evidence: MeetingEvidencePointerResponse) -> tuple[str, str]:
@@ -110,52 +129,37 @@ def _prefer_evidence_pointer(
     current: MeetingEvidencePointerResponse,
     challenger: MeetingEvidencePointerResponse,
 ) -> MeetingEvidencePointerResponse:
-    current_rank = _precision_rank(current)
-    challenger_rank = _precision_rank(challenger)
-    if challenger_rank < current_rank:
-        return challenger
-    if challenger_rank > current_rank:
-        return current
-
-    current_span = (
-        current.char_start if current.char_start is not None else 10**9,
-        current.char_end if current.char_end is not None else 10**9,
-    )
-    challenger_span = (
-        challenger.char_start if challenger.char_start is not None else 10**9,
-        challenger.char_end if challenger.char_end is not None else 10**9,
-    )
-    if challenger_span < current_span:
+    if _evidence_order_key(challenger) < _evidence_order_key(current):
         return challenger
     return current
 
 
+def _evidence_order_key(evidence: MeetingEvidencePointerResponse) -> tuple[int, str, str, str, int, int, str]:
+    return (
+        _precision_rank(evidence),
+        (evidence.document_kind or "").strip().lower(),
+        evidence.artifact_id,
+        _stable_section_locator(evidence),
+        evidence.char_start if evidence.char_start is not None else 10**9,
+        evidence.char_end if evidence.char_end is not None else 10**9,
+        _normalize_reference_text(evidence.excerpt),
+    )
+
+
 def _build_evidence_references(claims: list[MeetingClaimResponse]) -> list[str]:
-    deduped_references: dict[tuple[str, str], tuple[MeetingEvidencePointerResponse, int]] = {}
-    for claim_index, claim in enumerate(claims):
-        for evidence_index, evidence in enumerate(claim.evidence):
+    deduped_references: dict[tuple[str, str], MeetingEvidencePointerResponse] = {}
+    for claim in claims:
+        for evidence in claim.evidence:
             key = _equivalence_key(evidence)
             seen = deduped_references.get(key)
-            sequence = claim_index * 1000 + evidence_index
             if seen is None:
-                deduped_references[key] = (evidence, sequence)
+                deduped_references[key] = evidence
                 continue
 
-            selected = _prefer_evidence_pointer(current=seen[0], challenger=evidence)
-            deduped_references[key] = (selected, seen[1])
+            deduped_references[key] = _prefer_evidence_pointer(current=seen, challenger=evidence)
 
-    ordered = sorted(
-        deduped_references.values(),
-        key=lambda item: (
-            _precision_rank(item[0]),
-            item[1],
-            item[0].artifact_id,
-            item[0].section_ref or "",
-            item[0].char_start if item[0].char_start is not None else 10**9,
-            _normalize_reference_text(item[0].excerpt),
-        ),
-    )
-    return [_serialize_evidence_reference(evidence) for evidence, _ in ordered]
+    ordered = sorted(deduped_references.values(), key=_evidence_order_key)
+    return [_serialize_evidence_reference(evidence) for evidence in ordered]
 
 
 def get_profile_service(request: Request) -> UserProfileService:
@@ -271,6 +275,9 @@ def get_meeting_detail(
                     char_start=evidence.char_start,
                     char_end=evidence.char_end,
                     excerpt=evidence.excerpt,
+                    document_kind=evidence.document_kind,
+                    section_path=evidence.section_path,
+                    precision=evidence.precision,
                 )
                 for evidence in claim.evidence
             ],

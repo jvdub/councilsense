@@ -14,6 +14,9 @@ class MeetingDetailEvidencePointer:
     char_start: int | None
     char_end: int | None
     excerpt: str
+    document_kind: str | None = None
+    section_path: str | None = None
+    precision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -372,7 +375,10 @@ class MeetingReadRepository:
                         section_ref,
                         char_start,
                         char_end,
-                        excerpt
+                        excerpt,
+                        document_kind,
+                        section_path,
+                        precision
                     FROM claim_evidence_pointers
                     WHERE claim_id = ?
                     ORDER BY id ASC
@@ -388,6 +394,9 @@ class MeetingReadRepository:
                         char_start=int(evidence_row[3]) if evidence_row[3] is not None else None,
                         char_end=int(evidence_row[4]) if evidence_row[4] is not None else None,
                         excerpt=str(evidence_row[5]),
+                        document_kind=str(evidence_row[6]) if evidence_row[6] is not None else None,
+                        section_path=str(evidence_row[7]) if evidence_row[7] is not None else None,
+                        precision=str(evidence_row[8]) if evidence_row[8] is not None else None,
                     )
                     for evidence_row in evidence_rows
                 )

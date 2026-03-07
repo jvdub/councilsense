@@ -141,6 +141,9 @@ def _insert_evidence_pointer(
     char_start: int | None,
     char_end: int | None,
     excerpt: str,
+    document_kind: str | None = None,
+    section_path: str | None = None,
+    precision: str | None = None,
 ) -> None:
     app = cast(Any, client.app)
     app.state.db_connection.execute(
@@ -152,11 +155,25 @@ def _insert_evidence_pointer(
             section_ref,
             char_start,
             char_end,
-            excerpt
+            excerpt,
+            document_kind,
+            section_path,
+            precision
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (pointer_id, claim_id, artifact_id, section_ref, char_start, char_end, excerpt),
+        (
+            pointer_id,
+            claim_id,
+            artifact_id,
+            section_ref,
+            char_start,
+            char_end,
+            excerpt,
+            document_kind,
+            section_path,
+            precision,
+        ),
     )
 
 
@@ -362,6 +379,137 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         }
     ]
     first_evidence = payload["claims"][0]["evidence"][0]
+    assert set(first_evidence.keys()) == {
+        "id",
+        "artifact_id",
+        "source_document_url",
+        "section_ref",
+        "char_start",
+        "char_end",
+        "excerpt",
+    }
+
+
+def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_breakers(monkeypatch) -> None:
+    client = _client_with_configured_cities(monkeypatch, secret="meeting-detail-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-detail-precision", secret="meeting-detail-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-precision",
+        meeting_uid="uid-detail-precision",
+        title="Precision Ladder Meeting",
+        created_at="2026-03-05 09:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-precision",
+        meeting_id="meeting-detail-precision",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Summary",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-05 10:00:00",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-detail-precision",
+        publication_id="pub-detail-precision",
+        claim_order=1,
+        claim_text="Claim",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-file",
+        claim_id="claim-detail-precision",
+        artifact_id="artifact-zeta",
+        section_ref="artifact.html",
+        char_start=None,
+        char_end=None,
+        excerpt="File-level appendix note.",
+        document_kind="packet",
+        section_path="packet",
+        precision="file",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-section",
+        claim_id="claim-detail-precision",
+        artifact_id="artifact-beta",
+        section_ref="agenda.section.8",
+        char_start=None,
+        char_end=None,
+        excerpt="Agenda section note.",
+        document_kind="agenda",
+        section_path="agenda/section/8",
+        precision="section",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-span-b",
+        claim_id="claim-detail-precision",
+        artifact_id="artifact-gamma",
+        section_ref="minutes.section.7",
+        char_start=None,
+        char_end=None,
+        excerpt="Later page reference.",
+        document_kind="minutes",
+        section_path="minutes/page/7",
+        precision="span",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-offset",
+        claim_id="claim-detail-precision",
+        artifact_id="artifact-alpha",
+        section_ref="minutes.section.2",
+        char_start=10,
+        char_end=42,
+        excerpt="Precise minutes excerpt.",
+        document_kind="minutes",
+        section_path="minutes/section/2",
+        precision="offset",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="ptr-detail-span-a",
+        claim_id="claim-detail-precision",
+        artifact_id="artifact-delta",
+        section_ref="minutes.section.3",
+        char_start=None,
+        char_end=None,
+        excerpt="Earlier page reference.",
+        document_kind="minutes",
+        section_path="minutes/page/3",
+        precision="span",
+    )
+    _insert_ingest_stage_outcome(
+        client,
+        outcome_id="outcome-ingest-detail-precision",
+        run_id="run-detail-precision",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-precision",
+        candidate_url="https://example.org/minutes/meeting-detail-precision.pdf",
+    )
+
+    first_response = client.get("/v1/meetings/meeting-detail-precision", headers=headers)
+    second_response = client.get("/v1/meetings/meeting-detail-precision", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["evidence_references"] == second_response.json()["evidence_references"]
+    assert first_response.json()["evidence_references"] == [
+        "Precise minutes excerpt. | artifact-alpha#minutes.section.2:10-42",
+        "Earlier page reference. | artifact-delta#minutes.section.3:?-?",
+        "Later page reference. | artifact-gamma#minutes.section.7:?-?",
+        "Agenda section note. | artifact-beta#agenda.section.8:?-?",
+        "File-level appendix note. | artifact-zeta#artifact.html:?-?",
+    ]
+    first_evidence = first_response.json()["claims"][0]["evidence"][0]
     assert set(first_evidence.keys()) == {
         "id",
         "artifact_id",

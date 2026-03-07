@@ -162,6 +162,162 @@ def test_st020_evidence_projection_dedupes_equivalents_prefers_precise_locator_a
     assert not any("#artifact.html:?-?" in item for item in first)
 
 
+def test_st020_evidence_projection_orders_mixed_precision_by_ladder_and_stable_tie_breakers() -> None:
+    claims = [
+        MeetingClaimResponse(
+            id="claim-1",
+            claim_order=1,
+            claim_text="Tracked project updates.",
+            evidence=[
+                MeetingEvidencePointerResponse(
+                    id="ptr-file",
+                    artifact_id="artifact-zeta",
+                    source_document_url=None,
+                    section_ref="artifact.html",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Appendix summary only.",
+                    document_kind="packet",
+                    section_path="packet",
+                    precision="file",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-section-b",
+                    artifact_id="artifact-beta",
+                    source_document_url=None,
+                    section_ref="agenda.section.9",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Agenda heading supporting the update.",
+                    document_kind="agenda",
+                    section_path="agenda/section/9",
+                    precision="section",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-offset",
+                    artifact_id="artifact-alpha",
+                    source_document_url=None,
+                    section_ref="minutes.section.2",
+                    char_start=12,
+                    char_end=39,
+                    excerpt="Council approved the project update.",
+                    document_kind="minutes",
+                    section_path="minutes/section/2",
+                    precision="offset",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-span-b",
+                    artifact_id="artifact-gamma",
+                    source_document_url=None,
+                    section_ref="minutes.section.7",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Project update noted on page 7.",
+                    document_kind="minutes",
+                    section_path="minutes/page/7",
+                    precision="span",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-span-a",
+                    artifact_id="artifact-delta",
+                    source_document_url=None,
+                    section_ref="minutes.section.3",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Earlier page reference for the same meeting.",
+                    document_kind="minutes",
+                    section_path="minutes/page/3",
+                    precision="span",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-section-a",
+                    artifact_id="artifact-alpha",
+                    source_document_url=None,
+                    section_ref="agenda.section.4",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Agenda section supporting the update.",
+                    document_kind="agenda",
+                    section_path="agenda/section/4",
+                    precision="section",
+                ),
+            ],
+        )
+    ]
+
+    ordered = _build_evidence_references(claims)
+
+    assert ordered == [
+        "Council approved the project update. | artifact-alpha#minutes.section.2:12-39",
+        "Earlier page reference for the same meeting. | artifact-delta#minutes.section.3:?-?",
+        "Project update noted on page 7. | artifact-gamma#minutes.section.7:?-?",
+        "Agenda section supporting the update. | artifact-alpha#agenda.section.4:?-?",
+        "Agenda heading supporting the update. | artifact-beta#agenda.section.9:?-?",
+        "Appendix summary only. | artifact-zeta#artifact.html:?-?",
+    ]
+
+
+def test_st020_evidence_projection_order_is_stable_across_reruns_with_reordered_input() -> None:
+    first_claims = [
+        MeetingClaimResponse(
+            id="claim-1",
+            claim_order=1,
+            claim_text="Approved agreement.",
+            evidence=[
+                MeetingEvidencePointerResponse(
+                    id="ptr-1",
+                    artifact_id="artifact-c",
+                    source_document_url=None,
+                    section_ref="artifact.html",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="File-level fallback.",
+                    document_kind="packet",
+                    section_path="packet",
+                    precision="file",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-2",
+                    artifact_id="artifact-a",
+                    source_document_url=None,
+                    section_ref="minutes.section.2",
+                    char_start=5,
+                    char_end=25,
+                    excerpt="Agreement approved unanimously.",
+                    document_kind="minutes",
+                    section_path="minutes/section/2",
+                    precision="offset",
+                ),
+                MeetingEvidencePointerResponse(
+                    id="ptr-3",
+                    artifact_id="artifact-b",
+                    source_document_url=None,
+                    section_ref="minutes.section.4",
+                    char_start=None,
+                    char_end=None,
+                    excerpt="Supporting page reference.",
+                    document_kind="minutes",
+                    section_path="minutes/page/4",
+                    precision="span",
+                ),
+            ],
+        )
+    ]
+    second_claims = [
+        MeetingClaimResponse(
+            id="claim-2",
+            claim_order=1,
+            claim_text="Approved agreement.",
+            evidence=list(reversed(first_claims[0].evidence)),
+        )
+    ]
+
+    first = _build_evidence_references(first_claims)
+    second = _build_evidence_references(second_claims)
+
+    assert first == second
+
+
 def test_st020_specificity_locator_gap_matrix_generation_is_reproducible_for_unchanged_inputs(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     old_root = os.environ.get("COUNCILSENSE_LOCAL_ARTIFACT_ROOT")
