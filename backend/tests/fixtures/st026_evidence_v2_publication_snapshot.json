@@ -1,0 +1,221 @@
+{
+  "schema_version": "st026-evidence-v2-publication-snapshot-v1",
+  "fixtures": [
+    {
+      "fixture_id": "st022-nominal-multi-source",
+      "publication_status": "processed",
+      "planned": [
+        {
+          "item_id": "planned-001",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-plan-001",
+              "document_id": "doc-packet-001",
+              "document_kind": "packet",
+              "artifact_id": "artifact-packet-001",
+              "section_path": "packet.staff_report.parking",
+              "page_start": 14,
+              "page_end": 15,
+              "char_start": 112,
+              "char_end": 241,
+              "precision": "offset",
+              "confidence": "medium",
+              "excerpt": "Staff report analyzes parking district amendment alternatives."
+            },
+            {
+              "evidence_id": "ev2-plan-003",
+              "document_id": "doc-minutes-001",
+              "document_kind": "minutes",
+              "artifact_id": "artifact-minutes-001",
+              "section_path": "minutes.section.7.preview",
+              "page_start": 6,
+              "page_end": 6,
+              "char_start": null,
+              "char_end": null,
+              "precision": "span",
+              "confidence": "high",
+              "excerpt": "Minutes preview notes likely amendments before the final vote."
+            },
+            {
+              "evidence_id": "ev2-plan-002",
+              "document_id": "doc-agenda-001",
+              "document_kind": "agenda",
+              "artifact_id": "artifact-agenda-001",
+              "section_path": "agenda.items.4",
+              "page_start": 2,
+              "page_end": 2,
+              "char_start": null,
+              "char_end": null,
+              "precision": "section",
+              "confidence": "high",
+              "excerpt": "Item 4: Public hearing on downtown parking amendments."
+            }
+          ]
+        }
+      ],
+      "outcomes": [
+        {
+          "item_id": "outcome-001",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-outcome-001",
+              "document_id": "doc-minutes-001",
+              "document_kind": "minutes",
+              "artifact_id": "artifact-minutes-001",
+              "section_path": "minutes.section.7.vote",
+              "page_start": 6,
+              "page_end": 6,
+              "char_start": 422,
+              "char_end": 548,
+              "precision": "offset",
+              "confidence": "high",
+              "excerpt": "Council voted 5-2 to approve with commercial-zone amendments."
+            },
+            {
+              "evidence_id": "ev2-outcome-002",
+              "document_id": "doc-agenda-001",
+              "document_kind": "agenda",
+              "artifact_id": "artifact-agenda-001",
+              "section_path": "agenda.items.4",
+              "page_start": 2,
+              "page_end": 2,
+              "char_start": null,
+              "char_end": null,
+              "precision": "section",
+              "confidence": "medium",
+              "excerpt": "Agenda listed the hearing before the recorded vote."
+            },
+            {
+              "evidence_id": "ev2-outcome-003",
+              "document_id": "doc-packet-001",
+              "document_kind": "packet",
+              "artifact_id": "artifact-packet-001",
+              "section_path": "packet",
+              "page_start": null,
+              "page_end": null,
+              "char_start": null,
+              "char_end": null,
+              "precision": "file",
+              "confidence": "low",
+              "excerpt": "Packet appendix contains the full amendment packet for this hearing."
+            }
+          ]
+        }
+      ],
+      "planned_outcome_mismatches": [
+        {
+          "item_id": "mismatch-001",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-mismatch-001",
+              "document_id": "doc-minutes-001",
+              "document_kind": "minutes",
+              "artifact_id": "artifact-minutes-001",
+              "section_path": "minutes.section.7.amendment",
+              "page_start": 6,
+              "page_end": 6,
+              "char_start": null,
+              "char_end": null,
+              "precision": "span",
+              "confidence": "high",
+              "excerpt": "Amendment limited ordinance application to commercial zones."
+            },
+            {
+              "evidence_id": "ev2-mismatch-002",
+              "document_id": "doc-packet-001",
+              "document_kind": "packet",
+              "artifact_id": "artifact-packet-001",
+              "section_path": "packet",
+              "page_start": null,
+              "page_end": null,
+              "char_start": null,
+              "char_end": null,
+              "precision": "file",
+              "confidence": "low",
+              "excerpt": "Packet summary described a broader amendment scope than the final vote."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture_id": "st022-partial-source",
+      "publication_status": "processed",
+      "planned": [
+        {
+          "item_id": "planned-010",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-partial-plan-001",
+              "document_id": "doc-agenda-010",
+              "document_kind": "agenda",
+              "artifact_id": "artifact-agenda-010",
+              "section_path": "agenda.items.2",
+              "page_start": 1,
+              "page_end": 1,
+              "char_start": null,
+              "char_end": null,
+              "precision": "section",
+              "confidence": "medium",
+              "excerpt": "Approve transit shelter maintenance contract."
+            }
+          ]
+        }
+      ],
+      "outcomes": [
+        {
+          "item_id": "outcome-010",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-partial-outcome-001",
+              "document_id": "doc-minutes-010",
+              "document_kind": "minutes",
+              "artifact_id": "artifact-minutes-010",
+              "section_path": "minutes.section.3",
+              "page_start": 3,
+              "page_end": 3,
+              "char_start": 61,
+              "char_end": 148,
+              "precision": "offset",
+              "confidence": "high",
+              "excerpt": "Item deferred pending revised contract terms from procurement."
+            }
+          ]
+        }
+      ],
+      "planned_outcome_mismatches": [
+        {
+          "item_id": "mismatch-010",
+          "evidence_references_v2": []
+        }
+      ]
+    },
+    {
+      "fixture_id": "st022-limited-confidence",
+      "publication_status": "limited_confidence",
+      "planned": [
+        {
+          "item_id": "planned-020",
+          "evidence_references_v2": [
+            {
+              "evidence_id": "ev2-lc-plan-001",
+              "document_id": "doc-agenda-020",
+              "document_kind": "agenda",
+              "artifact_id": "artifact-agenda-020",
+              "section_path": "agenda.items.6",
+              "page_start": 3,
+              "page_end": 3,
+              "char_start": null,
+              "char_end": null,
+              "precision": "section",
+              "confidence": "medium",
+              "excerpt": "Consider water rate adjustment resolution."
+            }
+          ]
+        }
+      ],
+      "outcomes": [],
+      "planned_outcome_mismatches": []
+    }
+  ]
+}

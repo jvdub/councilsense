@@ -13,6 +13,22 @@ from councilsense.app.main import create_app
 from councilsense.db import PILOT_CITY_ID
 
 
+EVIDENCE_V2_KEYS = {
+    "evidence_id",
+    "document_id",
+    "artifact_id",
+    "document_kind",
+    "section_path",
+    "page_start",
+    "page_end",
+    "char_start",
+    "char_end",
+    "precision",
+    "confidence",
+    "excerpt",
+}
+
+
 def _b64url(data: dict) -> str:
     raw = json.dumps(data, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("utf-8")
@@ -667,22 +683,91 @@ def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    assert first_response.json()["evidence_references"] == second_response.json()["evidence_references"]
-    assert first_response.json()["evidence_references_v2"] == second_response.json()["evidence_references_v2"]
-    assert first_response.json()["evidence_references"] == [
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+
+    assert first_payload["evidence_references"] == second_payload["evidence_references"]
+    assert first_payload["evidence_references_v2"] == second_payload["evidence_references_v2"]
+    assert first_payload["evidence_references"] == [
         "Precise minutes excerpt. | artifact-alpha#minutes.section.2:10-42",
         "Earlier page reference. | artifact-delta#minutes.section.3:?-?",
         "Later page reference. | artifact-gamma#minutes.section.7:?-?",
         "Agenda section note. | artifact-beta#agenda.section.8:?-?",
         "File-level appendix note. | artifact-zeta#artifact.html:?-?",
     ]
-    assert [item["evidence_id"] for item in first_response.json()["evidence_references_v2"]] == [
-        "ptr-detail-offset",
-        "ptr-detail-span-a",
-        "ptr-detail-span-b",
-        "ptr-detail-section",
-        "ptr-detail-file",
+    assert first_payload["evidence_references_v2"] == [
+        {
+            "evidence_id": "ptr-detail-offset",
+            "document_id": "canon-minutes-alpha",
+            "artifact_id": "artifact-alpha",
+            "document_kind": "minutes",
+            "section_path": "minutes/section/2",
+            "page_start": None,
+            "page_end": None,
+            "char_start": 10,
+            "char_end": 42,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Precise minutes excerpt.",
+        },
+        {
+            "evidence_id": "ptr-detail-span-a",
+            "document_id": "canon-minutes-delta",
+            "artifact_id": "artifact-delta",
+            "document_kind": "minutes",
+            "section_path": "minutes/page/3",
+            "page_start": None,
+            "page_end": None,
+            "char_start": None,
+            "char_end": None,
+            "precision": "span",
+            "confidence": "medium",
+            "excerpt": "Earlier page reference.",
+        },
+        {
+            "evidence_id": "ptr-detail-span-b",
+            "document_id": "canon-minutes-gamma",
+            "artifact_id": "artifact-gamma",
+            "document_kind": "minutes",
+            "section_path": "minutes/page/7",
+            "page_start": None,
+            "page_end": None,
+            "char_start": None,
+            "char_end": None,
+            "precision": "span",
+            "confidence": "medium",
+            "excerpt": "Later page reference.",
+        },
+        {
+            "evidence_id": "ptr-detail-section",
+            "document_id": "canon-agenda-beta",
+            "artifact_id": "artifact-beta",
+            "document_kind": "agenda",
+            "section_path": "agenda/section/8",
+            "page_start": None,
+            "page_end": None,
+            "char_start": None,
+            "char_end": None,
+            "precision": "section",
+            "confidence": "medium",
+            "excerpt": "Agenda section note.",
+        },
+        {
+            "evidence_id": "ptr-detail-file",
+            "document_id": "canon-packet-zeta",
+            "artifact_id": "artifact-zeta",
+            "document_kind": "packet",
+            "section_path": "packet",
+            "page_start": None,
+            "page_end": None,
+            "char_start": None,
+            "char_end": None,
+            "precision": "file",
+            "confidence": "low",
+            "excerpt": "File-level appendix note.",
+        },
     ]
+    assert all(set(item.keys()) == EVIDENCE_V2_KEYS for item in first_payload["evidence_references_v2"])
     first_evidence = first_response.json()["claims"][0]["evidence"][0]
     assert set(first_evidence.keys()) == {
         "id",
@@ -869,12 +954,16 @@ def test_meeting_detail_legacy_evidence_compatibility_mapping_can_be_disabled(mo
         confidence="high",
     )
 
-    response = client.get("/v1/meetings/meeting-detail-compat-off", headers=headers)
+    first_response = client.get("/v1/meetings/meeting-detail-compat-off", headers=headers)
+    second_response = client.get("/v1/meetings/meeting-detail-compat-off", headers=headers)
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "processed"
-    assert payload["evidence_references_v2"] == [
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+
+    assert first_payload["status"] == "processed"
+    assert first_payload["evidence_references_v2"] == second_payload["evidence_references_v2"] == [
         {
             "evidence_id": "ptr-detail-compat-off",
             "document_id": "canon-minutes-compat-off",
@@ -890,7 +979,8 @@ def test_meeting_detail_legacy_evidence_compatibility_mapping_can_be_disabled(mo
             "excerpt": "Canonical v2 evidence remains available.",
         }
     ]
-    assert payload["evidence_references"] == []
+    assert all(set(item.keys()) == EVIDENCE_V2_KEYS for item in first_payload["evidence_references_v2"])
+    assert first_payload["evidence_references"] == second_payload["evidence_references"] == []
 
 
 def test_meeting_detail_includes_explicit_limited_confidence_label(monkeypatch) -> None:

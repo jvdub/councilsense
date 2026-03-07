@@ -44,20 +44,6 @@
             "evidence_references_v2": [
               {
                 "evidence_id": "ev2-plan-001",
-                "document_id": "doc-agenda-001",
-                "document_kind": "agenda",
-                "artifact_id": "artifact-agenda-001",
-                "section_path": "agenda.items.4",
-                "page_start": 2,
-                "page_end": 2,
-                "char_start": null,
-                "char_end": null,
-                "precision": "section",
-                "confidence": "high",
-                "excerpt": "Item 4: Public hearing on downtown parking amendments."
-              },
-              {
-                "evidence_id": "ev2-plan-002",
                 "document_id": "doc-packet-001",
                 "document_kind": "packet",
                 "artifact_id": "artifact-packet-001",
@@ -69,6 +55,34 @@
                 "precision": "offset",
                 "confidence": "medium",
                 "excerpt": "Staff report analyzes parking district amendment alternatives."
+              },
+              {
+                "evidence_id": "ev2-plan-003",
+                "document_id": "doc-minutes-001",
+                "document_kind": "minutes",
+                "artifact_id": "artifact-minutes-001",
+                "section_path": "minutes.section.7.preview",
+                "page_start": 6,
+                "page_end": 6,
+                "char_start": null,
+                "char_end": null,
+                "precision": "span",
+                "confidence": "high",
+                "excerpt": "Minutes preview notes likely amendments before the final vote."
+              },
+              {
+                "evidence_id": "ev2-plan-002",
+                "document_id": "doc-agenda-001",
+                "document_kind": "agenda",
+                "artifact_id": "artifact-agenda-001",
+                "section_path": "agenda.items.4",
+                "page_start": 2,
+                "page_end": 2,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "high",
+                "excerpt": "Item 4: Public hearing on downtown parking amendments."
               }
             ]
           }
@@ -97,6 +111,34 @@
                 "precision": "offset",
                 "confidence": "high",
                 "excerpt": "Council voted 5-2 to approve with commercial-zone amendments."
+              },
+              {
+                "evidence_id": "ev2-outcome-002",
+                "document_id": "doc-agenda-001",
+                "document_kind": "agenda",
+                "artifact_id": "artifact-agenda-001",
+                "section_path": "agenda.items.4",
+                "page_start": 2,
+                "page_end": 2,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "medium",
+                "excerpt": "Agenda listed the hearing before the recorded vote."
+              },
+              {
+                "evidence_id": "ev2-outcome-003",
+                "document_id": "doc-packet-001",
+                "document_kind": "packet",
+                "artifact_id": "artifact-packet-001",
+                "section_path": "packet",
+                "page_start": null,
+                "page_end": null,
+                "char_start": null,
+                "char_end": null,
+                "precision": "file",
+                "confidence": "low",
+                "excerpt": "Packet appendix contains the full amendment packet for this hearing."
               }
             ]
           }
@@ -127,11 +169,25 @@
                 "section_path": "minutes.section.7.amendment",
                 "page_start": 6,
                 "page_end": 6,
-                "char_start": 376,
-                "char_end": 420,
-                "precision": "offset",
+                "char_start": null,
+                "char_end": null,
+                "precision": "span",
                 "confidence": "high",
                 "excerpt": "Amendment limited ordinance application to commercial zones."
+              },
+              {
+                "evidence_id": "ev2-mismatch-002",
+                "document_id": "doc-packet-001",
+                "document_kind": "packet",
+                "artifact_id": "artifact-packet-001",
+                "section_path": "packet",
+                "page_start": null,
+                "page_end": null,
+                "char_start": null,
+                "char_end": null,
+                "precision": "file",
+                "confidence": "low",
+                "excerpt": "Packet summary described a broader amendment scope than the final vote."
               }
             ]
           }
