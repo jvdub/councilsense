@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MeetingDetailPage from "./page";
 import {
@@ -257,7 +257,22 @@ describe("MeetingDetailPage", () => {
             mismatch_type: "disposition_change",
             description: "Deferred instead of approved.",
             reason_codes: ["outcome_changed"],
-            evidence_references_v2: [],
+            evidence_references_v2: [
+              {
+                evidence_id: "ev-4",
+                document_id: "doc-4",
+                document_kind: "minutes",
+                artifact_id: "artifact-4",
+                section_path: "minutes.section.7",
+                page_start: 3,
+                page_end: 3,
+                char_start: 44,
+                char_end: 104,
+                precision: "span",
+                confidence: "high",
+                excerpt: "Council deferred the transit procurement item pending revisions.",
+              },
+            ],
           },
         ],
       },
@@ -274,6 +289,9 @@ describe("MeetingDetailPage", () => {
     expect(main).toHaveAttribute("data-render-mode", "additive");
     expect(main).toHaveAttribute("data-mismatch-signals", "enabled");
     expect(main).not.toHaveAttribute("data-render-fallback");
+    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
+    expect(screen.getByText("Deferred instead of approved.")).toBeInTheDocument();
+    expect(screen.getByText("High mismatch")).toBeInTheDocument();
   });
 
   it("falls back to baseline without a user-visible error when additive payloads are partial", async () => {
@@ -330,6 +348,174 @@ describe("MeetingDetailPage", () => {
     expect(container.textContent).not.toContain("Unable to load meeting detail");
     expect(screen.getByText("Council discussed utilities planning.")).toBeInTheDocument();
   });
+
+  it("renders an explicit neutral state when mismatch entries are unsupported", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+    process.env[MEETING_DETAIL_MISMATCH_SIGNALS_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-6",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-6",
+      title: "Procurement Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-6",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Council reviewed a procurement update.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Procurement"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        source_coverage: {
+          minutes: "present",
+          agenda: "present",
+          packet: "present",
+        },
+        items: [
+          {
+            planned_id: "planned-6",
+            title: "Approve procurement change order",
+            category: "procurement",
+            status: "planned",
+            confidence: "medium",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      outcomes: {
+        generated_at: "2026-03-07T14:05:00Z",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-6",
+            title: "Procurement change order deferred",
+            result: "deferred",
+            confidence: "medium",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      planned_outcome_mismatches: {
+        summary: {
+          total: 1,
+          high: 0,
+          medium: 1,
+          low: 0,
+        },
+        items: [
+          {
+            mismatch_id: "mismatch-6",
+            planned_id: "planned-6",
+            outcome_id: "outcome-6",
+            severity: "medium",
+            mismatch_type: "disposition_change",
+            description: "Deferred instead of approved.",
+            reason_codes: ["outcome_changed"],
+            evidence_references_v2: [],
+          },
+        ],
+      },
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-6" }),
+      }),
+    );
+
+    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Mismatch comparisons are available, but none have evidence-backed support yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Deferred instead of approved.")).not.toBeInTheDocument();
+  });
+
+  it("renders an explicit empty state when no mismatches are present", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+    process.env[MEETING_DETAIL_MISMATCH_SIGNALS_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-7",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-7",
+      title: "Land Use Session",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-7",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Council completed the planned land use review.",
+      key_decisions: ["Accepted land use review"],
+      key_actions: [],
+      notable_topics: ["Land use"],
+      claims: [],
+      planned: {
+        generated_at: "2026-03-07T14:00:00Z",
+        source_coverage: {
+          minutes: "present",
+          agenda: "present",
+          packet: "present",
+        },
+        items: [
+          {
+            planned_id: "planned-7",
+            title: "Review land use updates",
+            category: "briefing",
+            status: "planned",
+            confidence: "high",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      outcomes: {
+        generated_at: "2026-03-07T14:05:00Z",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-7",
+            title: "Land use updates reviewed",
+            result: "received",
+            confidence: "high",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      planned_outcome_mismatches: {
+        summary: {
+          total: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+        },
+        items: [],
+      },
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-7" }),
+      }),
+    );
+
+    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
+    expect(
+      screen.getByText("No evidence-backed mismatches were detected for this meeting."),
+    ).toBeInTheDocument();
+  });
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 afterAll(() => {
