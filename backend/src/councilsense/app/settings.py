@@ -34,6 +34,15 @@ class NotificationRetryPolicySettings:
 
 
 @dataclass(frozen=True)
+class MeetingDetailAdditiveApiSettings:
+    enabled: bool
+    enabled_blocks: tuple[str, ...]
+
+    def block_enabled(self, block_name: str) -> bool:
+        return self.enabled and block_name in self.enabled_blocks
+
+
+@dataclass(frozen=True)
 class Settings:
     runtime_env: RuntimeEnvironment
     secret_source: SecretSourceKind
@@ -47,6 +56,7 @@ class Settings:
     notification_replay_operator_user_ids: tuple[str, ...]
     notification_replay_allow_permanent_invalid_override: bool
     meeting_detail_legacy_evidence_references_enabled: bool
+    meeting_detail_additive_api: MeetingDetailAdditiveApiSettings
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -61,6 +71,8 @@ DEFAULT_NOTIFICATION_DELIVERY_MAX_ATTEMPTS = 5
 DEFAULT_NOTIFICATION_RETRY_BACKOFF_SECONDS = (15, 60, 300, 900, 3600)
 DEFAULT_NOTIFICATION_RETRY_JITTER_FACTOR = 0.0
 DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED = True
+DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED = False
+SUPPORTED_ST022_API_ADDITIVE_BLOCKS = ("planned", "outcomes", "planned_outcome_mismatches")
 
 
 def _parse_supported_city_ids(raw: str | None) -> tuple[str, ...]:
@@ -199,6 +211,51 @@ def _parse_notification_retry_policy() -> NotificationRetryPolicySettings:
     )
 
 
+def _parse_st022_api_additive_blocks() -> MeetingDetailAdditiveApiSettings:
+    enabled = _parse_bool(
+        raw=os.getenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED"),
+        default=DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED,
+        env_name="ST022_API_ADDITIVE_V1_FIELDS_ENABLED",
+    )
+    raw_blocks = _parse_string_list(os.getenv("ST022_API_ADDITIVE_V1_BLOCKS"))
+    normalized_blocks: list[str] = []
+    seen_blocks: set[str] = set()
+    for value in raw_blocks:
+        normalized = value.strip().lower()
+        if normalized not in SUPPORTED_ST022_API_ADDITIVE_BLOCKS:
+            supported = ", ".join(SUPPORTED_ST022_API_ADDITIVE_BLOCKS)
+            raise ValueError(f"ST022_API_ADDITIVE_V1_BLOCKS must contain only: {supported}")
+        if normalized in seen_blocks:
+            continue
+        normalized_blocks.append(normalized)
+        seen_blocks.add(normalized)
+
+    enabled_blocks = tuple(normalized_blocks)
+    enabled_block_set = set(enabled_blocks)
+
+    if not enabled:
+        if enabled_blocks:
+            raise ValueError(
+                "ST022_API_ADDITIVE_V1_BLOCKS must be empty unless "
+                "ST022_API_ADDITIVE_V1_FIELDS_ENABLED=true"
+            )
+        return MeetingDetailAdditiveApiSettings(enabled=False, enabled_blocks=())
+
+    if not enabled_blocks:
+        raise ValueError(
+            "ST022_API_ADDITIVE_V1_BLOCKS must explicitly allow one or more blocks when "
+            "ST022_API_ADDITIVE_V1_FIELDS_ENABLED=true"
+        )
+
+    if "planned_outcome_mismatches" in enabled_block_set and not {"planned", "outcomes"} <= enabled_block_set:
+        raise ValueError(
+            "ST022_API_ADDITIVE_V1_BLOCKS cannot enable planned_outcome_mismatches without "
+            "planned and outcomes"
+        )
+
+    return MeetingDetailAdditiveApiSettings(enabled=True, enabled_blocks=enabled_blocks)
+
+
 def _parse_runtime_env(raw: str | None) -> RuntimeEnvironment:
     runtime_env = (raw or DEFAULT_RUNTIME_ENV).strip().lower()
     if runtime_env not in SUPPORTED_RUNTIME_ENVS:
@@ -282,6 +339,7 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
             default=DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED,
             env_name="MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED",
         ),
+        meeting_detail_additive_api=_parse_st022_api_additive_blocks(),
         disable_auth_guard=_parse_bool(
             raw=os.getenv("COUNCILSENSE_DISABLE_AUTH_GUARD"),
             default=False,

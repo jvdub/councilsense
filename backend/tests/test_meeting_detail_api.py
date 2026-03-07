@@ -5,11 +5,15 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
+from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
 
+from councilsense.api.routes.meetings import _merge_additive_blocks
 from councilsense.app.main import create_app
+from councilsense.app.settings import MeetingDetailAdditiveApiSettings
 from councilsense.db import PILOT_CITY_ID
 
 
@@ -1072,3 +1076,41 @@ def test_meeting_detail_denies_cross_city_lookup_without_city_leakage(monkeypatc
             "details": {"meeting_id": "meeting-foreign"},
         }
     }
+
+
+def test_meeting_detail_parity_guard_blocks_additive_payload_when_flag_off() -> None:
+    with pytest.raises(ValueError, match="ST022 additive reader parity guard blocked additive leakage"):
+        _merge_additive_blocks(
+            payload={"id": "meeting-detail-guard"},
+            detail=SimpleNamespace(planned={"items": []}),
+            additive_api_settings=MeetingDetailAdditiveApiSettings(enabled=False, enabled_blocks=()),
+        )
+
+
+def test_meeting_detail_parity_guard_allows_explicitly_enabled_additive_blocks() -> None:
+    payload = _merge_additive_blocks(
+        payload={"id": "meeting-detail-guard"},
+        detail=SimpleNamespace(additive_blocks={"planned": {"items": []}, "outcomes": {"items": []}}),
+        additive_api_settings=MeetingDetailAdditiveApiSettings(
+            enabled=True,
+            enabled_blocks=("planned", "outcomes"),
+        ),
+    )
+
+    assert payload == {
+        "id": "meeting-detail-guard",
+        "planned": {"items": []},
+        "outcomes": {"items": []},
+    }
+
+
+def test_meeting_detail_parity_guard_rejects_disallowed_additive_blocks_when_flag_on() -> None:
+    with pytest.raises(ValueError, match="offending_blocks=planned_outcome_mismatches"):
+        _merge_additive_blocks(
+            payload={"id": "meeting-detail-guard"},
+            detail=SimpleNamespace(additive_blocks={"planned_outcome_mismatches": {"items": []}}),
+            additive_api_settings=MeetingDetailAdditiveApiSettings(
+                enabled=True,
+                enabled_blocks=("planned", "outcomes"),
+            ),
+        )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Annotated
+from collections.abc import Mapping
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
+from councilsense.app.settings import MeetingDetailAdditiveApiSettings
 from councilsense.app.settings import Settings
 from councilsense.db import InvalidMeetingListCursorError, MeetingListCursor, MeetingReadRepository
 
@@ -121,6 +123,7 @@ _PRECISION_RANKS = {
     "section": 2,
     "file": 3,
 }
+_ADDITIVE_BLOCK_FIELD_NAMES = ("planned", "outcomes", "planned_outcome_mismatches")
 
 
 def _stable_section_locator(evidence: MeetingEvidencePointerResponse) -> str:
@@ -247,6 +250,57 @@ def _build_evidence_references_v2(claims: list[MeetingClaimResponse]) -> list[Me
         )
         for evidence in ordered
     ]
+
+
+def _extract_additive_blocks(*, detail: object) -> dict[str, object]:
+    blocks: dict[str, object] = {}
+    additive_blocks = getattr(detail, "additive_blocks", None)
+    if additive_blocks is not None:
+        if not isinstance(additive_blocks, Mapping):
+            raise ValueError("Meeting detail additive_blocks must be a mapping when provided")
+        for block_name in _ADDITIVE_BLOCK_FIELD_NAMES:
+            block_value = additive_blocks.get(block_name)
+            if block_value is not None:
+                blocks[block_name] = block_value
+
+    for block_name in _ADDITIVE_BLOCK_FIELD_NAMES:
+        block_value = getattr(detail, block_name, None)
+        if block_value is not None:
+            blocks[block_name] = block_value
+
+    return blocks
+
+
+def _merge_additive_blocks(
+    *,
+    payload: dict[str, Any],
+    detail: object,
+    additive_api_settings: MeetingDetailAdditiveApiSettings,
+) -> dict[str, Any]:
+    candidate_blocks = _extract_additive_blocks(detail=detail)
+    if not candidate_blocks:
+        return payload
+
+    if not additive_api_settings.enabled:
+        offending_blocks = ", ".join(sorted(candidate_blocks))
+        raise ValueError(
+            "ST022 additive reader parity guard blocked additive leakage while "
+            "ST022_API_ADDITIVE_V1_FIELDS_ENABLED=false; "
+            f"offending_blocks={offending_blocks}"
+        )
+
+    enabled_blocks = set(additive_api_settings.enabled_blocks)
+    disallowed_blocks = sorted(block_name for block_name in candidate_blocks if block_name not in enabled_blocks)
+    if disallowed_blocks:
+        allowed_blocks = ", ".join(additive_api_settings.enabled_blocks)
+        offending_blocks = ", ".join(disallowed_blocks)
+        raise ValueError(
+            "ST022 additive reader parity guard blocked additive leakage for disabled blocks; "
+            f"offending_blocks={offending_blocks}; allowed_blocks={allowed_blocks}"
+        )
+
+    payload.update(candidate_blocks)
+    return payload
 
 
 def get_profile_service(request: Request) -> UserProfileService:
@@ -380,7 +434,7 @@ def get_meeting_detail(
         for claim in detail.claims
     ]
 
-    return MeetingDetailResponse(
+    payload = MeetingDetailResponse(
         id=detail.id,
         city_id=detail.city_id,
         meeting_uid=detail.meeting_uid,
@@ -403,4 +457,9 @@ def get_meeting_detail(
             else []
         ),
         claims=claims,
+    ).model_dump()
+    return _merge_additive_blocks(
+        payload=payload,
+        detail=detail,
+        additive_api_settings=settings.meeting_detail_additive_api,
     )
