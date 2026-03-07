@@ -5,6 +5,8 @@
 - Contract version: `st-022-meeting-detail-v1`
 - Fixture package version: `st022-v1-contract-approval-fixtures-v1`
 
+Updated by TASK-ST-027-01 to define flag-state exposure semantics for additive reader blocks.
+
 ## Purpose
 
 Freeze the additive v1 meeting detail contract shapes for:
@@ -18,12 +20,18 @@ This contract is additive-only and does not remove, rename, or repurpose existin
 
 ## Top-level presence semantics
 
-- `planned`: optional top-level object; omitted when v1 additive blocks are unavailable.
-- `outcomes`: optional top-level object; omitted when v1 additive blocks are unavailable.
-- `planned_outcome_mismatches`: optional top-level object; omitted when mismatch evaluation is unavailable.
+- `planned`: optional top-level object; omitted when additive reader blocks are disabled or unavailable.
+- `outcomes`: optional top-level object; omitted when additive reader blocks are disabled or unavailable.
+- `planned_outcome_mismatches`: optional top-level object; omitted when mismatch evaluation is disabled or unavailable.
 - `evidence_references_v2`: additive evidence shape used within v1 additive blocks.
 
 When a block is present, all fields marked "required" below are required.
+
+Flag-state rules:
+
+- Flag off: baseline ST-006/ST-018/ST-026 meeting detail semantics remain unchanged; `planned`, `outcomes`, and `planned_outcome_mismatches` are omitted.
+- Flag on: additive blocks may be serialized without changing any baseline field names, types, or value semantics.
+- Disabled or unavailable additive blocks must be omitted, never serialized as `null`.
 
 ## `evidence_references_v2` shape
 
@@ -54,6 +62,13 @@ Equal-precision ordering for serialized evidence references uses this determinis
 - normalized excerpt text ascending
 
 This ordering is comparator-based and remains stable across reruns for identical source inputs.
+
+Item-level presence semantics inside additive blocks:
+
+- `evidence_references_v2` is optional on `planned.items[*]`, `outcomes.items[*]`, and `planned_outcome_mismatches.items[*]`.
+- Omit `evidence_references_v2` when v2 evidence projection is unavailable for that item.
+- Serialize `evidence_references_v2: []` when v2 projection is available for that item but no grounded references qualify.
+- Do not serialize `evidence_references_v2: null`.
 
 ## `planned` block shape
 
@@ -91,7 +106,8 @@ This ordering is comparator-based and remains stable across reruns for identical
 - `category`
 - `status`
 - `confidence`
-- `evidence_references_v2`
+
+`planned.items[*].evidence_references_v2` is optional and follows the item-level presence semantics above.
 
 ## `outcomes` block shape
 
@@ -123,7 +139,8 @@ This ordering is comparator-based and remains stable across reruns for identical
 - `title`
 - `result`
 - `confidence`
-- `evidence_references_v2`
+
+`outcomes.items[*].evidence_references_v2` is optional and follows the item-level presence semantics above.
 
 ## `planned_outcome_mismatches` block shape
 
@@ -171,9 +188,158 @@ This ordering is comparator-based and remains stable across reruns for identical
 - `mismatch_type`
 - `description`
 - `reason_codes`
-- `evidence_references_v2`
+
+`planned_outcome_mismatches.items[*].evidence_references_v2` is optional and follows the item-level presence semantics above.
 
 `outcome_id` may be `null` for unmatched planned items.
+
+## ST-027 additive exposure matrix
+
+| Scenario | `planned` | `outcomes` | `planned_outcome_mismatches` | Item `evidence_references_v2` behavior |
+| -------- | --------- | ---------- | ---------------------------- | -------------------------------------- |
+| Flag off baseline | omitted | omitted | omitted | n/a |
+| Flag on, evidence v2 available | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | include array; use `[]` when evaluated but no qualifying references |
+| Flag on, evidence v2 unavailable | present when additive data exists | present when additive data exists | present when mismatch evaluation exists | omit field on affected items; never serialize `null` |
+
+## Contract examples
+
+Flag off baseline-compatible response fragment:
+
+```json
+{
+  "id": "meeting-st027-flag-off",
+  "city_id": "city-eagle-mountain-ut",
+  "meeting_uid": "uid-st027-flag-off",
+  "title": "Regular City Council Meeting",
+  "status": "processed",
+  "confidence_label": "high",
+  "reader_low_confidence": false,
+  "publication_id": "pub-st027-flag-off",
+  "published_at": "2026-03-07T14:30:00Z",
+  "summary": "Council approved the consent agenda and deferred one procurement item.",
+  "key_decisions": ["Approved consent agenda"],
+  "key_actions": ["Staff to revise the procurement contract"],
+  "notable_topics": ["Consent agenda", "Procurement"],
+  "claims": [],
+  "evidence_references": [],
+  "evidence_references_v2": []
+}
+```
+
+Flag on with additive blocks and available evidence v2:
+
+```json
+{
+  "id": "meeting-st027-flag-on-available",
+  "planned": {
+    "generated_at": "2026-03-07T14:00:00Z",
+    "source_coverage": {
+      "minutes": "present",
+      "agenda": "present",
+      "packet": "present"
+    },
+    "items": [
+      {
+        "planned_id": "planned-100",
+        "title": "Procurement contract approval",
+        "category": "procurement",
+        "status": "planned",
+        "confidence": "high",
+        "evidence_references_v2": []
+      }
+    ]
+  },
+  "outcomes": {
+    "generated_at": "2026-03-07T14:20:00Z",
+    "authority_source": "minutes",
+    "items": [
+      {
+        "outcome_id": "outcome-100",
+        "title": "Procurement contract deferred",
+        "result": "deferred",
+        "confidence": "high",
+        "evidence_references_v2": []
+      }
+    ]
+  },
+  "planned_outcome_mismatches": {
+    "summary": {
+      "total": 1,
+      "high": 1,
+      "medium": 0,
+      "low": 0
+    },
+    "items": [
+      {
+        "mismatch_id": "mismatch-100",
+        "planned_id": "planned-100",
+        "outcome_id": "outcome-100",
+        "severity": "high",
+        "mismatch_type": "disposition_change",
+        "description": "Agenda planned approval but recorded outcome is deferment.",
+        "reason_codes": ["outcome_changed"],
+        "evidence_references_v2": []
+      }
+    ]
+  }
+}
+```
+
+Flag on with additive blocks and unavailable evidence v2:
+
+```json
+{
+  "id": "meeting-st027-flag-on-unavailable",
+  "planned": {
+    "generated_at": "2026-03-07T15:00:00Z",
+    "source_coverage": {
+      "minutes": "missing",
+      "agenda": "present",
+      "packet": "present"
+    },
+    "items": [
+      {
+        "planned_id": "planned-200",
+        "title": "Utility rate adjustment resolution",
+        "category": "ordinance",
+        "status": "planned",
+        "confidence": "medium"
+      }
+    ]
+  },
+  "outcomes": {
+    "generated_at": "2026-03-07T15:10:00Z",
+    "authority_source": "minutes",
+    "items": [
+      {
+        "outcome_id": "outcome-200",
+        "title": "Outcome unavailable pending minutes",
+        "result": "unresolved",
+        "confidence": "low"
+      }
+    ]
+  },
+  "planned_outcome_mismatches": {
+    "summary": {
+      "total": 1,
+      "high": 0,
+      "medium": 1,
+      "low": 0
+    },
+    "items": [
+      {
+        "mismatch_id": "mismatch-200",
+        "planned_id": "planned-200",
+        "outcome_id": null,
+        "severity": "medium",
+        "mismatch_type": "authority_missing",
+        "description": "Minutes are unavailable, so the final outcome cannot yet be compared against the planned item.",
+        "reason_codes": ["missing_authoritative_minutes"]
+      }
+    ]
+  }
+}
+```
 
 ## Approval fixtures and sign-off
 
@@ -192,6 +358,11 @@ Approval status captured in fixture package metadata:
 
 - `approval.status`: `approved`
 - `approval.reviewers`: backend owner, frontend owner, product/platform owner
+
+ST-027 exposure examples:
+
+- Backend: `backend/tests/fixtures/st027_reader_api_additive_contract_examples.json`
+- Covers flag-off baseline parity, flag-on additive presence, and safe omission when `evidence_references_v2` is unavailable.
 
 ## Traceability
 
