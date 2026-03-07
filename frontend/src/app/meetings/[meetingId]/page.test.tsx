@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MeetingDetailPage from "./page";
@@ -123,6 +123,8 @@ describe("MeetingDetailPage", () => {
     expect(screen.getByRole("heading", { name: "Notable topics" })).toBeInTheDocument();
     expect(screen.getByText("Transit")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Evidence references" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Planned" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Outcomes" })).not.toBeInTheDocument();
     expect(screen.getByText("Council approved the transit plan.")).toBeInTheDocument();
     expect(screen.getByText("Council voted 6-1 to approve the transit plan.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "minutes.section.4" })).toBeInTheDocument();
@@ -285,13 +287,120 @@ describe("MeetingDetailPage", () => {
     );
 
     const main = container.querySelector("main[data-render-mode]");
+    const plannedSection = screen.getByRole("region", { name: "Planned" });
+    const outcomesSection = screen.getByRole("region", { name: "Outcomes" });
+    const sectionHeadings = Array.from(
+      container.querySelectorAll("section[aria-label] > h2"),
+    ).map((heading) => heading.textContent);
 
     expect(main).toHaveAttribute("data-render-mode", "additive");
     expect(main).toHaveAttribute("data-mismatch-signals", "enabled");
     expect(main).not.toHaveAttribute("data-render-fallback");
-    expect(screen.getByRole("heading", { name: "Mismatch indicators" })).toBeInTheDocument();
-    expect(screen.getByText("Deferred instead of approved.")).toBeInTheDocument();
-    expect(screen.getByText("High mismatch")).toBeInTheDocument();
+    expect(sectionHeadings).toEqual([
+      "Summary",
+      "Planned",
+      "Outcomes",
+      "Decisions and actions",
+      "Notable topics",
+      "Evidence references",
+    ]);
+    expect(within(plannedSection).getByText("2026-03-07T14:00:00Z")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Approve transit procurement")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Procurement")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Agenda and packet items")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Source coverage")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("High")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Agenda")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Packet")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Minutes")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("2026-03-07T14:05:00Z")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Transit procurement deferred")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Deferred")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Minutes")).toBeInTheDocument();
+  });
+
+  it("renders additive placeholders when planned and outcomes subfields are sparse", async () => {
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-4b",
+      city_id: "seattle-wa",
+      meeting_uid: "uid-4b",
+      title: "Transit Session Follow-up",
+      created_at: "2026-02-25 18:00:00",
+      updated_at: "2026-02-25 19:00:00",
+      status: "processed",
+      confidence_label: "medium",
+      reader_low_confidence: false,
+      publication_id: "publication-4b",
+      published_at: "2026-02-25 19:00:00",
+      summary: "Council reviewed transit follow-up work.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Transit"],
+      claims: [],
+      planned: {
+        generated_at: "",
+        source_coverage: {
+          minutes: "missing",
+          agenda: "present",
+          packet: "missing",
+        },
+        items: [
+          {
+            planned_id: "planned-4b",
+            title: "",
+            category: "",
+            status: "",
+            confidence: "low",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      outcomes: {
+        generated_at: "",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-4b",
+            title: "",
+            result: "",
+            confidence: "medium",
+            evidence_references_v2: [],
+          },
+        ],
+      },
+      planned_outcome_mismatches: {
+        summary: {
+          total: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+        },
+        items: [],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-4b" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-render-mode]");
+    const plannedSection = screen.getByRole("region", { name: "Planned" });
+    const outcomesSection = screen.getByRole("region", { name: "Outcomes" });
+
+    expect(main).toHaveAttribute("data-render-mode", "additive");
+    expect(main).not.toHaveAttribute("data-render-fallback");
+    expect(within(plannedSection).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Untitled planned item")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Category unavailable")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Status unavailable")).toBeInTheDocument();
+    expect(within(plannedSection).getByText("Low")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Untitled outcome")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Result unavailable")).toBeInTheDocument();
+    expect(within(outcomesSection).getByText("Medium")).toBeInTheDocument();
   });
 
   it("falls back to baseline without a user-visible error when additive payloads are partial", async () => {
