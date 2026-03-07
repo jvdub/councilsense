@@ -59,19 +59,29 @@ Allowed transitions:
 - Replay execution must persist `requested`, `queued`, `replayed`, `noop`, and `failed` outcomes in `pipeline_replay_audit_events`.
 - Duplicate-replay prevention must preserve the existing publication/artifact state and surface the guard reason in replay audit metadata.
 
+## Ownership And Escalation
+
+- Primary owner: `ops-pipeline-oncall`
+- Secondary owner: `backend-oncall`
+- Escalate to: `platform-owner`
+- Escalate immediately when the same `dlq_key` fails replay twice after mitigation, replay metadata is incomplete, or the replay outcome stays `failed` after a bounded retry window.
+
 ## Operator Recovery Workflow
 
 1. Identify the terminal failure in `pipeline_dlq_entries` using `dlq_key`, `run_id`, `meeting_id`, `stage_name`, and `source_id`.
 2. Review `triage_metadata_json` and confirm the terminal boundary is understood before replaying.
-3. Record the operator identity as `actor_user_id`, the remediation explanation as `replay_reason`, and a unique `idempotency_key` for the recovery attempt.
-4. Submit the replay request only when the DLQ row is `open` or `triaged`; the command transitions the row to `replay_ready` and records the audit trail.
-5. Execute replay and verify the terminal outcome in `pipeline_replay_audit_events` before closing the incident.
+3. Confirm the incident is source-scoped and record the alert class or incident reference that justified replay.
+4. Record the operator identity as `actor_user_id`, the remediation explanation as `replay_reason`, a unique `idempotency_key`, and an `incident_reference` for the recovery attempt.
+5. Submit the replay request only when the DLQ row is `open` or `triaged`; the command transitions the row to `replay_ready` and records the audit trail.
+6. Execute replay and verify the terminal outcome in `pipeline_replay_audit_events` before closing the incident.
 
 Required operator evidence:
 
 - `actor_user_id`
 - `replay_reason`
 - `idempotency_key`
+- `incident_reference`
+- `alert_class`
 - `dlq_key`
 - terminal replay outcome: `replayed`, `noop`, or `failed`
 

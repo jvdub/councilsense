@@ -2,6 +2,7 @@
   "ruleset_version": "st-031-source-aware-alert-rules-v1",
   "story_task": "TASK-ST-031-03",
   "references": {
+    "incident_runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
     "observability_contract": "docs/runbooks/st-031-source-aware-observability-contract.md",
     "source_aware_dashboard": "docs/runbooks/st-031-source-aware-dashboard.json",
     "pipeline_baseline_dashboard": "docs/runbooks/st-011-baseline-dashboards.json",
@@ -126,6 +127,8 @@
         "delta_context_json",
         "source_url"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "validate_parser_drift_stop_unplanned_rollout_and_route_limited_confidence_when_needed",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json",
         "dashboard_panel_id": "st016-parser-drift-events-weekly",
@@ -199,6 +202,8 @@
         "delta_context_json",
         "source_url"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "validate_parser_drift_stop_unplanned_rollout_and_route_limited_confidence_when_needed",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-016-synthetic-alert-validation-dashboard.json",
         "dashboard_panel_id": "st016-parser-drift-events-weekly",
@@ -265,6 +270,8 @@
         "quality_gate_reason_codes",
         "source_gap_hint"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "restore_authoritative_minutes_coverage_or_keep_bundle_limited_confidence",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-source-coverage-ratio",
@@ -330,6 +337,8 @@
         "quality_gate_reason_codes",
         "source_gap_hint"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "restore_authoritative_minutes_coverage_or_keep_bundle_limited_confidence",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-source-coverage-ratio",
@@ -393,6 +402,8 @@
         "error_code",
         "error_type"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "stabilize_summarize_execution_choose_confidence_or_rollback_then_replay_after_fix",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
         "dashboard_panel_id": "pipeline-stage-outcomes",
@@ -456,6 +467,8 @@
         "error_code",
         "error_type"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "stabilize_summarize_execution_choose_confidence_or_rollback_then_replay_after_fix",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
         "dashboard_panel_id": "pipeline-stage-outcomes",
@@ -537,6 +550,8 @@
         "error_code",
         "error_type"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "drain_source_scoped_dlq_backlog_with_audited_replay_batches",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
@@ -618,6 +633,8 @@
         "error_code",
         "error_type"
       ],
+      "runbook": "docs/runbooks/st-031-source-aware-incident-response.md",
+      "remediation_action": "drain_source_scoped_dlq_backlog_with_audited_replay_batches",
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",

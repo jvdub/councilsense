@@ -8,6 +8,11 @@ This runbook maps top MVP failure modes to one dashboard panel and one log query
 - Environment: non-local target (`aws`) during operational smoke and rehearsals.
 - Correlation keys to carry through all steps: `city_id`, `meeting_id`, `run_id`, `dedupe_key`.
 
+## Source-Aware Entry Point
+
+- For ST-031 alert classes `parser_drift_spike`, `missing_minutes_surge`, `summarize_failure_spike`, and `stale_pipeline_dlq_backlog`, use `docs/runbooks/st-031-source-aware-incident-response.md` as the primary runbook.
+- Preserve `source_id` and `stage` alongside the default correlation keys for every ST-031 handoff.
+
 ## Failure Mode 1: Pipeline Stage Failure
 
 - Dashboard panel: `pipeline-stage-outcomes` (confirm failing stage/outcome volume).

@@ -2,9 +2,9 @@
 
 Task: TASK-ST-031-03
 
-This document defines the initial alert policy for multi-document parser drift spikes, missing-minutes surges, summarize failure spikes, and stale pipeline DLQ backlog.
+This document defines the source-aware alert policy for multi-document parser drift spikes, missing-minutes surges, summarize failure spikes, and stale pipeline DLQ backlog.
 
-Runbook procedure authoring remains out of scope for this task and is deferred to TASK-ST-031-04. This policy only defines rule thresholds, routing, payload contracts, and noise controls.
+Primary incident runbook: `docs/runbooks/st-031-source-aware-incident-response.md`
 
 Machine-readable source of truth: `config/ops/st-031-source-aware-alert-rules.json`
 
@@ -25,6 +25,15 @@ Machine-readable source of truth: `config/ops/st-031-source-aware-alert-rules.js
 | `missing_minutes_surge` | `ops-ingestion-oncall` | `source-operations-owner` | `platform-owner` | `PT45M` |
 | `summarize_failure_spike` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` |
 | `stale_pipeline_dlq_backlog` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` |
+
+## Alert Class To Runbook Mapping
+
+| Alert class | Primary runbook entry | Primary remediation action |
+| --- | --- | --- |
+| `parser_drift_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | Validate drift context, stop unplanned parser rollout, and route affected output to limited-confidence handling when source integrity is uncertain. |
+| `missing_minutes_surge` | `docs/runbooks/st-031-source-aware-incident-response.md` | Restore authoritative minutes coverage or keep the bundle in limited-confidence status until the source gap is resolved. |
+| `summarize_failure_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | Stabilize summarize execution, use confidence-policy versus rollback decisioning, and replay only after mitigation. |
+| `stale_pipeline_dlq_backlog` | `docs/runbooks/st-031-source-aware-incident-response.md` | Drain the source-scoped DLQ backlog with audited replay batches after the root cause is fixed. |
 
 ## Payload Contract
 
@@ -66,10 +75,10 @@ Escalation gating requirement: `city_id`, `source_id`, and `run_id` must exist b
 
 ## Diagnostic Links
 
-- Parser drift: `docs/runbooks/st-016-synthetic-alert-validation-dashboard.json` panel `st016-parser-drift-events-weekly`, with `docs/runbooks/st-016-parser-drift-monitoring-runbook.md` for existing parser triage context.
-- Missing minutes surge: `docs/runbooks/st-031-source-aware-dashboard.json` panel `st031-source-coverage-ratio`, with `docs/runbooks/st-031-source-aware-observability-contract.md` for label and metric semantics.
-- Summarize failure spike: `docs/runbooks/st-011-baseline-dashboards.json` panel `pipeline-stage-outcomes`, with `docs/runbooks/st-031-source-aware-dashboard.json` for correlated bundle coverage and citation signals.
-- Stale pipeline DLQ backlog: `docs/runbooks/st-031-source-aware-dashboard.json` panel `st031-pipeline-dlq-oldest-age-by-source`, with `docs/runbooks/st-029-pipeline-dlq-contract.md` for DLQ triage fields.
+- Parser drift: `docs/runbooks/st-016-synthetic-alert-validation-dashboard.json` panel `st016-parser-drift-events-weekly`, with `docs/runbooks/st-031-source-aware-incident-response.md` as the primary runbook and `docs/runbooks/st-016-parser-drift-monitoring-runbook.md` for parser delta analysis.
+- Missing minutes surge: `docs/runbooks/st-031-source-aware-dashboard.json` panel `st031-source-coverage-ratio`, with `docs/runbooks/st-031-source-aware-incident-response.md` as the primary runbook and `docs/runbooks/st-031-source-aware-observability-contract.md` for label semantics.
+- Summarize failure spike: `docs/runbooks/st-011-baseline-dashboards.json` panel `pipeline-stage-outcomes`, with `docs/runbooks/st-031-source-aware-incident-response.md` as the primary runbook and `docs/runbooks/st-031-source-aware-dashboard.json` for correlated coverage and citation signals.
+- Stale pipeline DLQ backlog: `docs/runbooks/st-031-source-aware-dashboard.json` panel `st031-pipeline-dlq-oldest-age-by-source`, with `docs/runbooks/st-031-source-aware-incident-response.md` as the primary runbook and `docs/runbooks/st-029-pipeline-dlq-contract.md` for DLQ replay fields.
 
 ## Validation Scope
 
@@ -78,5 +87,6 @@ This task validates:
 - trigger behavior for all four incident classes using controlled fixtures
 - payload completeness against required common fields plus class-specific context
 - dedupe and suppression behavior for repeated failures and planned-noise windows
+- single-runbook linkage and document completeness via `docs/runbooks/st-031-runbook-walkthrough-checklist.md`
 
-Staging simulation evidence and step-by-step incident procedures are intentionally deferred to TASK-ST-031-05 and TASK-ST-031-04.
+Staging simulation evidence remains deferred to TASK-ST-031-05.

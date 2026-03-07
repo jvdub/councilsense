@@ -114,6 +114,8 @@ def test_st031_alert_policy_artifacts_exist() -> None:
     repo_root = _repo_root()
     assert (repo_root / "config" / "ops" / "st-031-source-aware-alert-rules.json").exists()
     assert (repo_root / "docs" / "runbooks" / "st-031-source-aware-alert-policy.md").exists()
+    assert (repo_root / "docs" / "runbooks" / "st-031-source-aware-incident-response.md").exists()
+    assert (repo_root / "docs" / "runbooks" / "st-031-runbook-walkthrough-checklist.md").exists()
 
 
 def test_st031_alert_policy_covers_required_classes_routes_and_environment_overrides() -> None:
@@ -171,8 +173,47 @@ def test_st031_alert_payload_contracts_are_actionable_and_reference_existing_dia
         dashboard_path = _repo_root() / cast(str, payload["dashboard_path"])
         assert dashboard_path.exists()
 
+        runbook_path = _repo_root() / cast(str, rule["runbook"])
+        assert runbook_path.exists()
+        assert cast(str, rule["remediation_action"])
+
         for path_value in cast(list[str], cast(dict[str, Any], rule["diagnostic_links"])["supporting_paths"]):
             assert (_repo_root() / path_value).exists()
+
+
+def test_st031_each_alert_class_has_one_primary_runbook_and_remediation_mapping() -> None:
+    ruleset = _load_ruleset()
+    rules = cast(list[dict[str, Any]], ruleset["rules"])
+
+    by_class: dict[str, list[dict[str, Any]]] = {}
+    for rule in rules:
+        by_class.setdefault(cast(str, rule["alert_class"]), []).append(rule)
+
+    for alert_class, class_rules in by_class.items():
+        runbooks = {cast(str, rule["runbook"]) for rule in class_rules}
+        remediation_actions = {cast(str, rule["remediation_action"]) for rule in class_rules}
+        assert len(runbooks) == 1, alert_class
+        assert len(remediation_actions) == 1, alert_class
+
+
+def test_st031_primary_runbook_covers_triage_replay_confidence_and_rollback() -> None:
+    repo_root = _repo_root()
+    runbook_path = repo_root / "docs" / "runbooks" / "st-031-source-aware-incident-response.md"
+    checklist_path = repo_root / "docs" / "runbooks" / "st-031-runbook-walkthrough-checklist.md"
+
+    runbook = runbook_path.read_text(encoding="utf-8")
+    checklist = checklist_path.read_text(encoding="utf-8")
+
+    assert "## Owner Routing And Alert-to-Action Matrix" in runbook
+    assert "## Replay Procedure" in runbook
+    assert "## Confidence-Policy Decision Tree" in runbook
+    assert "## Rollback Decision Tree" in runbook
+    assert "parser_drift_spike" in runbook
+    assert "missing_minutes_surge" in runbook
+    assert "summarize_failure_spike" in runbook
+    assert "stale_pipeline_dlq_backlog" in runbook
+    assert "TASK-ST-031-05" in checklist
+    assert "Each ST-031 alert class maps to one primary runbook entry point." in checklist
 
 
 def test_st031_controlled_scenarios_trigger_expected_alert_ids_and_owner_routes() -> None:

@@ -70,12 +70,39 @@ Failure policy when enforced:
 
 Non-enforced cohorts keep existing publish behavior.
 
+## Ownership And Escalation
+
+- Primary owner: `ops-pipeline-oncall`
+- Secondary owner: `release-owner`
+- Escalate to: `incident-commander`
+- Escalate immediately if `gate_mode=report_only` does not restore baseline publish behavior within 15 minutes.
+
+## Incident Rollback Decision Tree
+
+1. If enforcement is downgrading or blocking multiple sources incorrectly, revert `gate_mode` to `report_only` first.
+2. If report-only reversion restores expected publish behavior, stop there and use limited-confidence handling only for the still-affected source-scoped outputs.
+3. If behavior remains incorrect after report-only reversion, disable feature flags in reverse order and verify after each step.
+4. Do not perform schema rollback. ST-031 rollback is config-only and reversible.
+
+Required rollback audit metadata:
+
+- `actor_user_id`
+- `incident_reference`
+- `rollback_started_at_utc`
+- `rollback_reason`
+- `environment`
+- `cohort`
+- `previous_config_snapshot`
+- `new_config_snapshot`
+- `verification_run_id`
+- `verification_result`
+
 ## Rollback Procedure (Required Reverse Order)
 
-1. Disable `specificity_retention_enabled`
-2. Disable `evidence_projection_enabled`
-3. Disable `topic_hardening_enabled`
-4. Revert `gate_mode` to `report_only`
+1. Revert `gate_mode` to `report_only`
+2. Disable `specificity_retention_enabled`
+3. Disable `evidence_projection_enabled`
+4. Disable `topic_hardening_enabled`
 
 Post-check each step before continuing.
 
