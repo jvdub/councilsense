@@ -99,7 +99,7 @@ def test_pipeline_stage_logs_emit_start_and_terminal_events_for_all_required_sta
         if event["stage"] == "parse" and event["event_name"] == "pipeline_stage_error"
     )
     assert len(parse_error_events) == 1
-    assert parse_error_events[0]["error_code"] == "permanent_stage_error"
+    assert parse_error_events[0]["error_code"] == "terminal_stage_error"
     assert parse_error_events[0]["error_message"] == "parser mismatch"
 
 

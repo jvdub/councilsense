@@ -34,7 +34,7 @@ PIPELINE_DLQ_CONTRACT_VERSION = "st029-pipeline-dlq.v1"
 
 PipelineDlqFailureClassification = Literal["transient", "terminal"]
 PipelineDlqStatus = Literal["open", "triaged", "replay_ready", "replayed", "dismissed"]
-PipelineReplayAuditEventType = Literal["requested", "queued", "noop", "failed"]
+PipelineReplayAuditEventType = Literal["requested", "queued", "replayed", "noop", "failed"]
 
 
 @dataclass(frozen=True)

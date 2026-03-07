@@ -459,5 +459,15 @@ def test_pipeline_replay_execution_is_idempotent_on_repeated_attempts_after_succ
 
     assert first.outcome == "replayed"
     assert second.outcome == "replayed"
-    assert second.guard_reason_code == "dlq_already_replayed"
+    assert second.guard_reason_code is None
     assert worker_calls["count"] == 1
+
+    history = repository.list_pipeline_replay_audit_records(replay_request_key=submitted.replay_request_key)
+    assert [event.event_type for event in history] == ["requested", "queued", "replayed"]
+
+    replayed_metadata = json.loads(history[-1].result_metadata_json)
+    assert replayed_metadata["guard_applied"] is False
+    assert replayed_metadata["guard_reason_code"] is None
+    assert replayed_metadata["dlq_status_before"] == "replay_ready"
+    assert replayed_metadata["dlq_status_after"] == "replayed"
+    assert replayed_metadata["stage_status_after"] == "processed"

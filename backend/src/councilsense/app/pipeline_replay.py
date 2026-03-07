@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from councilsense.db import MeetingSummaryRepository, ProcessingRunRepository, build_pipeline_replay_request_key
+
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineReplayNotFoundError(LookupError):
@@ -163,6 +167,23 @@ class PipelineReplayCommandService:
             },
         )
 
+        _log_replay_event(
+            event_name="pipeline_replay_command",
+            replay_request_key=replay_request_key,
+            run_id=dlq_record.run_id,
+            city_id=dlq_record.city_id,
+            meeting_id=dlq_record.meeting_id,
+            stage_name=dlq_record.stage_name,
+            source_id=dlq_record.source_id,
+            actor_user_id=payload.actor_user_id,
+            idempotency_key=payload.idempotency_key,
+            replay_reason=payload.reason,
+            outcome=("failure" if completed.event_type == "failed" else "suppressed" if completed.event_type == "noop" else "success"),
+            replay_outcome=completed.event_type,
+            dlq_key=dlq_record.dlq_key,
+            result_metadata=json.loads(completed.result_metadata_json),
+        )
+
         return PipelineReplayCommandResult(
             replay_request_key=replay_request_key,
             idempotency_key=payload.idempotency_key,
@@ -190,7 +211,7 @@ class PipelineReplayCommandService:
         for event in history:
             if getattr(event, "event_type", None) == "requested":
                 requested = event
-            elif getattr(event, "event_type", None) in {"queued", "noop", "failed"}:
+            elif getattr(event, "event_type", None) in {"queued", "replayed", "noop", "failed"}:
                 completed = event
         if requested is None or completed is None:
             raise RuntimeError("Replay audit history is incomplete for idempotent request")
@@ -320,42 +341,17 @@ class PipelineReplayExecutionService:
                 transition_to_replayed=False,
             )
 
-        if dlq_record.status == "replay_ready":
-            transitioned = self._repository.transition_pipeline_dlq_status(
-                dlq_key=dlq_record.dlq_key,
-                next_status="replayed",
-            )
-            dlq_status_after = transitioned.status
-        else:
-            dlq_status_after = dlq_record.status
-
-        return PipelineReplayExecutionResult(
-            replay_request_key=replay_request_key,
-            dlq_key=dlq_record.dlq_key,
-            run_id=dlq_record.run_id,
-            city_id=dlq_record.city_id,
-            meeting_id=dlq_record.meeting_id,
-            stage_name=dlq_record.stage_name,
-            source_id=dlq_record.source_id,
-            outcome="replayed",
+        return self._record_execution_event(
+            requested=requested,
             dlq_status_before=dlq_status_before,
-            dlq_status_after=dlq_status_after,
             stage_status_before=stage_status_before,
             stage_status_after=self._current_stage_status(requested=requested),
-            guard_reason_code=None,
-            completed_at=transitioned.replayed_at if dlq_record.status == "replay_ready" and dlq_status_after == "replayed" else requested.created_at,
-            result_metadata_json=json.dumps(
-                {
-                    "dlq_status_before": dlq_status_before,
-                    "dlq_status_after": dlq_status_after,
-                    "stage_status_before": stage_status_before,
-                    "stage_status_after": self._current_stage_status(requested=requested),
-                    "guard_applied": False,
-                    "guard_reason_code": None,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
+            event_type="replayed",
+            result_metadata={
+                "guard_applied": False,
+                "guard_reason_code": None,
+            },
+            transition_to_replayed=True,
         )
 
     def _guard_replay(
@@ -430,6 +426,22 @@ class PipelineReplayExecutionService:
             },
         )
         metadata = json.loads(completed.result_metadata_json)
+        _log_replay_event(
+            event_name="pipeline_replay_execution",
+            replay_request_key=completed.replay_request_key,
+            run_id=completed.run_id,
+            city_id=completed.city_id,
+            meeting_id=completed.meeting_id,
+            stage_name=completed.stage_name,
+            source_id=completed.source_id,
+            actor_user_id=completed.actor_user_id,
+            idempotency_key=completed.idempotency_key,
+            replay_reason=completed.replay_reason,
+            outcome=("failure" if completed.event_type == "failed" else "suppressed" if completed.event_type == "noop" else "success"),
+            replay_outcome=completed.event_type,
+            dlq_key=completed.dlq_key,
+            result_metadata=metadata,
+        )
         return PipelineReplayExecutionResult(
             replay_request_key=completed.replay_request_key,
             dlq_key=completed.dlq_key,
@@ -460,7 +472,7 @@ class PipelineReplayExecutionService:
     @staticmethod
     def _existing_execution_result(history: tuple[object, ...]) -> PipelineReplayExecutionResult | None:
         for event in history:
-            if getattr(event, "event_type", None) not in {"noop", "failed"}:
+            if getattr(event, "event_type", None) not in {"replayed", "noop", "failed"}:
                 continue
             metadata = json.loads(event.result_metadata_json)
             if "dlq_status_before" not in metadata or "dlq_status_after" not in metadata:
@@ -483,3 +495,39 @@ class PipelineReplayExecutionService:
                 result_metadata_json=event.result_metadata_json,
             )
         return None
+
+
+def _log_replay_event(
+    *,
+    event_name: str,
+    replay_request_key: str,
+    run_id: str,
+    city_id: str,
+    meeting_id: str,
+    stage_name: str,
+    source_id: str,
+    actor_user_id: str,
+    idempotency_key: str,
+    replay_reason: str,
+    outcome: str,
+    replay_outcome: str,
+    dlq_key: str,
+    result_metadata: dict[str, object],
+) -> None:
+    event: dict[str, object] = {
+        "event_name": event_name,
+        "city_id": city_id,
+        "meeting_id": meeting_id,
+        "run_id": run_id,
+        "dedupe_key": replay_request_key,
+        "stage": stage_name,
+        "outcome": outcome,
+        "replay_outcome": replay_outcome,
+        "source_id": source_id,
+        "actor_user_id": actor_user_id,
+        "idempotency_key": idempotency_key,
+        "replay_reason": replay_reason,
+        "dlq_key": dlq_key,
+    }
+    event.update(result_metadata)
+    logger.info(event_name, extra={"event": event})

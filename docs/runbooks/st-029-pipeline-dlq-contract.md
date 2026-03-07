@@ -55,4 +55,66 @@ Allowed transitions:
 
 - Later replay tasks should target DLQ rows by `dlq_key` or `id` and must not derive scope from free-form logs.
 - Replay eligibility should use `status`, `failure_classification`, `terminal_reason`, and the source/run/stage identifiers already stored here.
-- Actor, reason, replay audit history, and duplicate-replay prevention remain out of scope for this task.
+- Replay requests must capture `actor_user_id`, `replay_reason`, and an operator-supplied `idempotency_key`.
+- Replay execution must persist `requested`, `queued`, `replayed`, `noop`, and `failed` outcomes in `pipeline_replay_audit_events`.
+- Duplicate-replay prevention must preserve the existing publication/artifact state and surface the guard reason in replay audit metadata.
+
+## Operator Recovery Workflow
+
+1. Identify the terminal failure in `pipeline_dlq_entries` using `dlq_key`, `run_id`, `meeting_id`, `stage_name`, and `source_id`.
+2. Review `triage_metadata_json` and confirm the terminal boundary is understood before replaying.
+3. Record the operator identity as `actor_user_id`, the remediation explanation as `replay_reason`, and a unique `idempotency_key` for the recovery attempt.
+4. Submit the replay request only when the DLQ row is `open` or `triaged`; the command transitions the row to `replay_ready` and records the audit trail.
+5. Execute replay and verify the terminal outcome in `pipeline_replay_audit_events` before closing the incident.
+
+Required operator evidence:
+
+- `actor_user_id`
+- `replay_reason`
+- `idempotency_key`
+- `dlq_key`
+- terminal replay outcome: `replayed`, `noop`, or `failed`
+
+## Observability Queries
+
+Replay command/execution logs emit structured events named `pipeline_replay_command` and `pipeline_replay_execution` with the standard correlation keys:
+
+- `city_id`
+- `meeting_id`
+- `run_id`
+- `dedupe_key` (the replay request key)
+- `stage`
+- `outcome`
+
+Additional replay fields required for triage:
+
+- `replay_outcome`
+- `actor_user_id`
+- `idempotency_key`
+- `replay_reason`
+- `dlq_key`
+- `guard_reason_code`
+
+Suggested SQL for DLQ triage:
+
+```sql
+SELECT dlq_key, status, terminal_reason, terminal_attempt_number, max_attempts, error_code, error_message
+FROM pipeline_dlq_entries
+WHERE status IN ('open', 'triaged', 'replay_ready')
+ORDER BY terminal_transitioned_at DESC;
+```
+
+Suggested SQL for replay audit verification:
+
+```sql
+SELECT replay_request_key, actor_user_id, replay_reason, idempotency_key, event_type, result_metadata_json, created_at
+FROM pipeline_replay_audit_events
+WHERE dlq_key = ?
+ORDER BY created_at ASC, id ASC;
+```
+
+No-op recovery expectations:
+
+- `event_type = 'noop'` indicates the recovery attempt was safely short-circuited.
+- `guard_reason_code = 'publish_stage_outcome_already_materialized'` confirms publication replay did not duplicate summary artifacts.
+- `guard_reason_code = 'stage_already_processed'` confirms the stage had already reached a processed terminal state.

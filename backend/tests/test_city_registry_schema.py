@@ -48,6 +48,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0025_st029_pipeline_dlq_contract.sql" in before.pending
     assert "0026_st029_pipeline_replay_audit_history.sql" in before.pending
     assert "0027_st029_publish_replay_idempotency_guards.sql" in before.pending
+    assert "0028_st029_pipeline_replay_success_audit.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -79,6 +80,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0025_st029_pipeline_dlq_contract.sql",
         "0026_st029_pipeline_replay_audit_history.sql",
         "0027_st029_publish_replay_idempotency_guards.sql",
+        "0028_st029_pipeline_replay_success_audit.sql",
     )
 
     after_first_apply = get_migration_status(connection)
