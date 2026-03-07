@@ -22,6 +22,7 @@ from councilsense.app.st030_document_aware_gates import (
 
 QUALITY_GATE_ROLLOUT_SCHEMA_VERSION = "st-021-quality-gate-rollout-v1"
 DOCUMENT_AWARE_DIAGNOSTICS_SCHEMA_VERSION = "st-030-report-only-gate-diagnostics-v1"
+PROMOTION_ARTIFACT_SCHEMA_VERSION = "st-030-promotion-eligibility-v1"
 
 GateIdentifier = Literal["gate_a_contract_safety", "gate_b_quality_parity", "gate_c_operational_reliability"]
 GateMode = Literal["report_only", "enforced"]
@@ -47,6 +48,7 @@ class QualityGateRolloutConfig:
     promotion_required: bool
     behavior_flags: QualityGateBehaviorFlags
     diagnostics_artifact_path: str | None
+    promotion_artifact_path: str | None
     document_aware_thresholds: DocumentAwareGateThresholds
 
 
@@ -157,6 +159,8 @@ class PromotionStatus:
     required_consecutive_green_runs: int
     evaluated_run_ids: tuple[str, ...]
     reason_codes: tuple[str, ...]
+    evaluated_runs: tuple["PromotionRunEvaluation", ...] = ()
+    eligible_window_run_ids: tuple[str, ...] = ()
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -165,6 +169,91 @@ class PromotionStatus:
             "required_consecutive_green_runs": self.required_consecutive_green_runs,
             "evaluated_run_ids": list(self.evaluated_run_ids),
             "reason_codes": list(self.reason_codes),
+            "evaluated_runs": [run.to_payload() for run in self.evaluated_runs],
+            "eligible_window_run_ids": list(self.eligible_window_run_ids),
+        }
+
+
+@dataclass(frozen=True)
+class PromotionGateOutcome:
+    gate_id: str
+    status: DiagnosticGateStatus
+    passed: bool
+    reason_codes: tuple[str, ...]
+    score: float | None = None
+    threshold: float | None = None
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "gate_id": self.gate_id,
+            "status": self.status,
+            "passed": self.passed,
+            "reason_codes": list(self.reason_codes),
+        }
+        if self.score is not None:
+            payload["score"] = self.score
+        if self.threshold is not None:
+            payload["threshold"] = self.threshold
+        return payload
+
+
+@dataclass(frozen=True)
+class PromotionRunEvaluation:
+    run_id: str
+    gate_mode: GateMode | None
+    diagnostics_present: bool
+    diagnostics_complete: bool
+    all_gates_green: bool
+    green_for_promotion: bool
+    consecutive_green_runs_after_evaluation: int
+    gate_outcomes: tuple[PromotionGateOutcome, ...]
+    reason_codes: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "gate_mode": self.gate_mode,
+            "diagnostics_present": self.diagnostics_present,
+            "diagnostics_complete": self.diagnostics_complete,
+            "all_gates_green": self.all_gates_green,
+            "green_for_promotion": self.green_for_promotion,
+            "consecutive_green_runs_after_evaluation": self.consecutive_green_runs_after_evaluation,
+            "gate_outcomes": [gate.to_payload() for gate in self.gate_outcomes],
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+@dataclass(frozen=True)
+class PromotionArtifact:
+    schema_version: str
+    generated_at_utc: str
+    environment: str
+    cohort: str
+    promotion_scope_key: str
+    evaluated_at_run_id: str
+    eligible: bool
+    required_consecutive_green_runs: int
+    consecutive_green_runs: int
+    reason_codes: tuple[str, ...]
+    evaluated_run_ids: tuple[str, ...]
+    eligible_window_run_ids: tuple[str, ...]
+    evaluated_runs: tuple[PromotionRunEvaluation, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "generated_at_utc": self.generated_at_utc,
+            "environment": self.environment,
+            "cohort": self.cohort,
+            "promotion_scope_key": self.promotion_scope_key,
+            "evaluated_at_run_id": self.evaluated_at_run_id,
+            "eligible": self.eligible,
+            "required_consecutive_green_runs": self.required_consecutive_green_runs,
+            "consecutive_green_runs": self.consecutive_green_runs,
+            "reason_codes": list(self.reason_codes),
+            "evaluated_run_ids": list(self.evaluated_run_ids),
+            "eligible_window_run_ids": list(self.eligible_window_run_ids),
+            "evaluated_runs": [run.to_payload() for run in self.evaluated_runs],
         }
 
 
@@ -260,6 +349,7 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
         "enforcement_action": "downgrade",
         "promotion_required": True,
         "diagnostics_artifact_path": os.getenv("COUNCILSENSE_QG_DIAGNOSTICS_ARTIFACT_PATH"),
+        "promotion_artifact_path": os.getenv("COUNCILSENSE_QG_PROMOTION_ARTIFACT_PATH"),
         "document_aware_thresholds": default_document_aware_thresholds_payload(),
     }
 
@@ -333,6 +423,7 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
         evidence_projection_enabled = True
 
     diagnostics_artifact_path = _parse_path_field(payload=defaults, key="diagnostics_artifact_path")
+    promotion_artifact_path = _parse_path_field(payload=defaults, key="promotion_artifact_path")
     raw_document_aware_thresholds = defaults.get("document_aware_thresholds")
     if raw_document_aware_thresholds is not None and not isinstance(raw_document_aware_thresholds, dict):
         raise ValueError("document_aware_thresholds must be an object when provided")
@@ -355,6 +446,7 @@ def resolve_rollout_config(*, environment: str | None, cohort: str | None) -> Qu
             evidence_projection_enabled=evidence_projection_enabled,
         ),
         diagnostics_artifact_path=diagnostics_artifact_path,
+        promotion_artifact_path=promotion_artifact_path,
         document_aware_thresholds=document_aware_thresholds,
     )
 
@@ -495,7 +587,7 @@ def append_shadow_diagnostics_artifact(*, artifact_path: str | None, diagnostics
         handle.write(f"{json.dumps(payload, sort_keys=True)}\n")
 
 
-def _read_shadow_diagnostics_from_metadata(*, metadata_json: str | None) -> dict[str, object] | None:
+def _read_quality_gate_rollout_from_metadata(*, metadata_json: str | None) -> dict[str, object] | None:
     if metadata_json is None:
         return None
     try:
@@ -507,10 +599,253 @@ def _read_shadow_diagnostics_from_metadata(*, metadata_json: str | None) -> dict
     quality_gate_payload = parsed.get("quality_gate_rollout")
     if not isinstance(quality_gate_payload, dict):
         return None
+    return quality_gate_payload
+
+
+def _read_shadow_diagnostics_from_metadata(*, metadata_json: str | None) -> dict[str, object] | None:
+    quality_gate_payload = _read_quality_gate_rollout_from_metadata(metadata_json=metadata_json)
+    if quality_gate_payload is None:
+        return None
     diagnostics = quality_gate_payload.get("shadow_diagnostics")
     if not isinstance(diagnostics, dict):
         return None
     return diagnostics
+
+
+def _dedupe_reason_codes(*, reason_codes: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for reason_code in reason_codes:
+        if reason_code in seen:
+            continue
+        seen.add(reason_code)
+        deduped.append(reason_code)
+    return tuple(deduped)
+
+
+def _shadow_gate_outcomes_from_payload(*, shadow_diagnostics: dict[str, object]) -> tuple[PromotionGateOutcome, ...]:
+    gates = shadow_diagnostics.get("gates")
+    if not isinstance(gates, list):
+        return ()
+    outcomes: list[PromotionGateOutcome] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        gate_id = gate.get("gate_id")
+        if not isinstance(gate_id, str):
+            continue
+        passed = bool(gate.get("passed", False))
+        raw_reason_codes = gate.get("reason_codes")
+        reason_codes = (
+            tuple(code for code in raw_reason_codes if isinstance(code, str))
+            if isinstance(raw_reason_codes, list)
+            else (("gate_pass",) if passed else ())
+        )
+        outcomes.append(
+            PromotionGateOutcome(
+                gate_id=gate_id,
+                status=("pass" if passed else "fail"),
+                passed=passed,
+                reason_codes=reason_codes,
+            )
+        )
+    return tuple(outcomes)
+
+
+def _document_aware_gate_outcomes_from_payload(
+    *,
+    document_aware_report: dict[str, object],
+) -> tuple[PromotionGateOutcome, ...]:
+    gates = document_aware_report.get("gates")
+    if not isinstance(gates, list):
+        return ()
+    outcomes: list[PromotionGateOutcome] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        gate_id = gate.get("gate_id")
+        status = gate.get("status")
+        if not isinstance(gate_id, str) or status not in {"pass", "fail"}:
+            continue
+        raw_reason_codes = gate.get("reason_codes")
+        reason_codes = tuple(code for code in raw_reason_codes if isinstance(code, str)) if isinstance(raw_reason_codes, list) else ()
+        score = gate.get("score")
+        threshold = gate.get("threshold")
+        outcomes.append(
+            PromotionGateOutcome(
+                gate_id=gate_id,
+                status=cast(DiagnosticGateStatus, status),
+                passed=bool(gate.get("passed", status == "pass")),
+                reason_codes=reason_codes,
+                score=float(score) if isinstance(score, (int, float)) else None,
+                threshold=float(threshold) if isinstance(threshold, (int, float)) else None,
+            )
+        )
+    return tuple(outcomes)
+
+
+def _with_streak(
+    *,
+    evaluation: PromotionRunEvaluation,
+    consecutive_green_runs_after_evaluation: int,
+) -> PromotionRunEvaluation:
+    return PromotionRunEvaluation(
+        run_id=evaluation.run_id,
+        gate_mode=evaluation.gate_mode,
+        diagnostics_present=evaluation.diagnostics_present,
+        diagnostics_complete=evaluation.diagnostics_complete,
+        all_gates_green=evaluation.all_gates_green,
+        green_for_promotion=evaluation.green_for_promotion,
+        consecutive_green_runs_after_evaluation=consecutive_green_runs_after_evaluation,
+        gate_outcomes=evaluation.gate_outcomes,
+        reason_codes=evaluation.reason_codes,
+    )
+
+
+def _promotion_evaluation_from_shadow_diagnostics(
+    *,
+    diagnostics: ShadowGateDiagnostics,
+) -> PromotionRunEvaluation | None:
+    if diagnostics.gate_mode != "report_only":
+        return None
+
+    if diagnostics.document_aware_report is None:
+        return PromotionRunEvaluation(
+            run_id=diagnostics.run_id,
+            gate_mode=diagnostics.gate_mode,
+            diagnostics_present=False,
+            diagnostics_complete=False,
+            all_gates_green=False,
+            green_for_promotion=False,
+            consecutive_green_runs_after_evaluation=0,
+            gate_outcomes=(),
+            reason_codes=("promotion_reset_missing_document_aware_diagnostics",),
+        )
+
+    gate_outcomes = tuple(
+        PromotionGateOutcome(
+            gate_id=gate.gate_id,
+            status=gate.status,
+            passed=gate.passed,
+            reason_codes=gate.reason_codes,
+            score=gate.score,
+            threshold=gate.threshold,
+        )
+        for gate in diagnostics.document_aware_report.gates
+    )
+    green_for_promotion = (
+        diagnostics.document_aware_report.diagnostics_complete and diagnostics.document_aware_report.all_gates_green
+    )
+    reason_codes = (
+        ("promotion_green_run",)
+        if green_for_promotion
+        else (
+            ("promotion_reset_incomplete_document_aware_diagnostics",)
+            if not diagnostics.document_aware_report.diagnostics_complete
+            else ("promotion_reset_failed_document_aware_gates",)
+        )
+    )
+    return PromotionRunEvaluation(
+        run_id=diagnostics.run_id,
+        gate_mode=diagnostics.gate_mode,
+        diagnostics_present=True,
+        diagnostics_complete=diagnostics.document_aware_report.diagnostics_complete,
+        all_gates_green=diagnostics.document_aware_report.all_gates_green,
+        green_for_promotion=green_for_promotion,
+        consecutive_green_runs_after_evaluation=0,
+        gate_outcomes=gate_outcomes,
+        reason_codes=reason_codes,
+    )
+
+
+def _promotion_evaluation_from_quality_gate_payload(
+    *,
+    run_id: str,
+    quality_gate_payload: dict[str, object],
+    environment: str,
+    cohort: str,
+) -> PromotionRunEvaluation | None:
+    shadow_diagnostics = quality_gate_payload.get("shadow_diagnostics")
+    if not isinstance(shadow_diagnostics, dict):
+        return None
+
+    payload_environment = quality_gate_payload.get("environment")
+    if not isinstance(payload_environment, str):
+        payload_environment = shadow_diagnostics.get("environment") if isinstance(shadow_diagnostics.get("environment"), str) else None
+    payload_cohort = quality_gate_payload.get("cohort")
+    if not isinstance(payload_cohort, str):
+        payload_cohort = shadow_diagnostics.get("cohort") if isinstance(shadow_diagnostics.get("cohort"), str) else None
+    if payload_environment != environment or payload_cohort != cohort:
+        return None
+
+    gate_mode = _parse_mode_field(payload=quality_gate_payload)
+    if gate_mode is None:
+        gate_mode = _parse_mode_field(payload=shadow_diagnostics)
+    if gate_mode == "enforced":
+        return None
+
+    document_aware_report = shadow_diagnostics.get("document_aware_report")
+    if isinstance(document_aware_report, dict):
+        diagnostics_complete = bool(document_aware_report.get("diagnostics_complete", False))
+        all_gates_green = bool(document_aware_report.get("all_gates_green", False))
+        green_for_promotion = diagnostics_complete and all_gates_green
+        reason_codes = (
+            ("promotion_green_run",)
+            if green_for_promotion
+            else (
+                ("promotion_reset_incomplete_document_aware_diagnostics",)
+                if not diagnostics_complete
+                else ("promotion_reset_failed_document_aware_gates",)
+            )
+        )
+        return PromotionRunEvaluation(
+            run_id=run_id,
+            gate_mode=gate_mode,
+            diagnostics_present=True,
+            diagnostics_complete=diagnostics_complete,
+            all_gates_green=all_gates_green,
+            green_for_promotion=green_for_promotion,
+            consecutive_green_runs_after_evaluation=0,
+            gate_outcomes=_document_aware_gate_outcomes_from_payload(document_aware_report=document_aware_report),
+            reason_codes=reason_codes,
+        )
+
+    if gate_mode == "report_only":
+        return PromotionRunEvaluation(
+            run_id=run_id,
+            gate_mode=gate_mode,
+            diagnostics_present=False,
+            diagnostics_complete=False,
+            all_gates_green=False,
+            green_for_promotion=False,
+            consecutive_green_runs_after_evaluation=0,
+            gate_outcomes=(),
+            reason_codes=("promotion_reset_missing_document_aware_diagnostics",),
+        )
+
+    diagnostics_complete = bool(shadow_diagnostics.get("diagnostics_complete", False))
+    all_gates_green = bool(shadow_diagnostics.get("all_gates_green", False))
+    green_for_promotion = diagnostics_complete and all_gates_green
+    reason_codes = (
+        ("promotion_green_run",)
+        if green_for_promotion
+        else (
+            ("promotion_reset_incomplete_shadow_diagnostics",)
+            if not diagnostics_complete
+            else ("promotion_reset_failed_shadow_gates",)
+        )
+    )
+    return PromotionRunEvaluation(
+        run_id=run_id,
+        gate_mode=gate_mode,
+        diagnostics_present=True,
+        diagnostics_complete=diagnostics_complete,
+        all_gates_green=all_gates_green,
+        green_for_promotion=green_for_promotion,
+        consecutive_green_runs_after_evaluation=0,
+        gate_outcomes=_shadow_gate_outcomes_from_payload(shadow_diagnostics=shadow_diagnostics),
+        reason_codes=reason_codes,
+    )
 
 
 def compute_promotion_status(
@@ -519,6 +854,7 @@ def compute_promotion_status(
     environment: str,
     cohort: str,
     required_consecutive_green_runs: int = 2,
+    current_run_diagnostics: ShadowGateDiagnostics | None = None,
 ) -> PromotionStatus:
     rows = connection.execute(
         """
@@ -530,43 +866,135 @@ def compute_promotion_status(
         """
     ).fetchall()
 
-    evaluated_run_ids: list[str] = []
+    evaluated_runs_descending: list[PromotionRunEvaluation] = []
     consecutive_green_runs = 0
+    seen_run_ids: set[str] = set()
+
+    if current_run_diagnostics is not None:
+        seen_run_ids.add(current_run_diagnostics.run_id)
+        evaluation = _promotion_evaluation_from_shadow_diagnostics(diagnostics=current_run_diagnostics)
+        if evaluation is not None and current_run_diagnostics.environment == environment and current_run_diagnostics.cohort == cohort:
+            consecutive_green_runs = 1 if evaluation.green_for_promotion else 0
+            evaluated_runs_descending.append(
+                _with_streak(
+                    evaluation=evaluation,
+                    consecutive_green_runs_after_evaluation=consecutive_green_runs,
+                )
+            )
+            if not evaluation.green_for_promotion or consecutive_green_runs >= required_consecutive_green_runs:
+                rows = ()
 
     for row in rows:
         run_id = str(row[0])
-        diagnostics = _read_shadow_diagnostics_from_metadata(metadata_json=(str(row[1]) if row[1] is not None else None))
-        if diagnostics is None:
-            consecutive_green_runs = 0
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+        quality_gate_payload = _read_quality_gate_rollout_from_metadata(
+            metadata_json=(str(row[1]) if row[1] is not None else None)
+        )
+        if quality_gate_payload is None:
             continue
 
-        if diagnostics.get("environment") != environment or diagnostics.get("cohort") != cohort:
+        evaluation = _promotion_evaluation_from_quality_gate_payload(
+            run_id=run_id,
+            quality_gate_payload=quality_gate_payload,
+            environment=environment,
+            cohort=cohort,
+        )
+        if evaluation is None:
             continue
 
-        evaluated_run_ids.append(run_id)
-        diagnostics_complete = bool(diagnostics.get("diagnostics_complete", False))
-        all_green = bool(diagnostics.get("all_gates_green", False))
-        if diagnostics_complete and all_green:
+        if evaluation.green_for_promotion:
             consecutive_green_runs += 1
+            evaluated_runs_descending.append(
+                _with_streak(
+                    evaluation=evaluation,
+                    consecutive_green_runs_after_evaluation=consecutive_green_runs,
+                )
+            )
             if consecutive_green_runs >= required_consecutive_green_runs:
                 break
             continue
+
         consecutive_green_runs = 0
+        evaluated_runs_descending.append(
+            _with_streak(
+                evaluation=evaluation,
+                consecutive_green_runs_after_evaluation=consecutive_green_runs,
+            )
+        )
+        break
 
     eligible = consecutive_green_runs >= required_consecutive_green_runs
+    evaluated_runs = tuple(reversed(evaluated_runs_descending))
+    evaluated_run_ids = tuple(run.run_id for run in evaluated_runs)
+    eligible_window_run_ids = (
+        tuple(run.run_id for run in evaluated_runs[-required_consecutive_green_runs:])
+        if eligible
+        else ()
+    )
     reason_codes: list[str] = []
     if eligible:
         reason_codes.append("promotion_prerequisites_satisfied")
     else:
+        if not evaluated_runs:
+            reason_codes.append("no_report_only_runs_available")
+        else:
+            reason_codes.extend(evaluated_runs[-1].reason_codes)
         reason_codes.append("insufficient_consecutive_green_runs")
 
     return PromotionStatus(
         eligible=eligible,
         consecutive_green_runs=consecutive_green_runs,
         required_consecutive_green_runs=required_consecutive_green_runs,
-        evaluated_run_ids=tuple(evaluated_run_ids),
-        reason_codes=tuple(reason_codes),
+        evaluated_run_ids=evaluated_run_ids,
+        reason_codes=_dedupe_reason_codes(reason_codes=reason_codes),
+        evaluated_runs=evaluated_runs,
+        eligible_window_run_ids=eligible_window_run_ids,
     )
+
+
+def build_promotion_artifact(
+    *,
+    config: QualityGateRolloutConfig,
+    evaluated_at_run_id: str,
+    promotion_status: PromotionStatus,
+) -> PromotionArtifact:
+    return PromotionArtifact(
+        schema_version=PROMOTION_ARTIFACT_SCHEMA_VERSION,
+        generated_at_utc=datetime.now(UTC).replace(microsecond=0).isoformat(),
+        environment=config.environment,
+        cohort=config.cohort,
+        promotion_scope_key=f"{config.environment}:{config.cohort}",
+        evaluated_at_run_id=evaluated_at_run_id,
+        eligible=promotion_status.eligible,
+        required_consecutive_green_runs=promotion_status.required_consecutive_green_runs,
+        consecutive_green_runs=promotion_status.consecutive_green_runs,
+        reason_codes=promotion_status.reason_codes,
+        evaluated_run_ids=promotion_status.evaluated_run_ids,
+        eligible_window_run_ids=promotion_status.eligible_window_run_ids,
+        evaluated_runs=promotion_status.evaluated_runs,
+    )
+
+
+def append_promotion_artifact(
+    *,
+    artifact_path: str | None,
+    config: QualityGateRolloutConfig,
+    evaluated_at_run_id: str,
+    promotion_status: PromotionStatus,
+) -> None:
+    if artifact_path is None:
+        return
+    path = Path(artifact_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_promotion_artifact(
+        config=config,
+        evaluated_at_run_id=evaluated_at_run_id,
+        promotion_status=promotion_status,
+    ).to_payload()
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{json.dumps(payload, sort_keys=True)}\n")
 
 
 def decide_enforcement_outcome(

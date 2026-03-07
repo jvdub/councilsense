@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 import json
 
 import pytest
@@ -14,8 +15,10 @@ from councilsense.app.local_pipeline import (
 from councilsense.app.quality_gate_rollout import (
     GateDiagnostic,
     PromotionStatus,
+    append_promotion_artifact,
     append_shadow_diagnostics_artifact,
     decide_enforcement_outcome,
+    compute_promotion_status,
     evaluate_shadow_gates,
     resolve_rollout_config,
 )
@@ -510,6 +513,75 @@ def test_st030_enforced_authority_alignment_failure_blocks_publish_and_preserves
     assert detail["details"]["authoritative_source_status"] == "missing"
 
 
+@pytest.mark.parametrize(
+    ("history_sequence", "current_outcome", "expected_eligible", "expected_evaluated_run_ids"),
+    [
+        (("pass",), "pass", True, ("run-history-001", "run-current")),
+        (("pass", "fail"), "pass", False, ("run-history-002", "run-current")),
+        (("fail", "pass"), "pass", True, ("run-history-002", "run-current")),
+    ],
+)
+def test_st030_promotion_windows_require_two_consecutive_green_report_only_runs(
+    history_sequence: tuple[str, ...],
+    current_outcome: str,
+    expected_eligible: bool,
+    expected_evaluated_run_ids: tuple[str, ...],
+) -> None:
+    connection = create_test_connection()
+    _seed_report_only_history(connection=connection, outcomes=history_sequence)
+
+    promotion_status = compute_promotion_status(
+        connection=connection,
+        environment="local",
+        cohort=PILOT_CITY_ID,
+        required_consecutive_green_runs=2,
+        current_run_diagnostics=_build_report_only_diagnostics(run_id="run-current", outcome=current_outcome),
+    )
+
+    assert promotion_status.eligible is expected_eligible
+    assert promotion_status.evaluated_run_ids == expected_evaluated_run_ids
+    assert promotion_status.consecutive_green_runs == (2 if expected_eligible else 0)
+    assert promotion_status.eligible_window_run_ids == (
+        expected_evaluated_run_ids[-2:] if expected_eligible else ()
+    )
+
+
+def test_st030_missing_document_aware_diagnostics_reset_promotion_progress_and_emit_artifact(tmp_path) -> None:
+    connection = create_test_connection()
+    _seed_report_only_history(connection=connection, outcomes=("pass",))
+    current_diagnostics = _build_report_only_diagnostics(run_id="run-current", outcome="missing")
+    config = resolve_rollout_config(environment="local", cohort=PILOT_CITY_ID)
+
+    promotion_status = compute_promotion_status(
+        connection=connection,
+        environment="local",
+        cohort=PILOT_CITY_ID,
+        required_consecutive_green_runs=2,
+        current_run_diagnostics=current_diagnostics,
+    )
+    artifact_path = tmp_path / "promotion-eligibility.jsonl"
+    append_promotion_artifact(
+        artifact_path=str(artifact_path),
+        config=config,
+        evaluated_at_run_id=current_diagnostics.run_id,
+        promotion_status=promotion_status,
+    )
+
+    payload = json.loads(artifact_path.read_text(encoding="utf-8").strip())
+
+    assert promotion_status.eligible is False
+    assert promotion_status.consecutive_green_runs == 0
+    assert promotion_status.evaluated_run_ids == ("run-current",)
+    assert "promotion_reset_missing_document_aware_diagnostics" in promotion_status.reason_codes
+    assert payload["evaluated_at_run_id"] == "run-current"
+    assert payload["eligible"] is False
+    assert payload["evaluated_run_ids"] == ["run-current"]
+    assert payload["eligible_window_run_ids"] == []
+    assert payload["evaluated_runs"][0]["run_id"] == "run-current"
+    assert payload["evaluated_runs"][0]["diagnostics_present"] is False
+    assert payload["evaluated_runs"][0]["gate_outcomes"] == []
+
+
 def _sample_output(*, pointer_precision: str) -> SummarizationOutput:
     char_start = 0 if pointer_precision != "file" else None
     char_end = 48 if pointer_precision != "file" else None
@@ -537,6 +609,80 @@ def _sample_output(*, pointer_precision: str) -> SummarizationOutput:
             ),
         ),
     )
+
+
+def _seed_report_only_history(*, connection, outcomes: tuple[str, ...]) -> None:
+    run_repository = ProcessingRunRepository(connection)
+    for index, outcome in enumerate(outcomes, start=1):
+        run_id = f"run-history-{index:03d}"
+        run = run_repository.create_pending_run(
+            run_id=run_id,
+            city_id=PILOT_CITY_ID,
+            cycle_id=f"cycle-{index:03d}",
+        )
+        run_repository.upsert_stage_outcome(
+            outcome_id=f"outcome-publish-{run_id}",
+            run_id=run.id,
+            city_id=PILOT_CITY_ID,
+            meeting_id=f"meeting-{run_id}",
+            stage_name="publish",
+            status="processed",
+            metadata_json=json.dumps(
+                {
+                    "quality_gate_rollout": {
+                        "environment": "local",
+                        "cohort": PILOT_CITY_ID,
+                        "gate_mode": "report_only",
+                        "shadow_diagnostics": _build_report_only_diagnostics(
+                            run_id=run_id,
+                            outcome=outcome,
+                        ).to_payload(),
+                    }
+                }
+            ),
+            started_at=datetime(2026, 3, 6, 10, index, 0, tzinfo=UTC).isoformat(),
+            finished_at=datetime(2026, 3, 6, 10, index, 30, tzinfo=UTC).isoformat(),
+        )
+
+
+def _build_report_only_diagnostics(*, run_id: str, outcome: str):
+    diagnostics = evaluate_shadow_gates(
+        run_id=run_id,
+        city_id=PILOT_CITY_ID,
+        meeting_id=f"meeting-{run_id}",
+        source_id=f"source-{run_id}",
+        source_type="minutes",
+        config=resolve_rollout_config(environment="local", cohort=PILOT_CITY_ID),
+        source_text="Council adopted a publishable decision.",
+        output=_sample_output(pointer_precision="section"),
+        summarize_status="processed",
+        extract_status="processed",
+        summarize_fallback_used=False,
+        document_aware_gate_input=(
+            DocumentAwareGateInput(
+                authority_outcome="minutes_authoritative",
+                authority_reason_codes=(),
+                authority_conflict_count=0,
+                source_statuses={"minutes": "present", "agenda": "present", "packet": "present"},
+                authoritative_locator_precision="precise",
+                citation_precision_ratio=1.0,
+                citation_pointer_count=3,
+            )
+            if outcome != "fail"
+            else DocumentAwareGateInput(
+                authority_outcome="missing_authoritative_minutes",
+                authority_reason_codes=(REASON_CODE_MISSING_AUTHORITATIVE_MINUTES,),
+                authority_conflict_count=1,
+                source_statuses={"minutes": "missing", "agenda": "present", "packet": "present"},
+                authoritative_locator_precision=None,
+                citation_precision_ratio=0.25,
+                citation_pointer_count=2,
+            )
+        ),
+    )
+    if outcome == "missing":
+        return replace(diagnostics, document_aware_report=None)
+    return diagnostics
 
 
 def _eligible_promotion_status() -> PromotionStatus:

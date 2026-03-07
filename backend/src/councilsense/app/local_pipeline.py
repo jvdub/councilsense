@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from councilsense.app.quality_gate_rollout import (
     QualityGateRolloutConfig,
+    append_promotion_artifact,
     append_shadow_diagnostics_artifact,
     build_quality_gate_rollout_metadata,
     compute_promotion_status,
@@ -873,6 +874,7 @@ class LocalPipelineOrchestrator:
             environment=rollout_config.environment,
             cohort=rollout_config.cohort,
             required_consecutive_green_runs=2,
+            current_run_diagnostics=shadow_diagnostics,
         )
         enforcement_outcome = decide_enforcement_outcome(
             config=rollout_config,
@@ -884,6 +886,12 @@ class LocalPipelineOrchestrator:
             diagnostics=shadow_diagnostics,
             promotion_status=promotion_status,
             enforcement_outcome=enforcement_outcome,
+        )
+        append_promotion_artifact(
+            artifact_path=(rollout_config.promotion_artifact_path if rollout_config.mode == "report_only" else None),
+            config=rollout_config,
+            evaluated_at_run_id=run_id,
+            promotion_status=promotion_status,
         )
 
         self._upsert_stage_outcome(
