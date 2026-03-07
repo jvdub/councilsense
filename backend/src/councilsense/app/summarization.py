@@ -313,6 +313,7 @@ class PublishedSummarizationResult:
     publication: SummaryPublicationRecord
     quality_gate: QualityGateDecision
     notification_enqueue: NotificationEnqueueResult | None = None
+    replay_guard_reason_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -478,7 +479,7 @@ def persist_summarization_output(
     calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
 ) -> SummaryPublicationRecord:
     with repository.connection:
-        publication = repository.create_publication_in_transaction(
+        write_result = repository.ensure_publication_in_transaction(
             publication_id=publication_id,
             meeting_id=meeting_id,
             processing_run_id=processing_run_id,
@@ -493,13 +494,14 @@ def persist_summarization_output(
             notable_topics_json=_encode_json_array(output.notable_topics),
             published_at=published_at,
         )
-        attach_claim_evidence(
-            repository=repository,
-            publication_id=publication.id,
-            claims=output.claims,
-            in_transaction=True,
-        )
-        return publication
+        if write_result.created:
+            attach_claim_evidence(
+                repository=repository,
+                publication_id=write_result.publication.id,
+                claims=output.claims,
+                in_transaction=True,
+            )
+        return write_result.publication
 
 
 def publish_summarization_output(
@@ -550,7 +552,7 @@ def publish_summarization_output(
             min_confidence_score=quality_gate.min_confidence_score,
         )
     with repository.connection:
-        publication = repository.create_publication_in_transaction(
+        write_result = repository.ensure_publication_in_transaction(
             publication_id=publication_id,
             meeting_id=meeting_id,
             processing_run_id=processing_run_id,
@@ -565,12 +567,13 @@ def publish_summarization_output(
             notable_topics_json=_encode_json_array(output.notable_topics),
             published_at=published_at,
         )
-        attach_claim_evidence(
-            repository=repository,
-            publication_id=publication.id,
-            claims=output.claims,
-            in_transaction=True,
-        )
+        if write_result.created:
+            attach_claim_evidence(
+                repository=repository,
+                publication_id=write_result.publication.id,
+                claims=output.claims,
+                in_transaction=True,
+            )
         if publish_stage_outcome_id is not None:
             _annotate_publish_stage_outcome_metadata(
                 repository=repository,
@@ -585,14 +588,15 @@ def publish_summarization_output(
                 subscription_targets=notification_targets,
                 run_id=processing_run_id,
             )
-            if notification_targets and city_id is not None
+            if write_result.created and notification_targets and city_id is not None
             else None
         )
 
     return PublishedSummarizationResult(
-        publication=publication,
+        publication=write_result.publication,
         quality_gate=quality_gate,
         notification_enqueue=notification_enqueue,
+        replay_guard_reason_code=(None if write_result.created else "publish_stage_outcome_already_materialized"),
     )
 
 

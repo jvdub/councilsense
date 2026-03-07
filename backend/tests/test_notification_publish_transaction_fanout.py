@@ -11,8 +11,19 @@ from councilsense.app.notification_delivery_worker import (
     NotificationDeliveryWorker,
     NotificationDeliveryWorkerConfig,
 )
-from councilsense.app.summarization import SummarizationOutput, publish_summarization_output
-from councilsense.db import MeetingSummaryRepository, PILOT_CITY_ID, apply_migrations, seed_city_registry
+from councilsense.app.summarization import (
+    ClaimEvidencePointer,
+    SummarizationOutput,
+    SummaryClaim,
+    publish_summarization_output,
+)
+from councilsense.db import (
+    MeetingSummaryRepository,
+    PILOT_CITY_ID,
+    ProcessingRunRepository,
+    apply_migrations,
+    seed_city_registry,
+)
 
 
 @pytest.fixture
@@ -307,3 +318,102 @@ def test_publish_to_delivery_end_to_end_is_idempotent_on_worker_rerun(
         ("meeting-fanout-e2e",),
     ).fetchall()
     assert attempt_rows == [(1, "success")]
+
+
+def test_publish_replay_guard_reuses_existing_publication_and_artifacts(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-fanout-guard", city_id=PILOT_CITY_ID)
+
+    run_repository = ProcessingRunRepository(connection)
+    run_repository.create_pending_run(
+        run_id="run-fanout-guard",
+        city_id=PILOT_CITY_ID,
+        cycle_id="cycle-fanout-guard",
+    )
+    publish_outcome = run_repository.upsert_stage_outcome(
+        outcome_id="outcome-publish-run-fanout-guard-meeting-fanout-guard",
+        run_id="run-fanout-guard",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-fanout-guard",
+        stage_name="publish",
+        status="failed",
+        metadata_json='{"source_id":"bundle-source"}',
+        started_at=None,
+        finished_at=None,
+    )
+
+    output = SummarizationOutput.from_sections(
+        summary="Published summary",
+        key_decisions=["Decision A"],
+        key_actions=["Action A"],
+        notable_topics=["Topic A"],
+        claims=(
+            SummaryClaim(
+                claim_text="Claim A",
+                evidence=(
+                    ClaimEvidencePointer(
+                        artifact_id="artifact-1",
+                        section_ref="minutes:1",
+                        char_start=None,
+                        char_end=None,
+                        excerpt="Evidence A",
+                    ),
+                ),
+                evidence_gap=False,
+            ),
+        ),
+    )
+
+    first = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-fanout-guard-v1",
+        meeting_id="meeting-fanout-guard",
+        processing_run_id="run-fanout-guard",
+        publish_stage_outcome_id=publish_outcome.id,
+        version_no=1,
+        base_confidence_label="high",
+        output=output,
+        published_at="2026-03-07T12:00:00Z",
+        city_id=PILOT_CITY_ID,
+    )
+    second = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-fanout-guard-v2",
+        meeting_id="meeting-fanout-guard",
+        processing_run_id="run-fanout-guard",
+        publish_stage_outcome_id=publish_outcome.id,
+        version_no=2,
+        base_confidence_label="high",
+        output=output,
+        published_at="2026-03-07T12:05:00Z",
+        city_id=PILOT_CITY_ID,
+    )
+
+    assert first.publication.id == "pub-fanout-guard-v1"
+    assert second.publication.id == first.publication.id
+    assert second.replay_guard_reason_code == "publish_stage_outcome_already_materialized"
+    assert second.notification_enqueue is None
+
+    publication_count = connection.execute(
+        "SELECT COUNT(*) FROM summary_publications WHERE publish_stage_outcome_id = ?",
+        (publish_outcome.id,),
+    ).fetchone()
+    assert publication_count is not None
+    assert int(publication_count[0]) == 1
+
+    claim_count = connection.execute(
+        "SELECT COUNT(*) FROM publication_claims WHERE publication_id = ?",
+        (first.publication.id,),
+    ).fetchone()
+    assert claim_count is not None
+    assert int(claim_count[0]) == 1
+
+    pointer_count = connection.execute(
+        "SELECT COUNT(*) FROM claim_evidence_pointers WHERE claim_id = ?",
+        (f"{first.publication.id}:claim:1",),
+    ).fetchone()
+    assert pointer_count is not None
+    assert int(pointer_count[0]) == 1

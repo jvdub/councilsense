@@ -30,6 +30,12 @@ class SummaryPublicationRecord:
 
 
 @dataclass(frozen=True)
+class PublicationWriteResult:
+    publication: SummaryPublicationRecord
+    created: bool
+
+
+@dataclass(frozen=True)
 class PublicationClaimRecord:
     id: str
     publication_id: str
@@ -80,7 +86,104 @@ class MeetingSummaryRepository:
         calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
     ) -> SummaryPublicationRecord:
         with self._connection:
-            return self.create_publication_in_transaction(
+            return self.ensure_publication_in_transaction(
+                publication_id=publication_id,
+                meeting_id=meeting_id,
+                processing_run_id=processing_run_id,
+                publish_stage_outcome_id=publish_stage_outcome_id,
+                version_no=version_no,
+                publication_status=publication_status,
+                confidence_label=confidence_label,
+                calibration_policy_version=calibration_policy_version,
+                summary_text=summary_text,
+                key_decisions_json=key_decisions_json,
+                key_actions_json=key_actions_json,
+                notable_topics_json=notable_topics_json,
+                published_at=published_at,
+            ).publication
+
+    def get_publication(self, *, publication_id: str) -> SummaryPublicationRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                meeting_id,
+                processing_run_id,
+                publish_stage_outcome_id,
+                version_no,
+                publication_status,
+                confidence_label,
+                calibration_policy_version,
+                summary_text,
+                key_decisions_json,
+                key_actions_json,
+                notable_topics_json,
+                published_at
+            FROM summary_publications
+            WHERE id = ?
+            """,
+            (publication_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._to_summary_publication_record(row)
+
+    def get_publication_by_publish_stage_outcome_id(
+        self,
+        *,
+        publish_stage_outcome_id: str,
+    ) -> SummaryPublicationRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                meeting_id,
+                processing_run_id,
+                publish_stage_outcome_id,
+                version_no,
+                publication_status,
+                confidence_label,
+                calibration_policy_version,
+                summary_text,
+                key_decisions_json,
+                key_actions_json,
+                notable_topics_json,
+                published_at
+            FROM summary_publications
+            WHERE publish_stage_outcome_id = ?
+            """,
+            (publish_stage_outcome_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._to_summary_publication_record(row)
+
+    def ensure_publication_in_transaction(
+        self,
+        *,
+        publication_id: str,
+        meeting_id: str,
+        processing_run_id: str | None,
+        publish_stage_outcome_id: str | None,
+        version_no: int,
+        publication_status: PublicationStatus,
+        confidence_label: ConfidenceLabel,
+        summary_text: str,
+        key_decisions_json: str,
+        key_actions_json: str,
+        notable_topics_json: str,
+        published_at: str | None,
+        calibration_policy_version: str = DEFAULT_SUMMARY_CALIBRATION_POLICY_VERSION,
+    ) -> PublicationWriteResult:
+        if publish_stage_outcome_id is not None:
+            existing = self.get_publication_by_publish_stage_outcome_id(
+                publish_stage_outcome_id=publish_stage_outcome_id,
+            )
+            if existing is not None:
+                return PublicationWriteResult(publication=existing, created=False)
+
+        try:
+            publication = self.create_publication_in_transaction(
                 publication_id=publication_id,
                 meeting_id=meeting_id,
                 processing_run_id=processing_run_id,
@@ -95,6 +198,16 @@ class MeetingSummaryRepository:
                 notable_topics_json=notable_topics_json,
                 published_at=published_at,
             )
+            return PublicationWriteResult(publication=publication, created=True)
+        except sqlite3.IntegrityError:
+            if publish_stage_outcome_id is None:
+                raise
+            existing = self.get_publication_by_publish_stage_outcome_id(
+                publish_stage_outcome_id=publish_stage_outcome_id,
+            )
+            if existing is None:
+                raise
+            return PublicationWriteResult(publication=existing, created=False)
 
     def create_publication_in_transaction(
         self,
@@ -171,6 +284,10 @@ class MeetingSummaryRepository:
             (publication_id,),
         ).fetchone()
         assert row is not None
+        return self._to_summary_publication_record(row)
+
+    @staticmethod
+    def _to_summary_publication_record(row: sqlite3.Row | tuple[object, ...]) -> SummaryPublicationRecord:
         return SummaryPublicationRecord(
             id=str(row[0]),
             meeting_id=str(row[1]),

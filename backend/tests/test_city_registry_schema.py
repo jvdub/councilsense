@@ -47,6 +47,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0024_st026_claim_evidence_linkage_contract.sql" in before.pending
     assert "0025_st029_pipeline_dlq_contract.sql" in before.pending
     assert "0026_st029_pipeline_replay_audit_history.sql" in before.pending
+    assert "0027_st029_publish_replay_idempotency_guards.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -77,6 +78,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0024_st026_claim_evidence_linkage_contract.sql",
         "0025_st029_pipeline_dlq_contract.sql",
         "0026_st029_pipeline_replay_audit_history.sql",
+        "0027_st029_publish_replay_idempotency_guards.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -187,6 +189,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_pipeline_replay_audit_meeting_created" in index_names
     assert "idx_pipeline_replay_audit_stage_source_created" in index_names
     assert "idx_pipeline_replay_audit_actor_created" in index_names
+    assert "idx_summary_publications_publish_stage_outcome" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:
