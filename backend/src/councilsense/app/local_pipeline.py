@@ -25,7 +25,7 @@ from councilsense.app.quality_gate_rollout import (
     resolve_rollout_config,
 )
 from councilsense.app.canonical_persistence import EvidenceSpanInput, persist_pipeline_canonical_records
-from councilsense.app.multi_document_compose import assemble_summarize_compose_input
+from councilsense.app.multi_document_compose import ComposedSourceDocument, SummarizeComposeInput, assemble_summarize_compose_input
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
     QualityGateEnforcementOverride,
@@ -209,6 +209,84 @@ class _SummarizePayload:
     output: SummarizationOutput
     provider_used: str
     fallback_reason: str | None
+    authority_policy: _AuthorityPolicyResult
+
+
+@dataclass(frozen=True)
+class _MeetingMaterialContext:
+    document_kind: str | None
+    meeting_date_iso: str | None
+    meeting_temporal_status: str | None
+
+    @property
+    def is_preview_only(self) -> bool:
+        return self.document_kind in {"agenda", "packet"}
+
+    @property
+    def is_same_day_or_future(self) -> bool:
+        return self.meeting_temporal_status == "same_day_or_future"
+
+
+@dataclass(frozen=True)
+class _AuthorityConflictSignal:
+    authoritative_source_type: str | None
+    conflicting_source_type: str
+    subject: str | None
+    authoritative_action: str | None
+    conflicting_action: str | None
+    authoritative_finding: str | None
+    conflicting_finding: str
+    resolution: str
+
+    def to_metadata_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "conflicting_source_type": self.conflicting_source_type,
+            "resolution": self.resolution,
+        }
+        if self.authoritative_source_type is not None:
+            payload["authoritative_source_type"] = self.authoritative_source_type
+        if self.subject is not None:
+            payload["subject"] = self.subject
+        if self.authoritative_action is not None:
+            payload["authoritative_action"] = self.authoritative_action
+        if self.conflicting_action is not None:
+            payload["conflicting_action"] = self.conflicting_action
+        if self.authoritative_finding is not None:
+            payload["authoritative_finding"] = self.authoritative_finding
+        payload["conflicting_finding"] = self.conflicting_finding
+        return payload
+
+
+@dataclass(frozen=True)
+class _AuthorityPolicyResult:
+    authority_outcome: str
+    publication_status: str
+    reason_codes: tuple[str, ...]
+    summarize_text: str
+    authoritative_source_type: str | None
+    outcome_source_types: tuple[str, ...]
+    preview_only: bool
+    conflicts: tuple[_AuthorityConflictSignal, ...]
+
+    def to_metadata_payload(self) -> dict[str, object]:
+        return {
+            "authority_outcome": self.authority_outcome,
+            "publication_status": self.publication_status,
+            "reason_codes": list(self.reason_codes),
+            "authoritative_source_type": self.authoritative_source_type,
+            "outcome_source_types": list(self.outcome_source_types),
+            "preview_only": self.preview_only,
+            "has_conflicts": bool(self.conflicts),
+            "conflicts": [signal.to_metadata_payload() for signal in self.conflicts],
+        }
+
+
+@dataclass(frozen=True)
+class _AuthorityOutcomeSignal:
+    source_type: str
+    finding: str
+    subject: str | None
+    action_class: str
 
 
 class _TextCollector(HTMLParser):
@@ -275,6 +353,11 @@ class LocalPipelineOrchestrator:
                     finished_at=_now_iso_utc(),
                 )
 
+            material_context = self._resolve_meeting_material_context(
+                meeting_id=meeting.meeting_id,
+                ingest_stage_metadata=ingest_stage_metadata,
+            )
+
             extract_payload, extract_status = self._extract_stage(
                 run_id=run_id,
                 city_id=city_id,
@@ -300,6 +383,7 @@ class LocalPipelineOrchestrator:
                 source_id=source_id,
                 source_type=source_type,
                 extracted=extract_payload,
+                material_context=material_context,
                 rollout_config=rollout_config,
                 llm_provider=llm_provider,
                 ollama_endpoint=ollama_endpoint,
@@ -309,6 +393,7 @@ class LocalPipelineOrchestrator:
             summarize_metadata: dict[str, object] = {
                 "provider_used": summarize_payload.provider_used,
                 "claim_count": len(summarize_payload.output.claims),
+                "authority_policy": summarize_payload.authority_policy.to_metadata_payload(),
             }
             if summarize_payload.fallback_reason is not None:
                 fallback_used = True
@@ -346,6 +431,8 @@ class LocalPipelineOrchestrator:
                 meeting_id=meeting.meeting_id,
                 output=summarize_payload.output,
                 source_text=extract_payload.text,
+                material_context=material_context,
+                authority_policy=summarize_payload.authority_policy,
                 extract_status=extract_status,
                 summarize_status=summarize_status,
                 summarize_fallback_used=(summarize_payload.fallback_reason is not None),
@@ -411,6 +498,57 @@ class LocalPipelineOrchestrator:
 
         normalized.sort(key=lambda item: stage_order.get(str(item["stage"]), 99))
         return tuple(normalized)
+
+    def _resolve_meeting_material_context(
+        self,
+        *,
+        meeting_id: str,
+        ingest_stage_metadata: dict[str, object] | None,
+    ) -> _MeetingMaterialContext:
+        metadata = ingest_stage_metadata or self._load_latest_ingest_stage_metadata(meeting_id=meeting_id)
+        if metadata is None:
+            return _MeetingMaterialContext(document_kind=None, meeting_date_iso=None, meeting_temporal_status=None)
+
+        raw_document_kind = metadata.get("candidate_document_kind") or metadata.get("selected_file_type")
+        document_kind = _normalize_document_kind(str(raw_document_kind)) if raw_document_kind is not None else None
+
+        raw_meeting_date = metadata.get("meeting_date") or metadata.get("selected_event_date")
+        meeting_date_iso = str(raw_meeting_date).strip() if isinstance(raw_meeting_date, str) and raw_meeting_date.strip() else None
+
+        raw_temporal_status = metadata.get("meeting_temporal_status")
+        meeting_temporal_status = (
+            str(raw_temporal_status).strip() if isinstance(raw_temporal_status, str) and raw_temporal_status.strip() else None
+        )
+        if meeting_temporal_status is None:
+            meeting_temporal_status = _classify_meeting_temporal_status(meeting_date_iso)
+
+        return _MeetingMaterialContext(
+            document_kind=document_kind,
+            meeting_date_iso=meeting_date_iso,
+            meeting_temporal_status=meeting_temporal_status,
+        )
+
+    def _load_latest_ingest_stage_metadata(self, *, meeting_id: str) -> dict[str, object] | None:
+        row = self._connection.execute(
+            """
+            SELECT metadata_json
+            FROM processing_stage_outcomes
+            WHERE meeting_id = ?
+              AND stage_name = 'ingest'
+            ORDER BY COALESCE(finished_at, updated_at, created_at) DESC, id DESC
+            LIMIT 1
+            """,
+            (meeting_id,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        try:
+            parsed = json.loads(str(row[0]))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
 
     def _resolve_meeting(self, *, city_id: str, meeting_id: str | None) -> _MeetingContext:
         if meeting_id is not None:
@@ -538,6 +676,7 @@ class LocalPipelineOrchestrator:
         source_id: str | None,
         source_type: str | None,
         extracted: _ExtractedPayload,
+        material_context: _MeetingMaterialContext,
         rollout_config: QualityGateRolloutConfig,
         llm_provider: str,
         ollama_endpoint: str | None,
@@ -553,7 +692,8 @@ class LocalPipelineOrchestrator:
             fallback_source_type=source_type,
             fallback_text=extracted.text,
         )
-        summarize_text = compose_input.composed_text
+        authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+        summarize_text = authority_policy.summarize_text
         compose_section_ref = "compose.multi_document"
 
         if llm_provider == "ollama":
@@ -562,6 +702,8 @@ class LocalPipelineOrchestrator:
                     text=summarize_text,
                     artifact_id=extracted.artifact_id,
                     section_ref=compose_section_ref,
+                    material_context=material_context,
+                    authority_policy=authority_policy,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                     specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                     evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -576,6 +718,8 @@ class LocalPipelineOrchestrator:
                     text=summarize_text,
                     artifact_id=extracted.artifact_id,
                     section_ref=compose_section_ref,
+                    material_context=material_context,
+                    authority_policy=authority_policy,
                     topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                     specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                     evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -588,6 +732,8 @@ class LocalPipelineOrchestrator:
                 text=summarize_text,
                 artifact_id=extracted.artifact_id,
                 section_ref=compose_section_ref,
+                material_context=material_context,
+                authority_policy=authority_policy,
                 topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
                 specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
                 evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
@@ -607,6 +753,7 @@ class LocalPipelineOrchestrator:
             "provider_used": provider_used,
             "claim_count": len(output.claims),
             "compose": compose_input.to_stage_metadata_payload(),
+            "authority_policy": authority_policy.to_metadata_payload(),
         }
         if fallback_reason is not None:
             metadata["fallback_reason"] = fallback_reason
@@ -621,7 +768,12 @@ class LocalPipelineOrchestrator:
             started_at=started_at,
             finished_at=finished_at,
         )
-        return _SummarizePayload(output=output, provider_used=provider_used, fallback_reason=fallback_reason), status
+        return _SummarizePayload(
+            output=output,
+            provider_used=provider_used,
+            fallback_reason=fallback_reason,
+            authority_policy=authority_policy,
+        ), status
 
     def _publish_stage(
         self,
@@ -632,6 +784,8 @@ class LocalPipelineOrchestrator:
         meeting_id: str,
         output: SummarizationOutput,
         source_text: str,
+        material_context: _MeetingMaterialContext,
+        authority_policy: _AuthorityPolicyResult,
         extract_status: str,
         summarize_status: str,
         summarize_fallback_used: bool,
@@ -698,6 +852,7 @@ class LocalPipelineOrchestrator:
                     *list(enforcement_outcome.reason_codes),
                 ],
                 "quality_gate_rollout": rollout_metadata,
+                "authority_policy": authority_policy.to_metadata_payload(),
             }
             self._upsert_stage_outcome(
                 run_id=run_id,
@@ -723,6 +878,19 @@ class LocalPipelineOrchestrator:
                     confidence_label="limited_confidence",
                     reason_codes=("quality_gate_publish_downgraded", *enforcement_outcome.reason_codes),
                 )
+            if authority_policy.publication_status == "limited_confidence":
+                if enforcement_override is None:
+                    enforcement_override = QualityGateEnforcementOverride(
+                        publication_status="limited_confidence",
+                        confidence_label="limited_confidence",
+                        reason_codes=authority_policy.reason_codes,
+                    )
+                else:
+                    enforcement_override = QualityGateEnforcementOverride(
+                        publication_status="limited_confidence",
+                        confidence_label="limited_confidence",
+                        reason_codes=(*enforcement_override.reason_codes, *authority_policy.reason_codes),
+                    )
 
             publication_result = publish_summarization_output(
                 repository=MeetingSummaryRepository(self._connection),
@@ -772,6 +940,7 @@ class LocalPipelineOrchestrator:
                 "publication_id": publication_result.publication.id,
                 "quality_gate_reason_codes": list(publication_result.quality_gate.reason_codes),
                 "quality_gate_rollout": rollout_metadata,
+                "authority_policy": authority_policy.to_metadata_payload(),
             },
             started_at=started_at,
             finished_at=finished_at,
@@ -784,6 +953,7 @@ class LocalPipelineOrchestrator:
                 "publication_id": publication_result.publication.id,
                 "quality_gate_reason_codes": list(publication_result.quality_gate.reason_codes),
                 "quality_gate_rollout": rollout_metadata,
+                "authority_policy": authority_policy.to_metadata_payload(),
             },
         }
 
@@ -923,6 +1093,8 @@ def _deterministic_summarize(
     text: str,
     artifact_id: str,
     section_ref: str,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
     topic_hardening_enabled: bool,
     specificity_retention_enabled: bool,
     evidence_projection_enabled: bool,
@@ -941,6 +1113,15 @@ def _deterministic_summarize(
             key_decisions=key_decisions,
             key_actions=key_actions,
         )
+    summary, key_decisions, key_actions, notable_topics = _apply_material_context(
+        source_text=focused_text,
+        summary=summary,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        notable_topics=notable_topics,
+        material_context=material_context,
+        authority_policy=authority_policy,
+    )
     claim_text = (key_decisions[0] if key_decisions else summary)[:180] if summary else "Meeting source text unavailable."
     excerpt_source = focused_text or normalized
     claims = _build_claims_from_findings(
@@ -967,6 +1148,8 @@ def _summarize_with_ollama(
     text: str,
     artifact_id: str,
     section_ref: str,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
     topic_hardening_enabled: bool,
     specificity_retention_enabled: bool,
     evidence_projection_enabled: bool,
@@ -976,15 +1159,21 @@ def _summarize_with_ollama(
 ) -> SummarizationOutput:
     cleaned_source = _normalize_generated_text(text)
     focused_source = _focus_source_text(cleaned_source)
+    preview_instruction = (
+        "This source is agenda-only or packet-only; describe scheduled items and explicitly state that no decisions or completed actions are recorded yet because minutes are unavailable. "
+        if authority_policy.preview_only or material_context.is_preview_only
+        else ""
+    )
     prompt = (
         "You are summarizing local government meeting materials. "
         "Use only facts present in the provided meeting text. "
         "Prioritize what actually happened: decisions made, actions assigned, policy or project impacts. "
         "Avoid procedural meeting operations unless they materially change an outcome (attendance, roll call, call to order, adjournment, schedule mechanics). "
-        "Do not include chain-of-thought, reasoning traces, or meta commentary. "
-        "Return ONLY valid JSON with keys: summary, claim. "
-        "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
-        f"Meeting text:\n{(focused_source or cleaned_source)[:6000]}"
+        + preview_instruction
+        + "Do not include chain-of-thought, reasoning traces, or meta commentary. "
+        + "Return ONLY valid JSON with keys: summary, claim. "
+        + "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
+        + f"Meeting text:\n{(focused_source or cleaned_source)[:6000]}"
     )
     payload = json.dumps(
         {
@@ -1045,6 +1234,15 @@ def _summarize_with_ollama(
             key_decisions=key_decisions,
             key_actions=key_actions,
         )
+    summary_text, key_decisions, key_actions, notable_topics = _apply_material_context(
+        source_text=excerpt_source,
+        summary=summary_text,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        notable_topics=notable_topics,
+        material_context=material_context,
+        authority_policy=authority_policy,
+    )
     claims = _build_claims_from_findings(
         key_decisions=key_decisions,
         key_actions=key_actions,
@@ -1158,6 +1356,402 @@ def _derive_grounded_sections(
         notable_topics = _derive_basic_topics(key_decisions=key_decisions, key_actions=key_actions)
 
     return key_decisions, key_actions, notable_topics
+
+
+def _evaluate_authority_policy(*, compose_input: SummarizeComposeInput) -> _AuthorityPolicyResult:
+    source_by_type = {source.source_type: source for source in compose_input.sources}
+    minutes_source = _select_available_source(source_by_type.get("minutes"))
+    agenda_source = _select_available_source(source_by_type.get("agenda"))
+    packet_source = _select_available_source(source_by_type.get("packet"))
+    supplemental_sources = tuple(source for source in (agenda_source, packet_source) if source is not None)
+
+    if minutes_source is not None:
+        conflicts = _detect_authoritative_conflicts(
+            authoritative_source=minutes_source,
+            supporting_sources=supplemental_sources,
+        )
+        supplemental_coverage_incomplete = any(
+            compose_input.source_coverage.statuses.get(source_type) != "present"
+            for source_type in ("agenda", "packet")
+        )
+        if supplemental_coverage_incomplete:
+            return _AuthorityPolicyResult(
+                authority_outcome="supplemental_coverage_missing",
+                publication_status="limited_confidence",
+                reason_codes=("supplemental_sources_missing",),
+                summarize_text=minutes_source.text,
+                authoritative_source_type="minutes",
+                outcome_source_types=("minutes",),
+                preview_only=False,
+                conflicts=conflicts,
+            )
+        return _AuthorityPolicyResult(
+            authority_outcome="minutes_authoritative",
+            publication_status="processed",
+            reason_codes=(),
+            summarize_text=minutes_source.text,
+            authoritative_source_type="minutes",
+            outcome_source_types=("minutes",),
+            preview_only=False,
+            conflicts=conflicts,
+        )
+
+    supplemental_available = tuple(source for source in supplemental_sources if source is not None)
+    if supplemental_available:
+        conflicts = _detect_supplemental_conflicts(sources=supplemental_available)
+        if conflicts:
+            return _AuthorityPolicyResult(
+                authority_outcome="unresolved_conflict",
+                publication_status="limited_confidence",
+                reason_codes=("missing_authoritative_minutes", "unresolved_source_conflict"),
+                summarize_text=_compose_authority_text(supplemental_available),
+                authoritative_source_type=None,
+                outcome_source_types=tuple(source.source_type for source in supplemental_available),
+                preview_only=True,
+                conflicts=conflicts,
+            )
+        return _AuthorityPolicyResult(
+            authority_outcome="agenda_preview_only",
+            publication_status="limited_confidence",
+            reason_codes=("agenda_preview_only", "missing_authoritative_minutes"),
+            summarize_text=_compose_authority_text(supplemental_available),
+            authoritative_source_type=None,
+            outcome_source_types=tuple(source.source_type for source in supplemental_available),
+            preview_only=True,
+            conflicts=(),
+        )
+
+    return _AuthorityPolicyResult(
+        authority_outcome="missing_authoritative_minutes",
+        publication_status="limited_confidence",
+        reason_codes=("missing_authoritative_minutes",),
+        summarize_text=compose_input.composed_text,
+        authoritative_source_type=None,
+        outcome_source_types=(),
+        preview_only=False,
+        conflicts=(),
+    )
+
+
+def _select_available_source(source: ComposedSourceDocument | None) -> ComposedSourceDocument | None:
+    if source is None:
+        return None
+    if source.coverage_status == "missing":
+        return None
+    if not source.text.strip():
+        return None
+    return source
+
+
+def _compose_authority_text(sources: tuple[ComposedSourceDocument, ...]) -> str:
+    chunks = [f"[{source.source_type}] {source.text}" for source in sources if source.text.strip()]
+    return "\n\n".join(chunks).strip() or "No source text available."
+
+
+def _detect_authoritative_conflicts(
+    *,
+    authoritative_source: ComposedSourceDocument,
+    supporting_sources: tuple[ComposedSourceDocument, ...],
+) -> tuple[_AuthorityConflictSignal, ...]:
+    authoritative_signals = _derive_authority_outcome_signals(source=authoritative_source)
+    conflicts: list[_AuthorityConflictSignal] = []
+    for supporting_source in supporting_sources:
+        supporting_signals = _derive_authority_outcome_signals(source=supporting_source)
+        conflict = _find_conflict_signal(
+            primary_signals=authoritative_signals,
+            secondary_signals=supporting_signals,
+            authoritative_source_type=authoritative_source.source_type,
+            conflicting_source_type=supporting_source.source_type,
+            resolution="authoritative_override",
+        )
+        if conflict is not None:
+            conflicts.append(conflict)
+    return tuple(conflicts)
+
+
+def _detect_supplemental_conflicts(*, sources: tuple[ComposedSourceDocument, ...]) -> tuple[_AuthorityConflictSignal, ...]:
+    ordered_sources = sorted(sources, key=lambda item: item.source_type)
+    signals_by_source = {source.source_type: _derive_authority_outcome_signals(source=source) for source in ordered_sources}
+    conflicts: list[_AuthorityConflictSignal] = []
+    for index, left_source in enumerate(ordered_sources):
+        for right_source in ordered_sources[index + 1 :]:
+            conflict = _find_conflict_signal(
+                primary_signals=signals_by_source[left_source.source_type],
+                secondary_signals=signals_by_source[right_source.source_type],
+                authoritative_source_type=None,
+                conflicting_source_type=right_source.source_type,
+                resolution="unresolved",
+            )
+            if conflict is not None:
+                conflicts.append(conflict)
+    return tuple(conflicts)
+
+
+def _derive_authority_outcome_signals(*, source: ComposedSourceDocument) -> tuple[_AuthorityOutcomeSignal, ...]:
+    focused_text = _focus_source_text(_normalize_generated_text(source.text))
+    decisions, actions, _ = _derive_grounded_sections(focused_text, topic_hardening_enabled=False)
+    signals: list[_AuthorityOutcomeSignal] = []
+    for finding in [*decisions, *actions]:
+        normalized = _normalize_generated_text(finding)
+        if not normalized:
+            continue
+        signal = _AuthorityOutcomeSignal(
+            source_type=source.source_type,
+            finding=normalized,
+            subject=_extract_authority_subject(normalized),
+            action_class=_classify_authority_action(normalized),
+        )
+        if signal not in signals:
+            signals.append(signal)
+        if len(signals) >= 4:
+            break
+    return tuple(signals)
+
+
+def _find_conflict_signal(
+    *,
+    primary_signals: tuple[_AuthorityOutcomeSignal, ...],
+    secondary_signals: tuple[_AuthorityOutcomeSignal, ...],
+    authoritative_source_type: str | None,
+    conflicting_source_type: str,
+    resolution: str,
+) -> _AuthorityConflictSignal | None:
+    for primary in primary_signals:
+        for secondary in secondary_signals:
+            if not _signals_conflict(primary=primary, secondary=secondary):
+                continue
+            return _AuthorityConflictSignal(
+                authoritative_source_type=authoritative_source_type,
+                conflicting_source_type=conflicting_source_type,
+                subject=primary.subject or secondary.subject,
+                authoritative_action=(primary.action_class if authoritative_source_type is not None else primary.action_class),
+                conflicting_action=secondary.action_class,
+                authoritative_finding=primary.finding,
+                conflicting_finding=secondary.finding,
+                resolution=resolution,
+            )
+    return None
+
+
+def _signals_conflict(*, primary: _AuthorityOutcomeSignal, secondary: _AuthorityOutcomeSignal) -> bool:
+    if primary.subject is None or secondary.subject is None:
+        return False
+    if primary.subject != secondary.subject:
+        return False
+    if primary.action_class == secondary.action_class:
+        return False
+    decisive_actions = {"approve", "continue", "deny"}
+    if primary.action_class in decisive_actions and secondary.action_class in decisive_actions:
+        return True
+    if primary.action_class == "approve" and secondary.action_class in {"hearing", "schedule"}:
+        return False
+    if secondary.action_class == "approve" and primary.action_class in {"hearing", "schedule"}:
+        return False
+    return False
+
+
+def _extract_authority_subject(finding: str) -> str | None:
+    lower_finding = finding.lower()
+    for pattern in (
+        r"\bordinance\s+\d{4}-\d+\b",
+        r"\bresolution\s+\d{4}-\d+\b",
+        r"\bpurchase agreement\b",
+        r"\bpaving contract\b",
+        r"\broad closure permit\b",
+        r"\bfee schedule\b",
+        r"\bbond documents?\b",
+    ):
+        match = re.search(pattern, lower_finding)
+        if match is not None:
+            return match.group(0)
+    return None
+
+
+def _classify_authority_action(finding: str) -> str:
+    lower_finding = finding.lower()
+    if any(
+        token in lower_finding
+        for token in ("continued", "continue", "continuing", "deferred", "defer", "tabled", "postponed")
+    ):
+        return "continue"
+    if any(token in lower_finding for token in ("denied", "deny", "rejected", "reject")):
+        return "deny"
+    if any(
+        token in lower_finding
+        for token in (
+            "approved",
+            "approve",
+            "adopted",
+            "adopt",
+            "adoption",
+            "authorized",
+            "authorize",
+            "passed",
+            "ratified",
+            "awarded",
+            "awarding",
+            "motion carried",
+        )
+    ):
+        return "approve"
+    if "public hearing" in lower_finding:
+        return "hearing"
+    if any(token in lower_finding for token in ("scheduled", "schedule")):
+        return "schedule"
+    return "other"
+
+
+def _normalize_document_kind(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized == "agenda packet":
+        return "packet"
+    if normalized in {"minutes", "agenda", "packet"}:
+        return normalized
+    return None
+
+
+def _classify_meeting_temporal_status(meeting_date_iso: str | None) -> str | None:
+    if not meeting_date_iso:
+        return None
+    try:
+        meeting_date = datetime.fromisoformat(f"{meeting_date_iso}T00:00:00+00:00").date()
+    except ValueError:
+        return None
+    today = datetime.now(tz=UTC).date()
+    if meeting_date >= today:
+        return "same_day_or_future"
+    return "completed"
+
+
+def _apply_material_context(
+    *,
+    source_text: str,
+    summary: str,
+    key_decisions: tuple[str, ...],
+    key_actions: tuple[str, ...],
+    notable_topics: tuple[str, ...],
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
+) -> tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    if not (material_context.is_preview_only or authority_policy.preview_only):
+        return summary, key_decisions, key_actions, notable_topics
+
+    preview_actions = _derive_agenda_preview_actions(source_text)
+    preview_summary = _build_agenda_preview_summary(
+        preview_actions=preview_actions,
+        material_context=material_context,
+    )
+    preview_topics = _derive_preview_topics(existing=notable_topics)
+    return preview_summary, (), (), preview_topics
+
+
+def _build_agenda_preview_summary(
+    *,
+    preview_actions: tuple[str, ...],
+    material_context: _MeetingMaterialContext,
+) -> str:
+    lead = (
+        "Agenda materials for this meeting preview scheduled items rather than confirmed outcomes. "
+        if material_context.is_same_day_or_future
+        else "Agenda materials for this meeting list planned items, but published minutes are not available yet. "
+    )
+    if preview_actions:
+        summary = f"{lead}{preview_actions[0]} No decisions or completed actions are recorded yet."
+        if len(summary) <= 520:
+            return summary
+        return summary[:520]
+    return f"{lead}No decisions or completed actions are recorded yet because this publication is based on agenda materials."[:520]
+
+
+def _derive_agenda_preview_actions(source_text: str) -> tuple[str, ...]:
+    sentences = _split_sentences(source_text)
+    preview_items: list[str] = []
+    for sentence in sentences:
+        lower_sentence = sentence.lower()
+        if lower_sentence.startswith("background:") or " at the february " in lower_sentence:
+            continue
+        normalized = _normalize_agenda_preview_sentence(sentence)
+        if not normalized:
+            continue
+        lower = normalized.lower()
+        if any(
+            keyword in lower
+            for keyword in ("public hearing", "resolution", "ordinance", "agreement", "site plan", "bond", "appointment")
+        ):
+            if normalized not in preview_items:
+                preview_items.append(normalized)
+        if len(preview_items) >= 2:
+            break
+    return tuple(preview_items[:2])
+
+
+def _normalize_agenda_preview_sentence(sentence: str) -> str:
+    cleaned = _normalize_generated_text(sentence).strip()
+    cleaned = re.sub(r"\b[A-Z][A-Z\s/&-]+\s+\d+(?:\.[A-Z])?\.?(?=\s)", "", cleaned)
+    cleaned = re.sub(
+        r"^(?:BACKGROUND:|RESOLUTIONS\s+\d+(?:\.[A-Z])?\.?|SCHEDULED ITEMS\s+\d+\.?|PUBLIC HEARINGS ONLY\s+\d+(?:\.[A-Z])?\.?)\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = cleaned.strip(" .:-")
+    if not cleaned:
+        return ""
+    if cleaned.lower().startswith("public hearing/no action taken"):
+        cleaned = re.sub(
+            r"^public hearing/no action taken\s*-\s*",
+            "Agenda includes a public hearing with no action taken regarding ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"^Agenda includes a public hearing with no action taken regarding\s+a public hearing to allow public input regarding\s+",
+            "Agenda includes a public hearing with no action taken regarding ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    elif re.match(r"^resolution\s*-", cleaned, flags=re.IGNORECASE):
+        cleaned = re.sub(r"^resolution\s*-\s*", "Agenda includes a resolution on ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"^Agenda includes a resolution on\s+a resolution of [^,]+, [^,]+,\s*",
+            "Agenda includes a resolution on ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    elif re.match(r"^ordinance(?:/public hearing)?\s*-", cleaned, flags=re.IGNORECASE):
+        cleaned = re.sub(
+            r"^ordinance(?:/public hearing)?\s*-\s*",
+            "Agenda includes an ordinance item on ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    elif not cleaned.lower().startswith("agenda includes"):
+        cleaned = f"Agenda includes {cleaned[0].lower()}{cleaned[1:]}" if len(cleaned) > 1 else f"Agenda includes {cleaned.lower()}"
+    if cleaned[-1] not in ".!?":
+        cleaned = f"{cleaned}."
+    return cleaned
+
+
+def _derive_preview_topics(*, existing: tuple[str, ...]) -> tuple[str, ...]:
+    replacements = {
+        "Resolution Approval": "Resolution Agenda Items",
+        "Ordinance Adoption": "Ordinance Agenda Items",
+        "Public Hearing Scheduling": "Public Hearings",
+        "Development Agreement Terms": "Development Agreement Agenda Items",
+        "Consent Agenda Changes": "Consent Agenda Items",
+    }
+    preview_topics: list[str] = []
+    for topic in existing:
+        mapped = replacements.get(topic, topic)
+        if mapped.lower().startswith("the "):
+            continue
+        if len(mapped.split()) > 6:
+            continue
+        if mapped not in preview_topics:
+            preview_topics.append(mapped)
+    return tuple(preview_topics[:5])
 
 
 def _derive_basic_topics(*, key_decisions: tuple[str, ...], key_actions: tuple[str, ...]) -> tuple[str, ...]:

@@ -65,9 +65,15 @@ def test_process_latest_contract_and_stage_ordering(
 
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["command"] == "process-latest"
-    assert payload["status"] == "processed"
+    assert payload["status"] == "limited_confidence"
     assert payload["error_summary"] is None
     assert [item["stage"] for item in payload["stage_outcomes"]] == ["extract", "summarize", "publish"]
+    publish_stage = next(item for item in payload["stage_outcomes"] if item["stage"] == "publish")
+    assert publish_stage["status"] == "limited_confidence"
+    assert publish_stage["metadata"]["quality_gate_reason_codes"] == [
+        "quality_gate_pass",
+        "supplemental_sources_missing",
+    ]
 
 
 def test_run_latest_contract_includes_ingest_then_process_stages(
@@ -97,9 +103,15 @@ def test_run_latest_contract_includes_ingest_then_process_stages(
 
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["command"] == "run-latest"
-    assert payload["status"] == "processed"
+    assert payload["status"] == "limited_confidence"
     assert payload["error_summary"] is None
     assert [item["stage"] for item in payload["stage_outcomes"]] == ["ingest", "extract", "summarize", "publish"]
+    publish_stage = next(item for item in payload["stage_outcomes"] if item["stage"] == "publish")
+    assert publish_stage["status"] == "limited_confidence"
+    assert publish_stage["metadata"]["quality_gate_reason_codes"] == [
+        "quality_gate_pass",
+        "supplemental_sources_missing",
+    ]
 
 
 def test_run_latest_falls_back_to_fixture_when_fetch_fails(

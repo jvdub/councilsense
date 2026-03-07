@@ -31,6 +31,7 @@ class LatestCandidate:
     candidate_url: str
     meeting_date_iso: str | None
     score: int
+    document_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,8 +46,33 @@ class LatestFetchResult:
     candidate_url: str
     candidate_title: str
     candidate_meeting_date: str | None
+    candidate_document_kind: str | None
     stage_outcomes: tuple[dict[str, object], ...]
     warnings: tuple[str, ...]
+
+
+def _normalize_document_kind(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized == "agenda packet":
+        return "packet"
+    if normalized in {"minutes", "agenda", "packet"}:
+        return normalized
+    return None
+
+
+def _classify_meeting_temporal_status(meeting_date_iso: str | None) -> str | None:
+    if not meeting_date_iso:
+        return None
+    try:
+        meeting_date = datetime.fromisoformat(f"{meeting_date_iso}T00:00:00+00:00").date()
+    except ValueError:
+        return None
+    today = datetime.now(tz=UTC).date()
+    if meeting_date >= today:
+        return "same_day_or_future"
+    return "completed"
 
 
 @dataclass(frozen=True)
@@ -158,6 +184,8 @@ def fetch_latest_meeting(
             "artifact_path": artifact_path,
             "candidate_url": candidate.candidate_url,
             "meeting_date": candidate.meeting_date_iso,
+            "candidate_document_kind": candidate.document_kind,
+            "meeting_temporal_status": _classify_meeting_temporal_status(candidate.meeting_date_iso),
             "fingerprint": fingerprint,
         },
     }
@@ -181,6 +209,7 @@ def fetch_latest_meeting(
         candidate_url=candidate.candidate_url,
         candidate_title=candidate.title,
         candidate_meeting_date=candidate.meeting_date_iso,
+        candidate_document_kind=candidate.document_kind,
         stage_outcomes=(stage_outcome,),
         warnings=warnings,
     )
@@ -205,6 +234,7 @@ def extract_latest_candidate(*, html: str, source_url: str) -> LatestCandidate:
             candidate_url=normalized_url,
             meeting_date_iso=parsed_date.isoformat() if parsed_date is not None else None,
             score=score,
+            document_kind=None,
         )
         candidates.append((normalized_date, score, normalized_url, candidate))
 
@@ -218,6 +248,7 @@ def extract_latest_candidate(*, html: str, source_url: str) -> LatestCandidate:
         candidate_url=source_url,
         meeting_date_iso=None,
         score=0,
+        document_kind=None,
     )
 
 
@@ -334,6 +365,7 @@ def _fetch_latest_candidate_from_civicclerk(
         candidate_url=candidate_url,
         meeting_date_iso=event_date_iso,
         score=10,
+        document_kind=_normalize_document_kind(file_type),
     )
 
     artifact_payload = {

@@ -7,12 +7,19 @@ from pathlib import Path
 from councilsense.app import local_runtime
 
 
-def _stub_fetch(_: str, __: float) -> bytes:
-    return (
-        "<html><body>"
-        "<a href='/agenda/2026-02-11-minutes.pdf'>City Council Minutes - 02/11/2026</a>"
-        "</body></html>"
-    ).encode("utf-8")
+def _stub_fetch(url: str, __: float) -> bytes:
+    if "/events?" in url or url.endswith("/events"):
+        return (
+            '{"value":[{"id":21,"eventName":"City Council Meeting","eventDate":"2026-01-08T00:00:00Z",'
+            '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1102,"url":"stream/fixture-minutes.pdf"}]}]}'
+        ).encode("utf-8")
+    if "GetMeetingFile(" in url and "plainText=true" in url:
+        return b'{"blobUri":"https://blob.example/minutes.txt"}'
+    if "GetMeetingFile(" in url and "plainText=false" in url:
+        return b'{"blobUri":"https://blob.example/minutes.pdf"}'
+    if url.endswith("minutes.txt"):
+        return b"City Council approved minutes and directed staff to publish updates."
+    return b"%PDF-1.7\nmock pdf bytes"
 
 
 def test_process_latest_ollama_unavailable_falls_back_to_deterministic(
@@ -39,7 +46,20 @@ def test_process_latest_ollama_unavailable_falls_back_to_deterministic(
     local_runtime.main()
     capsys.readouterr()
 
-    def _raise_ollama(*, text: str, artifact_id: str, section_ref: str, endpoint: str, model: str, timeout_seconds: float):
+    def _raise_ollama(
+        *,
+        text: str,
+        artifact_id: str,
+        section_ref: str,
+        material_context,
+        authority_policy,
+        topic_hardening_enabled: bool,
+        specificity_retention_enabled: bool,
+        evidence_projection_enabled: bool,
+        endpoint: str,
+        model: str,
+        timeout_seconds: float,
+    ):
         raise RuntimeError("endpoint unavailable")
 
     monkeypatch.setattr("councilsense.app.local_pipeline._summarize_with_ollama", _raise_ollama)
