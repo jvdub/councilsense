@@ -23,6 +23,7 @@ from councilsense.app.st030_document_aware_gates import (
 QUALITY_GATE_ROLLOUT_SCHEMA_VERSION = "st-021-quality-gate-rollout-v1"
 DOCUMENT_AWARE_DIAGNOSTICS_SCHEMA_VERSION = "st-030-report-only-gate-diagnostics-v1"
 PROMOTION_ARTIFACT_SCHEMA_VERSION = "st-030-promotion-eligibility-v1"
+ROLLBACK_CONTROL_PLAN_SCHEMA_VERSION = "st-030-rollback-controls-v1"
 
 GateIdentifier = Literal["gate_a_contract_safety", "gate_b_quality_parity", "gate_c_operational_reliability"]
 GateMode = Literal["report_only", "enforced"]
@@ -254,6 +255,78 @@ class PromotionArtifact:
             "evaluated_run_ids": list(self.evaluated_run_ids),
             "eligible_window_run_ids": list(self.eligible_window_run_ids),
             "evaluated_runs": [run.to_payload() for run in self.evaluated_runs],
+        }
+
+
+@dataclass(frozen=True)
+class RollbackControlStep:
+    step: int
+    control: str
+    action: str
+    pre_check: str
+    post_check: str
+    resulting_mode: GateMode
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "step": self.step,
+            "control": self.control,
+            "action": self.action,
+            "pre_check": self.pre_check,
+            "post_check": self.post_check,
+            "resulting_mode": self.resulting_mode,
+        }
+
+
+@dataclass(frozen=True)
+class RollbackControlProfile:
+    profile_id: str
+    goal: str
+    prerequisite: str | None
+    steps: tuple[RollbackControlStep, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "profile_id": self.profile_id,
+            "goal": self.goal,
+            "steps": [step.to_payload() for step in self.steps],
+        }
+        if self.prerequisite is not None:
+            payload["prerequisite"] = self.prerequisite
+        return payload
+
+
+@dataclass(frozen=True)
+class RollbackEscalationPolicy:
+    primary_owner: str
+    secondary_owner: str
+    escalation_owner: str
+    paging_route: tuple[str, ...]
+    escalation_trigger: str
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "primary_owner": self.primary_owner,
+            "secondary_owner": self.secondary_owner,
+            "escalation_owner": self.escalation_owner,
+            "paging_route": list(self.paging_route),
+            "escalation_trigger": self.escalation_trigger,
+        }
+
+
+@dataclass(frozen=True)
+class RollbackControlPlan:
+    schema_version: str
+    schema_rollback_required: bool
+    profiles: tuple[RollbackControlProfile, ...]
+    escalation_policy: RollbackEscalationPolicy
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "schema_rollback_required": self.schema_rollback_required,
+            "profiles": [profile.to_payload() for profile in self.profiles],
+            "escalation_policy": self.escalation_policy.to_payload(),
         }
 
 
@@ -997,6 +1070,99 @@ def append_promotion_artifact(
         handle.write(f"{json.dumps(payload, sort_keys=True)}\n")
 
 
+def build_document_aware_rollback_plan() -> RollbackControlPlan:
+    return RollbackControlPlan(
+        schema_version=ROLLBACK_CONTROL_PLAN_SCHEMA_VERSION,
+        schema_rollback_required=False,
+        profiles=(
+            RollbackControlProfile(
+                profile_id="report_only_reversion",
+                goal="Return publish decisioning to observational mode before any feature disablement.",
+                prerequisite=None,
+                steps=(
+                    RollbackControlStep(
+                        step=1,
+                        control="gate_mode",
+                        action="set_report_only",
+                        pre_check=(
+                            "Confirm the affected environment/cohort currently resolves gate_mode=enforced and capture the latest "
+                            "promotion artifact plus shadow diagnostics run IDs for the incident record."
+                        ),
+                        post_check=(
+                            "Publish metadata reports gate_mode=report_only and enforcement_outcome.decision=observe for the "
+                            "next verification run."
+                        ),
+                        resulting_mode="report_only",
+                    ),
+                ),
+            ),
+            RollbackControlProfile(
+                profile_id="full_disable_after_report_only",
+                goal="Disable document-aware feature controls after enforcement has already been reverted to report-only mode.",
+                prerequisite=(
+                    "Complete report_only_reversion first, or record an equivalent manual override proving publish has returned "
+                    "to non-enforced behavior."
+                ),
+                steps=(
+                    RollbackControlStep(
+                        step=1,
+                        control="specificity_retention_enabled",
+                        action="disable",
+                        pre_check=(
+                            "Confirm gate_mode remains report_only and anchor carry-through is still enabled for the affected "
+                            "environment/cohort."
+                        ),
+                        post_check=(
+                            "Anchor carry-through is disabled while publish remains report_only and diagnostics continue to emit "
+                            "for the verification run."
+                        ),
+                        resulting_mode="report_only",
+                    ),
+                    RollbackControlStep(
+                        step=2,
+                        control="evidence_projection_enabled",
+                        action="disable",
+                        pre_check="Confirm specificity_retention_enabled is already disabled for the affected environment/cohort.",
+                        post_check=(
+                            "Evidence projection precision is disabled after specificity retention, and verification output no "
+                            "longer contains the additive precision override behavior."
+                        ),
+                        resulting_mode="report_only",
+                    ),
+                    RollbackControlStep(
+                        step=3,
+                        control="topic_hardening_enabled",
+                        action="disable",
+                        pre_check=(
+                            "Confirm specificity_retention_enabled and evidence_projection_enabled are already disabled for the "
+                            "affected environment/cohort."
+                        ),
+                        post_check=(
+                            "Topic hardening is disabled and the publish path is operating on the non-enforced baseline without "
+                            "requiring schema rollback."
+                        ),
+                        resulting_mode="report_only",
+                    ),
+                ),
+            ),
+        ),
+        escalation_policy=RollbackEscalationPolicy(
+            primary_owner="platform/backend on-call",
+            secondary_owner="release owner",
+            escalation_owner="incident commander",
+            paging_route=(
+                "platform/backend on-call",
+                "release owner",
+                "incident commander",
+            ),
+            escalation_trigger=(
+                "Any rollback post-check fails, publish remains enforced after the report-only reversion step, or baseline "
+                "behavior is not restored within 15 minutes."
+            ),
+        ),
+    )
+
+
 def decide_enforcement_outcome(
     *,
     config: QualityGateRolloutConfig,
@@ -1137,24 +1303,32 @@ def build_rollback_sequence() -> tuple[dict[str, object], ...]:
             "step": 1,
             "control": "specificity_retention_enabled",
             "action": "disable",
+            "pre_check": "Confirm the affected environment/cohort is identified and capture the current rollout config snapshot before disabling specificity retention.",
             "post_check": "anchor carry-through may be disabled while publish remains report-only or enforced per mode",
+            "resulting_mode": "enforced",
         },
         {
             "step": 2,
             "control": "evidence_projection_enabled",
             "action": "disable",
+            "pre_check": "Confirm specificity_retention_enabled is already disabled for the affected environment/cohort.",
             "post_check": "evidence projection precision is disabled after specificity retention",
+            "resulting_mode": "enforced",
         },
         {
             "step": 3,
             "control": "topic_hardening_enabled",
             "action": "disable",
+            "pre_check": "Confirm specificity_retention_enabled and evidence_projection_enabled are already disabled for the affected environment/cohort.",
             "post_check": "topic hardening is disabled after specificity and evidence controls",
+            "resulting_mode": "enforced",
         },
         {
             "step": 4,
             "control": "gate_mode",
             "action": "set_report_only",
+            "pre_check": "Confirm the prior flag disablement steps completed or document the reason for stopping at report-only mode only.",
             "post_check": "enforcement is disabled and gates run in report-only mode",
+            "resulting_mode": "report_only",
         },
     )

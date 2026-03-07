@@ -1,0 +1,106 @@
+{
+  "schema_version": "st-030-promotion-rollback-drill-evidence-v1",
+  "task_id": "TASK-ST-030-05",
+  "drill_executed_at_utc": "2026-03-07T20:15:00Z",
+  "environment": "staging",
+  "cohort": "pilot-city",
+  "promotion_scope_key": "staging:pilot-city",
+  "ownership": {
+    "primary_owner": "platform/backend on-call",
+    "secondary_owner": "release owner",
+    "escalation_owner": "incident commander",
+    "paging_route": [
+      "platform/backend on-call",
+      "release owner",
+      "incident commander"
+    ]
+  },
+  "promotion_precheck": {
+    "actor": "ops-release-1",
+    "timestamp_utc": "2026-03-07T19:45:00Z",
+    "promotion_artifact_schema_version": "st-030-promotion-eligibility-v1",
+    "evaluated_at_run_id": "run-st030-eligible-002",
+    "eligible": true,
+    "required_consecutive_green_runs": 2,
+    "eligible_window_run_ids": [
+      "run-st030-eligible-001",
+      "run-st030-eligible-002"
+    ],
+    "verification_result": "pass"
+  },
+  "actions": [
+    {
+      "phase": "promotion",
+      "profile_id": "promotion_to_enforced",
+      "actor": "ops-release-1",
+      "timestamp_utc": "2026-03-07T19:50:00Z",
+      "control": "gate_mode",
+      "previous_value": "report_only",
+      "new_value": "enforced",
+      "verification_result": "pass",
+      "post_check": "verification publish recorded enforcement_outcome.decision=enforce_pass"
+    },
+    {
+      "phase": "rollback",
+      "profile_id": "report_only_reversion",
+      "actor": "ops-release-1",
+      "timestamp_utc": "2026-03-07T20:00:00Z",
+      "control": "gate_mode",
+      "previous_value": "enforced",
+      "new_value": "report_only",
+      "verification_result": "pass",
+      "post_check": "verification publish recorded enforcement_outcome.decision=observe"
+    },
+    {
+      "phase": "rollback",
+      "profile_id": "full_disable_after_report_only",
+      "actor": "ops-release-1",
+      "timestamp_utc": "2026-03-07T20:05:00Z",
+      "control": "specificity_retention_enabled",
+      "previous_value": true,
+      "new_value": false,
+      "verification_result": "pass",
+      "post_check": "anchor carry-through override absent in verification output"
+    },
+    {
+      "phase": "rollback",
+      "profile_id": "full_disable_after_report_only",
+      "actor": "ops-release-1",
+      "timestamp_utc": "2026-03-07T20:07:00Z",
+      "control": "evidence_projection_enabled",
+      "previous_value": true,
+      "new_value": false,
+      "verification_result": "pass",
+      "post_check": "verification output no longer applies additive evidence projection precision behavior"
+    },
+    {
+      "phase": "rollback",
+      "profile_id": "full_disable_after_report_only",
+      "actor": "ops-release-1",
+      "timestamp_utc": "2026-03-07T20:09:00Z",
+      "control": "topic_hardening_enabled",
+      "previous_value": true,
+      "new_value": false,
+      "verification_result": "pass",
+      "post_check": "verification publish completed with non-enforced baseline behavior"
+    }
+  ],
+  "post_checks": {
+    "baseline_publish_behavior_restored": true,
+    "schema_rollback_required": false,
+    "verification_result": "pass",
+    "notes": [
+      "Publish returned to observational mode before flag disablement.",
+      "No schema rollback or destructive database action was required."
+    ]
+  },
+  "escalation": {
+    "trigger": "Any rollback post-check fails, publish remains enforced after report-only reversion, or baseline behavior is not restored within 15 minutes.",
+    "route": [
+      "platform/backend on-call",
+      "release owner",
+      "incident commander"
+    ],
+    "status": "not_invoked"
+  }
+}
