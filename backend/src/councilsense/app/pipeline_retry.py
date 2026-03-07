@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Callable, Literal
 
 from councilsense.db import (
@@ -134,6 +135,8 @@ class StageWorkItem:
     meeting_id: str
     source_id: str
     source_type: str | None = None
+    payload_references: dict[str, str] | None = None
+    triage_metadata: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +239,8 @@ class StageExecutionService:
                         retry_policy_version=resolved_policy.policy_version,
                         error_type=None,
                         error_message=None,
+                        payload_references=_normalize_payload_references(item.payload_references),
+                        triage_metadata=None,
                     ),
                     started_at=None,
                     finished_at=None,
@@ -293,7 +298,17 @@ class StageExecutionService:
                     failure_reason=f"{type(error).__name__}: {error}",
                 )
 
-                self._repository.upsert_stage_outcome(
+                terminal_transitioned_at = _utc_now_timestamp()
+                triage_metadata = _terminal_triage_metadata(
+                    item=item,
+                    stage_name=stage_name,
+                    policy=resolved_policy,
+                    decision=decision,
+                    attempts=attempts,
+                    error=error,
+                )
+
+                outcome_record = self._repository.upsert_stage_outcome(
                     outcome_id=_outcome_id(stage_name=stage_name, item=item),
                     run_id=item.run_id,
                     city_id=item.city_id,
@@ -313,9 +328,31 @@ class StageExecutionService:
                         retry_policy_version=resolved_policy.policy_version,
                         error_type=type(error).__name__,
                         error_message=str(error),
+                        payload_references=_normalize_payload_references(item.payload_references),
+                        triage_metadata=triage_metadata,
                     ),
                     started_at=None,
                     finished_at=None,
+                )
+                self._repository.record_pipeline_dlq_entry(
+                    run_id=item.run_id,
+                    city_id=item.city_id,
+                    meeting_id=item.meeting_id,
+                    stage_name=stage_name,
+                    source_id=item.source_id,
+                    source_type=resolved_policy.source_type,
+                    stage_outcome_id=outcome_record.id,
+                    failure_classification=decision.failure_classification,
+                    terminal_reason=decision.terminal_reason or "non_retryable",
+                    retry_policy_version=resolved_policy.policy_version,
+                    terminal_attempt_number=attempts,
+                    max_attempts=resolved_policy.max_attempts,
+                    error_code=decision.error_code,
+                    error_type=type(error).__name__,
+                    error_message=str(error),
+                    payload_references=_normalize_payload_references(item.payload_references),
+                    triage_metadata=triage_metadata,
+                    terminal_transitioned_at=terminal_transitioned_at,
                 )
                 self._log_stage_event(
                     event_name="pipeline_stage_error",
@@ -422,6 +459,8 @@ def _metadata_json(
     retry_policy_version: str,
     error_type: str | None,
     error_message: str | None,
+    payload_references: dict[str, str],
+    triage_metadata: dict[str, object] | None,
 ) -> str:
     metadata = _load_metadata(existing_metadata_json)
     source_attempts = metadata.setdefault("source_attempts", {})
@@ -438,6 +477,8 @@ def _metadata_json(
         "error_type": error_type,
         "error_message": error_message,
         "policy_key": f"{stage_name}:{source_type}",
+        "payload_references": payload_references,
+        "triage_metadata": triage_metadata,
     }
     metadata.update(
         {
@@ -452,6 +493,8 @@ def _metadata_json(
             "policy_key": f"{stage_name}:{source_type}",
             "error_type": error_type,
             "error_message": error_message,
+            "payload_references": payload_references,
+            "triage_metadata": triage_metadata,
         }
     )
     return json.dumps(metadata, sort_keys=True)
@@ -522,6 +565,85 @@ def _load_metadata(existing_metadata_json: str | None) -> dict[str, Any]:
     if not isinstance(source_attempts, dict):
         parsed["source_attempts"] = {}
     return parsed
+
+
+def _normalize_payload_references(payload_references: dict[str, str] | None) -> dict[str, str]:
+    if payload_references is None:
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in payload_references.items():
+        normalized_key = key.strip()
+        normalized_value = value.strip()
+        if normalized_key and normalized_value:
+            normalized[normalized_key] = normalized_value
+    return normalized
+
+
+def _terminal_triage_metadata(
+    *,
+    item: StageWorkItem,
+    stage_name: str,
+    policy: ResolvedStageRetryPolicy,
+    decision: StageFailureDecision,
+    attempts: int,
+    error: Exception,
+) -> dict[str, object]:
+    triage_metadata = _normalize_json_mapping(item.triage_metadata)
+    triage_metadata.update(
+        {
+            "boundary": "terminal",
+            "run_id": item.run_id,
+            "city_id": item.city_id,
+            "meeting_id": item.meeting_id,
+            "stage_name": stage_name,
+            "source_id": item.source_id,
+            "source_type": policy.source_type,
+            "policy_key": policy.matrix_key,
+            "retry_policy_version": policy.policy_version,
+            "failure_classification": decision.failure_classification,
+            "terminal_reason": decision.terminal_reason,
+            "attempts": attempts,
+            "max_attempts": policy.max_attempts,
+            "error_code": decision.error_code,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+    )
+    return triage_metadata
+
+
+def _normalize_json_mapping(payload: dict[str, object] | None) -> dict[str, object]:
+    if payload is None:
+        return {}
+    normalized: dict[str, object] = {}
+    for key, value in payload.items():
+        normalized_key = key.strip()
+        if not normalized_key:
+            continue
+        normalized[normalized_key] = _normalize_json_value(value)
+    return normalized
+
+
+def _normalize_json_value(value: object) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        normalized: dict[str, Any] = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                continue
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            normalized[normalized_key] = _normalize_json_value(child)
+        return normalized
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_value(child) for child in value]
+    return str(value)
+
+
+def _utc_now_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _existing_attempt_count(*, existing_outcome: object, item: StageWorkItem) -> int:

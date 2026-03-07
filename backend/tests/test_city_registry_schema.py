@@ -45,6 +45,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0023_st024_canonical_document_artifacts_lineage.sql" in before.pending
     assert "0023_st024_canonical_document_spans.sql" in before.pending
     assert "0024_st026_claim_evidence_linkage_contract.sql" in before.pending
+    assert "0025_st029_pipeline_dlq_contract.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -73,6 +74,7 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0023_st024_canonical_document_artifacts_lineage.sql",
         "0023_st024_canonical_document_spans.sql",
         "0024_st026_claim_evidence_linkage_contract.sql",
+        "0025_st029_pipeline_dlq_contract.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -115,6 +117,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "quality_ops_weekly_reports",
         "canonical_documents",
         "canonical_document_artifacts",
+        "pipeline_dlq_entries",
         "schema_migrations",
     }.issubset(table_names)
 
@@ -170,6 +173,11 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_canonical_document_artifacts_document_checksum" in index_names
     assert "idx_canonical_document_artifacts_root_checksum" in index_names
     assert "idx_canonical_document_artifacts_lineage_parent" in index_names
+    assert "idx_pipeline_dlq_entries_city_status" in index_names
+    assert "idx_pipeline_dlq_entries_run" in index_names
+    assert "idx_pipeline_dlq_entries_source" in index_names
+    assert "idx_pipeline_dlq_entries_meeting" in index_names
+    assert "idx_pipeline_dlq_entries_stage_status" in index_names
 
 
 def test_city_and_source_constraints_are_enforced(connection: sqlite3.Connection) -> None:

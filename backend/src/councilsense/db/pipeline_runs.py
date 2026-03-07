@@ -7,7 +7,7 @@ from hashlib import sha256
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import isinf
-from typing import Literal
+from typing import Any, Literal, Mapping
 
 from councilsense.app.parser_drift_policy import ParserDriftComparisonInput, evaluate_parser_drift
 from councilsense.app.source_freshness_policy import (
@@ -27,6 +27,35 @@ RunLifecycleStatus = Literal[
 
 
 logger = logging.getLogger(__name__)
+
+
+PIPELINE_DLQ_CONTRACT_VERSION = "st029-pipeline-dlq.v1"
+
+
+PipelineDlqFailureClassification = Literal["transient", "terminal"]
+PipelineDlqStatus = Literal["open", "triaged", "replay_ready", "replayed", "dismissed"]
+
+
+@dataclass(frozen=True)
+class PipelineDlqStatusModel:
+    transitions: Mapping[str, tuple[str, ...]]
+
+    def can_transition(self, *, current: str, next_status: str) -> bool:
+        allowed = self.transitions.get(current)
+        if allowed is None:
+            return False
+        return next_status in allowed
+
+
+PIPELINE_DLQ_STATUS_MODEL = PipelineDlqStatusModel(
+    transitions={
+        "open": ("triaged", "replay_ready", "dismissed"),
+        "triaged": ("replay_ready", "dismissed"),
+        "replay_ready": ("replayed", "dismissed"),
+        "replayed": (),
+        "dismissed": (),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -110,6 +139,37 @@ class SourceFreshnessBreachEventRecord:
     maintenance_window_ends_at: str | None
     triage_payload_json: str
     detected_at: str | None
+
+
+@dataclass(frozen=True)
+class PipelineDlqRecord:
+    id: int
+    dlq_key: str
+    contract_version: str
+    run_id: str
+    city_id: str
+    meeting_id: str
+    stage_name: str
+    source_id: str
+    source_type: str
+    stage_outcome_id: str
+    status: PipelineDlqStatus
+    failure_classification: PipelineDlqFailureClassification
+    terminal_reason: str
+    retry_policy_version: str
+    terminal_attempt_number: int
+    max_attempts: int
+    error_code: str
+    error_type: str | None
+    error_message: str | None
+    payload_references_json: str
+    triage_metadata_json: str
+    terminal_transitioned_at: str
+    triaged_at: str | None
+    replay_ready_at: str | None
+    replayed_at: str | None
+    created_at: str
+    updated_at: str
 
 
 class ProcessingRunRepository:
@@ -398,6 +458,245 @@ class ProcessingRunRepository:
             started_at=str(row[7]) if row[7] is not None else None,
             finished_at=str(row[8]) if row[8] is not None else None,
         )
+
+    def record_pipeline_dlq_entry(
+        self,
+        *,
+        run_id: str,
+        city_id: str,
+        meeting_id: str,
+        stage_name: str,
+        source_id: str,
+        source_type: str,
+        stage_outcome_id: str,
+        failure_classification: PipelineDlqFailureClassification,
+        terminal_reason: str,
+        retry_policy_version: str,
+        terminal_attempt_number: int,
+        max_attempts: int,
+        error_code: str,
+        error_type: str | None,
+        error_message: str | None,
+        payload_references: Mapping[str, object] | None = None,
+        triage_metadata: Mapping[str, object] | None = None,
+        terminal_transitioned_at: str | None = None,
+    ) -> PipelineDlqRecord:
+        if terminal_attempt_number <= 0:
+            raise ValueError("terminal_attempt_number must be > 0")
+        if max_attempts <= 0:
+            raise ValueError("max_attempts must be > 0")
+
+        dlq_key = _pipeline_dlq_key(
+            run_id=run_id,
+            city_id=city_id,
+            meeting_id=meeting_id,
+            stage_name=stage_name,
+            source_id=source_id,
+        )
+        payload_references_json = _encode_json_object(_normalize_string_mapping(payload_references))
+        source_context = self._pipeline_dlq_source_context(run_id=run_id, source_id=source_id)
+        normalized_triage_metadata = _normalize_json_mapping(triage_metadata)
+        normalized_triage_metadata.update(source_context)
+        normalized_triage_metadata.update(
+            {
+                "contract_version": PIPELINE_DLQ_CONTRACT_VERSION,
+                "policy_key": f"{stage_name}:{source_type}",
+                "run_id": run_id,
+                "city_id": city_id,
+                "meeting_id": meeting_id,
+                "stage_name": stage_name,
+                "source_id": source_id,
+                "source_type": source_type,
+                "stage_outcome_id": stage_outcome_id,
+                "failure_classification": failure_classification,
+                "terminal_reason": terminal_reason,
+                "retry_policy_version": retry_policy_version,
+                "terminal_attempt_number": terminal_attempt_number,
+                "max_attempts": max_attempts,
+                "error_code": error_code,
+                "error_type": error_type,
+                "error_message": error_message,
+            }
+        )
+        triage_metadata_json = _encode_json_object(normalized_triage_metadata)
+        effective_terminal_transitioned_at = terminal_transitioned_at or _utc_now_timestamp()
+
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO pipeline_dlq_entries (
+                    dlq_key,
+                    contract_version,
+                    run_id,
+                    city_id,
+                    meeting_id,
+                    stage_name,
+                    source_id,
+                    source_type,
+                    stage_outcome_id,
+                    status,
+                    failure_classification,
+                    terminal_reason,
+                    retry_policy_version,
+                    terminal_attempt_number,
+                    max_attempts,
+                    error_code,
+                    error_type,
+                    error_message,
+                    payload_references_json,
+                    triage_metadata_json,
+                    terminal_transitioned_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (dlq_key) DO NOTHING
+                """,
+                (
+                    dlq_key,
+                    PIPELINE_DLQ_CONTRACT_VERSION,
+                    run_id,
+                    city_id,
+                    meeting_id,
+                    stage_name,
+                    source_id,
+                    source_type,
+                    stage_outcome_id,
+                    failure_classification,
+                    terminal_reason,
+                    retry_policy_version,
+                    terminal_attempt_number,
+                    max_attempts,
+                    error_code,
+                    error_type,
+                    error_message,
+                    payload_references_json,
+                    triage_metadata_json,
+                    effective_terminal_transitioned_at,
+                ),
+            )
+
+        record = self.get_pipeline_dlq_entry(dlq_key=dlq_key)
+        if record is None:
+            raise LookupError(f"Pipeline DLQ entry not found after insert: {dlq_key}")
+        return record
+
+    def get_pipeline_dlq_entry(self, *, dlq_key: str) -> PipelineDlqRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                dlq_key,
+                contract_version,
+                run_id,
+                city_id,
+                meeting_id,
+                stage_name,
+                source_id,
+                source_type,
+                stage_outcome_id,
+                status,
+                failure_classification,
+                terminal_reason,
+                retry_policy_version,
+                terminal_attempt_number,
+                max_attempts,
+                error_code,
+                error_type,
+                error_message,
+                payload_references_json,
+                triage_metadata_json,
+                terminal_transitioned_at,
+                triaged_at,
+                replay_ready_at,
+                replayed_at,
+                created_at,
+                updated_at
+            FROM pipeline_dlq_entries
+            WHERE dlq_key = ?
+            """,
+            (dlq_key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._to_pipeline_dlq_record(row)
+
+    def list_pipeline_dlq_entries(
+        self,
+        *,
+        city_id: str | None = None,
+        run_id: str | None = None,
+        source_id: str | None = None,
+        meeting_id: str | None = None,
+        stage_name: str | None = None,
+        status: PipelineDlqStatus | None = None,
+        limit: int = 200,
+    ) -> tuple[PipelineDlqRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+
+        clauses: list[str] = []
+        params: list[object] = []
+        if city_id is not None:
+            clauses.append("city_id = ?")
+            params.append(city_id)
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            params.append(run_id)
+        if source_id is not None:
+            clauses.append("source_id = ?")
+            params.append(source_id)
+        if meeting_id is not None:
+            clauses.append("meeting_id = ?")
+            params.append(meeting_id)
+        if stage_name is not None:
+            clauses.append("stage_name = ?")
+            params.append(stage_name)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where_sql = ""
+        if clauses:
+            where_sql = f"WHERE {' AND '.join(clauses)}"
+
+        params.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT
+                id,
+                dlq_key,
+                contract_version,
+                run_id,
+                city_id,
+                meeting_id,
+                stage_name,
+                source_id,
+                source_type,
+                stage_outcome_id,
+                status,
+                failure_classification,
+                terminal_reason,
+                retry_policy_version,
+                terminal_attempt_number,
+                max_attempts,
+                error_code,
+                error_type,
+                error_message,
+                payload_references_json,
+                triage_metadata_json,
+                terminal_transitioned_at,
+                triaged_at,
+                replay_ready_at,
+                replayed_at,
+                created_at,
+                updated_at
+            FROM pipeline_dlq_entries
+            {where_sql}
+            ORDER BY terminal_transitioned_at DESC, id DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        return tuple(self._to_pipeline_dlq_record(row) for row in rows)
 
     def list_parser_drift_events(
         self,
@@ -840,6 +1139,59 @@ class ProcessingRunRepository:
                 ),
             )
 
+    def _pipeline_dlq_source_context(self, *, run_id: str, source_id: str) -> dict[str, object]:
+        row = self._connection.execute(
+            """
+            SELECT source_url, parser_name, parser_version, recorded_at
+            FROM processing_run_sources
+            WHERE run_id = ?
+              AND source_id = ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """,
+            (run_id, source_id),
+        ).fetchone()
+        if row is None:
+            return {}
+        return {
+            "source_url": str(row[0]) if row[0] is not None else None,
+            "parser_name": str(row[1]) if row[1] is not None else None,
+            "parser_version": str(row[2]) if row[2] is not None else None,
+            "source_recorded_at": str(row[3]) if row[3] is not None else None,
+        }
+
+    @staticmethod
+    def _to_pipeline_dlq_record(row: sqlite3.Row | tuple[object, ...]) -> PipelineDlqRecord:
+        return PipelineDlqRecord(
+            id=int(row[0]),
+            dlq_key=str(row[1]),
+            contract_version=str(row[2]),
+            run_id=str(row[3]),
+            city_id=str(row[4]),
+            meeting_id=str(row[5]),
+            stage_name=str(row[6]),
+            source_id=str(row[7]),
+            source_type=str(row[8]),
+            stage_outcome_id=str(row[9]),
+            status=str(row[10]),
+            failure_classification=str(row[11]),
+            terminal_reason=str(row[12]),
+            retry_policy_version=str(row[13]),
+            terminal_attempt_number=int(row[14]),
+            max_attempts=int(row[15]),
+            error_code=str(row[16]),
+            error_type=str(row[17]) if row[17] is not None else None,
+            error_message=str(row[18]) if row[18] is not None else None,
+            payload_references_json=str(row[19]),
+            triage_metadata_json=str(row[20]),
+            terminal_transitioned_at=str(row[21]),
+            triaged_at=str(row[22]) if row[22] is not None else None,
+            replay_ready_at=str(row[23]) if row[23] is not None else None,
+            replayed_at=str(row[24]) if row[24] is not None else None,
+            created_at=str(row[25]),
+            updated_at=str(row[26]),
+        )
+
     def _emit_source_freshness_breach_events(
         self,
         *,
@@ -1040,3 +1392,71 @@ class ProcessingLifecycleService:
             return self.mark_manual_review_needed(run_id=run_id)
 
         return self.mark_processed(run_id=run_id)
+
+
+def _pipeline_dlq_key(
+    *,
+    run_id: str,
+    city_id: str,
+    meeting_id: str,
+    stage_name: str,
+    source_id: str,
+) -> str:
+    return f"pipeline-dlq:{run_id}:{city_id}:{meeting_id}:{stage_name}:{source_id}"
+
+
+def _normalize_string_mapping(payload: Mapping[str, object] | None) -> dict[str, str]:
+    if payload is None:
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        normalized_key = key.strip()
+        if not normalized_key or not isinstance(value, str):
+            continue
+        normalized_value = value.strip()
+        if not normalized_value:
+            continue
+        normalized[normalized_key] = normalized_value
+    return normalized
+
+
+def _normalize_json_mapping(payload: Mapping[str, object] | None) -> dict[str, object]:
+    if payload is None:
+        return {}
+    normalized: dict[str, object] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        normalized_key = key.strip()
+        if not normalized_key:
+            continue
+        normalized[normalized_key] = _normalize_json_value(value)
+    return normalized
+
+
+def _normalize_json_value(value: object) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        normalized: dict[str, Any] = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                continue
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            normalized[normalized_key] = _normalize_json_value(child)
+        return normalized
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_value(child) for child in value]
+    return str(value)
+
+
+def _encode_json_object(payload: Mapping[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _utc_now_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
