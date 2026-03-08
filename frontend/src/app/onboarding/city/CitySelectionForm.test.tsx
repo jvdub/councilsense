@@ -64,10 +64,10 @@ describe("CitySelectionForm", () => {
     );
     expect(
       screen.getByRole("link", { name: "Privacy policy" }),
-    ).toHaveAttribute("href", "https://www.councilsense.org/privacy");
+    ).toHaveAttribute("href", "/privacy");
     expect(
       screen.getByRole("link", { name: "Terms of service" }),
-    ).toHaveAttribute("href", "https://www.councilsense.org/terms");
+    ).toHaveAttribute("href", "/terms");
   });
 
   it("shows validation message when backend rejects city", async () => {

@@ -15,11 +15,11 @@ describe("RootLayout", () => {
     expect(screen.getByLabelText("Public legal links")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
       "href",
-      "https://www.councilsense.org/privacy",
+      "/privacy",
     );
     expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
       "href",
-      "https://www.councilsense.org/terms",
+      "/terms",
     );
   });
 });

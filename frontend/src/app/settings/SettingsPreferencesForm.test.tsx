@@ -272,11 +272,11 @@ describe("SettingsPreferencesForm", () => {
     expect(screen.getByRole("button", { name: "Unpause" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
       "href",
-      "https://www.councilsense.org/privacy",
+      "/privacy",
     );
     expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
       "href",
-      "https://www.councilsense.org/terms",
+      "/terms",
     );
   });
 
