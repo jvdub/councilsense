@@ -254,17 +254,19 @@ describe("SettingsPreferencesForm", () => {
     render(
       <SettingsPreferencesForm
         authToken="token-abc"
-        supportedCityIds={["seattle-wa", "portland-or"]}
+        supportedCityIds={["city-eagle-mountain-ut", "portland-or"]}
         initialProfile={{
           email: "user@example.com",
-          home_city_id: "seattle-wa",
+          home_city_id: "city-eagle-mountain-ut",
           notifications_enabled: true,
           notifications_paused_until: null,
         }}
       />,
     );
 
-    expect(screen.getByLabelText("Home city")).toHaveValue("seattle-wa");
+    expect(screen.getByLabelText("Home city")).toHaveValue("city-eagle-mountain-ut");
+    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue("city-eagle-mountain-ut");
+    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue("portland-or");
     expect(screen.getByLabelText("Enable notifications")).toBeChecked();
     expect(screen.getByText("Notifications paused until: Not paused")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unpause" })).toBeDisabled();

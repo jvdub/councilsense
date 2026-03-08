@@ -25,6 +25,7 @@ import {
   mapPushRecoveryAction,
   type BrowserPermissionState,
 } from "../../lib/push/subscriptionState";
+import { formatCityLabel } from "../../lib/meetings/presentation";
 import { LegalLinks } from "../LegalLinks";
 
 type SettingsPreferencesFormProps = {
@@ -97,7 +98,7 @@ export function SettingsPreferencesForm({
   const [governanceErrorMessage, setGovernanceErrorMessage] = useState<string | null>(null);
 
   const cityOptions = useMemo(
-    () => supportedCityIds.map((cityId) => ({ cityId, label: cityId })),
+    () => supportedCityIds.map((cityId) => ({ cityId, label: formatCityLabel(null, cityId) })),
     [supportedCityIds],
   );
 

@@ -36,17 +36,20 @@ describe("CitySelectionForm", () => {
     const user = userEvent.setup();
     vi.mocked(submitHomeCitySelection).mockResolvedValue({
       user_id: "user-1",
-      home_city_id: "portland-or",
+      home_city_id: "city-eagle-mountain-ut",
       onboarding_required: false,
-      supported_city_ids: ["seattle-wa", "portland-or"],
+      supported_city_ids: ["city-eagle-mountain-ut", "portland-or"],
     });
 
     render(
       <CitySelectionForm
         authToken="token-abc"
-        cityIds={["seattle-wa", "portland-or"]}
+        cityIds={["city-eagle-mountain-ut", "portland-or"]}
       />,
     );
+
+    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue("city-eagle-mountain-ut");
+    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue("portland-or");
 
     await user.selectOptions(screen.getByLabelText("Home city"), "portland-or");
     await user.click(screen.getByRole("button", { name: "Continue" }));

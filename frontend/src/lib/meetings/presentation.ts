@@ -34,6 +34,27 @@ export function humanizeIdentifier(value: string | null | undefined, fallback = 
   return toTitleCase(trimmed.replace(/[_-]+/g, " "));
 }
 
+function formatCityIdLabel(cityId: string): string {
+  const trimmed = cityId.trim();
+
+  if (!trimmed) {
+    return cityId;
+  }
+
+  const withoutPrefix = trimmed.replace(/^city-/, "");
+  const segments = withoutPrefix.split(/[_-]+/).filter((segment) => segment.length > 0);
+
+  if (segments.length >= 2 && /^[a-z]{2}$/i.test(segments[segments.length - 1] ?? "")) {
+    segments.pop();
+  }
+
+  if (segments.length === 0) {
+    return humanizeIdentifier(trimmed, cityId);
+  }
+
+  return toTitleCase(segments.join(" "));
+}
+
 export function formatCityLabel(cityName: string | null | undefined, cityId: string): string {
   const trimmedName = cityName?.trim();
 
@@ -41,7 +62,7 @@ export function formatCityLabel(cityName: string | null | undefined, cityId: str
     return trimmedName;
   }
 
-  return humanizeIdentifier(cityId, cityId);
+  return formatCityIdLabel(cityId);
 }
 
 export function formatCalendarDate(value: string | null | undefined, fallback = "Date unavailable"): string {

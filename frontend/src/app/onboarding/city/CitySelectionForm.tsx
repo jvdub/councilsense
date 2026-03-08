@@ -4,6 +4,7 @@ import React, { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError, submitHomeCitySelection } from "../../../lib/api/bootstrap";
+import { formatCityLabel } from "../../../lib/meetings/presentation";
 import { LegalLinks } from "../../LegalLinks";
 
 type CitySelectionFormProps = {
@@ -21,7 +22,7 @@ export function CitySelectionForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const cityOptions = useMemo(
-    () => cityIds.map((cityId) => ({ cityId, label: cityId })),
+    () => cityIds.map((cityId) => ({ cityId, label: formatCityLabel(null, cityId) })),
     [cityIds],
   );
 
