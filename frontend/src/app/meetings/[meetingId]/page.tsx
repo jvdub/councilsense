@@ -305,7 +305,7 @@ export default async function MeetingDetailPage({
                     rel="noreferrer"
                     className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
                   >
-                    Open source document
+                    Open source record
                   </a>
                 </div>
               ) : (

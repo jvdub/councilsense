@@ -166,10 +166,12 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
     assert json.loads(latest_publication[5]) == list(local_runtime._FIXTURE_TOPICS)
     assert canonical_document == ("minutes", local_runtime._FIXTURE_SOURCE_DOCUMENT_URL, 1)
     assert detail is not None
+    assert detail.meeting_date == "2024-12-03"
+    assert detail.body_name == "Eagle Mountain City Council"
     assert detail.source_document_kind == "minutes"
     assert detail.source_document_url == local_runtime._FIXTURE_SOURCE_DOCUMENT_URL
-    assert len(detail.claims) == 2
-    assert len(evidence_rows) == 2
+    assert len(detail.claims) == 3
+    assert len(evidence_rows) == 3
     assert evidence_rows[0][:2] == (
         local_runtime._FIXTURE_CLAIMS[0]["claim_text"],
         local_runtime._FIXTURE_CLAIMS[0]["excerpt"],
@@ -177,6 +179,10 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
     assert evidence_rows[1][:2] == (
         local_runtime._FIXTURE_CLAIMS[1]["claim_text"],
         local_runtime._FIXTURE_CLAIMS[1]["excerpt"],
+    )
+    assert evidence_rows[2][:2] == (
+        local_runtime._FIXTURE_CLAIMS[2]["claim_text"],
+        local_runtime._FIXTURE_CLAIMS[2]["excerpt"],
     )
     assert all(row[2] == local_runtime._FIXTURE_DOCUMENT_ID for row in evidence_rows)
     assert all(row[4] == "minutes" for row in evidence_rows)

@@ -30,53 +30,67 @@ _DEFAULT_DB_PATH = "/data/councilsense-local.db"
 _FIXTURE_MEETING_ID = "meeting-local-runtime-smoke-001"
 _FIXTURE_MEETING_UID = "local-runtime-smoke-uid-001"
 _FIXTURE_TITLE = "Eagle Mountain City Council Regular Meeting"
-_FIXTURE_PUBLICATION_ID = "pub-local-runtime-eaglemountain-review-v3"
-_FIXTURE_PUBLICATION_VERSION = 3
-_FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v3"
-_FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v3"
-_FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v3"
-_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/"
+_FIXTURE_PUBLICATION_ID = "pub-local-runtime-eaglemountain-review-v4"
+_FIXTURE_PUBLICATION_VERSION = 4
+_FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v4"
+_FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v4"
+_FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v4"
+_FIXTURE_DOCUMENT_REVISION_NUMBER = 2
+_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/146/media"
 _FIXTURE_SUMMARY = (
-    "Eagle Mountain City Council approved the Hidden Valley Park restroom bid and directed staff to "
-    "return on March 19 with a comparison of water-rate options for long-term system maintenance."
+    "The council reviewed major residential development proposals totaling 893 units across 208 acres, "
+    "approved the Old Airport Road right-of-way acquisition and a school-district boundary property title "
+    "transfer, and adopted the 2025 meeting schedule with added November 5 and December 16 dates."
 )
 _FIXTURE_DECISIONS = (
-    "Approved the Hidden Valley Park restroom bid not to exceed $148,500.",
+    "Approved a Purchase Agreement with Ivory Land Corporation for acquisition of right-of-way for Old Airport Road, North.",
+    "Consented to transfer of title for property located in the interlocal boundary of the new school district in West Utah County.",
+    "Approved the 2025 City Council meeting schedule, including added dates on November 5 and December 16.",
 )
 _FIXTURE_ACTIONS = (
-    "Staff will return on March 19 with a comparison of water-rate options for long-term system maintenance.",
+    "Removed one item from the consent agenda and moved it to a scheduled item for further discussion.",
+    "Adopted schedule changes adding meetings on November 5 and December 16.",
 )
 _FIXTURE_TOPICS = (
-    "Hidden Valley Park restroom project",
-    "Water-rate options",
+    "Residential growth and land use scale",
+    "Right-of-way acquisition and property transfer",
+    "2025 meeting schedule updates",
 )
 _FIXTURE_CLAIMS = (
     {
-        "claim_id": "claim-local-runtime-eaglemountain-review-v3-1",
-        "pointer_id": "pointer-local-runtime-eaglemountain-review-v3-1",
-        "span_id": "span-local-runtime-eaglemountain-review-v3-1",
-        "claim_text": "Council approved the Hidden Valley Park restroom bid not to exceed $148,500.",
+        "claim_id": "claim-local-runtime-eaglemountain-review-v4-1",
+        "pointer_id": "pointer-local-runtime-eaglemountain-review-v4-1",
+        "span_id": "span-local-runtime-eaglemountain-review-v4-1",
+        "claim_text": "The council reviewed residential development proposals totaling 893 units across 208 acres, including open space and HOA park considerations.",
         "section_ref": "minutes.section.7",
         "section_path": "minutes/section/7",
         "char_start": 0,
         "excerpt": (
-            "The council approved the Hidden Valley Park restroom bid not to exceed $148,500."
+            "The council reviewed proposed residential developments totaling 893 units across 208 acres, including open space requirements and HOA parks."
         ),
     },
     {
-        "claim_id": "claim-local-runtime-eaglemountain-review-v3-2",
-        "pointer_id": "pointer-local-runtime-eaglemountain-review-v3-2",
-        "span_id": "span-local-runtime-eaglemountain-review-v3-2",
-        "claim_text": (
-            "Council directed staff to return on March 19 with a comparison of water-rate options for "
-            "long-term system maintenance."
-        ),
+        "claim_id": "claim-local-runtime-eaglemountain-review-v4-2",
+        "pointer_id": "pointer-local-runtime-eaglemountain-review-v4-2",
+        "span_id": "span-local-runtime-eaglemountain-review-v4-2",
+        "claim_text": "The council approved a Purchase Agreement with Ivory Land Corporation for the Old Airport Road, North right-of-way acquisition.",
         "section_ref": "minutes.section.8",
         "section_path": "minutes/section/8",
-        "char_start": 96,
+        "char_start": 144,
         "excerpt": (
-            "Council directed staff to return on March 19 with a comparison of water-rate options for "
-            "long-term system maintenance."
+            "Approved a Purchase Agreement with Ivory Land Corporation for the Acquisition of Right-of-Way for Old Airport Road, North."
+        ),
+    },
+    {
+        "claim_id": "claim-local-runtime-eaglemountain-review-v4-3",
+        "pointer_id": "pointer-local-runtime-eaglemountain-review-v4-3",
+        "span_id": "span-local-runtime-eaglemountain-review-v4-3",
+        "claim_text": "The council approved the 2025 meeting schedule, including added dates on November 5 and December 16.",
+        "section_ref": "minutes.section.11",
+        "section_path": "minutes/section/11",
+        "char_start": 288,
+        "excerpt": (
+            "Approved the 2025 City Council Meeting Schedule, adding meetings on November 5 and December 16."
         ),
     },
 )
@@ -89,7 +103,7 @@ def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_i
         meeting_id=meeting_id,
         document_kind="minutes",
         revision_id=_FIXTURE_DOCUMENT_REVISION_ID,
-        revision_number=1,
+        revision_number=_FIXTURE_DOCUMENT_REVISION_NUMBER,
         is_active_revision=True,
         authority_level="authoritative",
         authority_source="local-runtime-fixture",
@@ -169,7 +183,7 @@ def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: 
             json.dumps(
                 {
                     "selected_event_name": "Eagle Mountain City Council",
-                    "selected_event_date": "2026-03-19",
+                    "selected_event_date": "2024-12-03",
                     "candidate_url": _FIXTURE_SOURCE_DOCUMENT_URL,
                 },
                 separators=(",", ":"),

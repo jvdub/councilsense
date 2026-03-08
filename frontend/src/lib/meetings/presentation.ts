@@ -115,7 +115,58 @@ export function formatSourceKindLabel(value: string | null | undefined): string 
   return `${humanizeIdentifier(trimmed)} source`;
 }
 
+function buildResidentSectionLabel(value: string | null | undefined, fallbackKind?: string | null): string | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return fallbackKind ? humanizeIdentifier(fallbackKind) : null;
+  }
+
+  const sectionMatch = trimmed.match(/^([a-z]+)[/.]section[/.](.+)$/i);
+  if (sectionMatch) {
+    const [, documentKind, sectionValue] = sectionMatch;
+    return `${humanizeIdentifier(documentKind)} section ${sectionValue.replace(/[._/-]+/g, " ")}`;
+  }
+
+  if (/^(artifact\.(html|pdf)|meeting\.metadata)$/i.test(trimmed)) {
+    return fallbackKind ? `${humanizeIdentifier(fallbackKind)} document` : "Source document";
+  }
+
+  return humanizeIdentifier(trimmed);
+}
+
+function buildPageLabel(pageStart: number | null, pageEnd: number | null): string | null {
+  if (pageStart === null) {
+    return null;
+  }
+
+  if (pageEnd !== null && pageEnd !== pageStart) {
+    return `pages ${pageStart}-${pageEnd}`;
+  }
+
+  return `page ${pageStart}`;
+}
+
 export function buildEvidenceLocator(pointer: {
+  section_ref: string | null;
+  char_start: number | null;
+  char_end: number | null;
+}): string {
+  const parts: string[] = [];
+
+  const residentSectionLabel = buildResidentSectionLabel(pointer.section_ref);
+  if (residentSectionLabel) {
+    parts.push(residentSectionLabel);
+  }
+
+  if (parts.length === 0) {
+    return "Source document";
+  }
+
+  return parts.join(" • ");
+}
+
+export function buildTechnicalEvidenceLocator(pointer: {
   section_ref: string | null;
   char_start: number | null;
   char_end: number | null;
@@ -138,6 +189,37 @@ export function buildEvidenceLocator(pointer: {
 }
 
 export function buildEvidenceReferenceV2Locator(reference: {
+  document_kind: string;
+  section_path: string;
+  page_start: number | null;
+  page_end: number | null;
+  char_start: number | null;
+  char_end: number | null;
+  precision: string;
+}): string {
+  const parts: string[] = [];
+
+  const residentSectionLabel = buildResidentSectionLabel(
+    reference.section_path,
+    reference.document_kind,
+  );
+  if (residentSectionLabel) {
+    parts.push(residentSectionLabel);
+  }
+
+  const pageLabel = buildPageLabel(reference.page_start, reference.page_end);
+  if (pageLabel) {
+    parts.push(pageLabel);
+  }
+
+  if (parts.length === 0) {
+    return "Source document";
+  }
+
+  return parts.join(" • ");
+}
+
+export function buildTechnicalEvidenceReferenceV2Locator(reference: {
   section_path: string;
   page_start: number | null;
   page_end: number | null;
@@ -151,12 +233,9 @@ export function buildEvidenceReferenceV2Locator(reference: {
     parts.push(reference.section_path.trim());
   }
 
-  if (reference.page_start !== null) {
-    if (reference.page_end !== null && reference.page_end !== reference.page_start) {
-      parts.push(`pages ${reference.page_start}-${reference.page_end}`);
-    } else {
-      parts.push(`page ${reference.page_start}`);
-    }
+  const pageLabel = buildPageLabel(reference.page_start, reference.page_end);
+  if (pageLabel) {
+    parts.push(pageLabel);
   }
 
   if (reference.char_start !== null && reference.char_end !== null) {

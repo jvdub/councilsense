@@ -176,7 +176,12 @@ describe("MeetingDetailPage", () => {
       screen.getByRole("heading", { name: "Evidence references" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Quick verification")).toBeInTheDocument();
-    expect(screen.getByText("minutes/section/4 • chars 12-80 • Span precision")).toBeInTheDocument();
+    expect(screen.getAllByText("Minutes section 4").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("minutes/section/4 • chars 12-80 • Span precision"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Where to verify").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Technical reference").length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("heading", { name: "Planned" }),
     ).not.toBeInTheDocument();
@@ -190,7 +195,7 @@ describe("MeetingDetailPage", () => {
       screen.getAllByText("Council voted 6-1 to approve the transit plan.").length,
     ).toBe(2);
     expect(
-      screen.getAllByRole("link", { name: "Open minutes source" }).length,
+      screen.getAllByRole("link", { name: "Open source record" }).length,
     ).toBeGreaterThan(0);
     expect(
       screen.getByRole("link", { name: "Back to meetings" }),

@@ -7,6 +7,8 @@ import {
 import {
   buildEvidenceLocator,
   buildEvidenceReferenceV2Locator,
+  buildTechnicalEvidenceLocator,
+  buildTechnicalEvidenceReferenceV2Locator,
   formatSourceKindLabel,
 } from "../../../lib/meetings/presentation";
 
@@ -53,7 +55,7 @@ export function EvidenceReferences({
                       rel="noreferrer"
                       className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
                     >
-                      Open {formatSourceKindLabel(reference.document_kind).toLowerCase()}
+                      Open source record
                     </a>
                   ) : (
                     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
@@ -66,14 +68,16 @@ export function EvidenceReferences({
                 </div>
                 <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
                   <div>
-                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Locator</dt>
+                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
                     <dd className="mt-1 text-sm text-slate-700">
                       {buildEvidenceReferenceV2Locator(reference)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Artifact</dt>
-                    <dd className="mt-1 text-sm text-slate-700">{reference.artifact_id}</dd>
+                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
+                    <dd className="mt-1 text-sm text-slate-700">
+                      {buildTechnicalEvidenceReferenceV2Locator(reference)}
+                    </dd>
                   </div>
                   <div>
                     <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Confidence</dt>
@@ -82,6 +86,7 @@ export function EvidenceReferences({
                     </dd>
                   </div>
                 </dl>
+                <p className="mt-3 text-xs text-slate-500">Source ID: {reference.artifact_id}</p>
               </li>
             ))}
           </ul>
@@ -116,7 +121,7 @@ export function EvidenceReferences({
                               rel="noreferrer"
                               className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
                             >
-                              Open {formatSourceKindLabel(sourceDocumentKind).toLowerCase()}
+                              Open source record
                             </a>
                           ) : (
                             <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
@@ -126,14 +131,15 @@ export function EvidenceReferences({
                         </div>
                         <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-2">
                           <div>
-                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Locator</dt>
+                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
                             <dd className="mt-1 text-sm text-slate-700">{buildEvidenceLocator(pointer)}</dd>
                           </div>
                           <div>
-                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Artifact</dt>
-                            <dd className="mt-1 text-sm text-slate-700">{pointer.artifact_id}</dd>
+                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
+                            <dd className="mt-1 text-sm text-slate-700">{buildTechnicalEvidenceLocator(pointer)}</dd>
                           </div>
                         </dl>
+                        <p className="mt-3 text-xs text-slate-500">Source ID: {pointer.artifact_id}</p>
                       </li>
                     ))}
                   </ul>
