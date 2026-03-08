@@ -37,6 +37,7 @@ _FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_NUMBER = 2
 _FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/146/media"
+_FIXTURE_MEETING_DATE = "2026-02-18"
 _FIXTURE_SUMMARY = (
     "The council reviewed major residential development proposals totaling 893 units across 208 acres, "
     "approved the Old Airport Road right-of-way acquisition and a school-district boundary property title "
@@ -96,19 +97,171 @@ _FIXTURE_CLAIMS = (
 )
 
 
-def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+def _fixture_history() -> tuple[dict[str, Any], ...]:
+    return (
+        {
+            "meeting_id": _FIXTURE_MEETING_ID,
+            "meeting_uid": _FIXTURE_MEETING_UID,
+            "title": _FIXTURE_TITLE,
+            "created_at": "2026-02-18 18:30:00",
+            "updated_at": "2026-02-18 19:12:00",
+            "meeting_date": _FIXTURE_MEETING_DATE,
+            "body_name": "Eagle Mountain City Council",
+            "publication_id": _FIXTURE_PUBLICATION_ID,
+            "publication_version": _FIXTURE_PUBLICATION_VERSION,
+            "artifact_id": _FIXTURE_ARTIFACT_ID,
+            "document_id": _FIXTURE_DOCUMENT_ID,
+            "document_revision_id": _FIXTURE_DOCUMENT_REVISION_ID,
+            "document_revision_number": _FIXTURE_DOCUMENT_REVISION_NUMBER,
+            "source_document_url": _FIXTURE_SOURCE_DOCUMENT_URL,
+            "authority_note": "Grounded local review fixture for Eagle Mountain detail verification.",
+            "selected_event_name": "Eagle Mountain City Council",
+            "summary": _FIXTURE_SUMMARY,
+            "decisions": _FIXTURE_DECISIONS,
+            "actions": _FIXTURE_ACTIONS,
+            "topics": _FIXTURE_TOPICS,
+            "claims": _FIXTURE_CLAIMS,
+            "processing_run_id": "run-local-runtime-eaglemountain-review-v3",
+            "cycle_id": "cycle-local-runtime-eaglemountain-review-v3",
+            "stage_outcome_id": "outcome-ingest-local-runtime-eaglemountain-review-v3",
+        },
+        {
+            "meeting_id": "meeting-local-runtime-smoke-002",
+            "meeting_uid": "local-runtime-smoke-uid-002",
+            "title": "Eagle Mountain City Council Work Session",
+            "created_at": "2026-01-21 18:00:00",
+            "updated_at": "2026-01-21 18:47:00",
+            "meeting_date": "2026-01-21",
+            "body_name": "Eagle Mountain City Council",
+            "publication_id": "pub-local-runtime-eaglemountain-review-history-002",
+            "publication_version": 1,
+            "artifact_id": "artifact-local-runtime-eaglemountain-review-history-002",
+            "document_id": "canonical-local-runtime-eaglemountain-review-history-002",
+            "document_revision_id": "local-runtime-eaglemountain-review-history-002",
+            "document_revision_number": 1,
+            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/153/media",
+            "authority_note": "Local review fixture showing recurring January Eagle Mountain processing.",
+            "selected_event_name": "Eagle Mountain City Council",
+            "summary": (
+                "The council advanced the Cory Wride memorial park phase plan, directed staff to return with a "
+                "costed trail-lighting option, and approved a snow-event overtime budget amendment before the "
+                "next storm cycle."
+            ),
+            "decisions": (
+                "Approved the snow-event overtime budget amendment for the public works response window.",
+                "Advanced the memorial park phase plan for final contract drafting.",
+            ),
+            "actions": (
+                "Directed staff to return with a trail-lighting cost comparison and grant options.",
+                "Requested the parks team to publish a revised phase map before the February regular meeting.",
+            ),
+            "topics": (
+                "Memorial park phase planning",
+                "Snow response resourcing",
+                "Trail-lighting scope",
+            ),
+            "claims": (
+                {
+                    "claim_id": "claim-local-runtime-eaglemountain-review-history-002-1",
+                    "pointer_id": "pointer-local-runtime-eaglemountain-review-history-002-1",
+                    "span_id": "span-local-runtime-eaglemountain-review-history-002-1",
+                    "claim_text": "The council approved a snow-event overtime budget amendment for public works before the next storm cycle.",
+                    "section_ref": "minutes.section.5",
+                    "section_path": "minutes/section/5",
+                    "char_start": 0,
+                    "excerpt": "The council approved a snow-event overtime budget amendment so public works crews could cover the next storm cycle.",
+                },
+                {
+                    "claim_id": "claim-local-runtime-eaglemountain-review-history-002-2",
+                    "pointer_id": "pointer-local-runtime-eaglemountain-review-history-002-2",
+                    "span_id": "span-local-runtime-eaglemountain-review-history-002-2",
+                    "claim_text": "Staff was directed to return with trail-lighting cost comparisons and grant options.",
+                    "section_ref": "minutes.section.7",
+                    "section_path": "minutes/section/7",
+                    "char_start": 164,
+                    "excerpt": "Council directed staff to return with trail-lighting cost comparisons, grant options, and a maintenance estimate.",
+                },
+            ),
+            "processing_run_id": "run-local-runtime-eaglemountain-review-history-002",
+            "cycle_id": "cycle-local-runtime-eaglemountain-review-history-002",
+            "stage_outcome_id": "outcome-ingest-local-runtime-eaglemountain-review-history-002",
+        },
+        {
+            "meeting_id": "meeting-local-runtime-smoke-003",
+            "meeting_uid": "local-runtime-smoke-uid-003",
+            "title": "Eagle Mountain City Council Regular Meeting",
+            "created_at": "2025-12-16 18:30:00",
+            "updated_at": "2025-12-16 19:05:00",
+            "meeting_date": "2025-12-16",
+            "body_name": "Eagle Mountain City Council",
+            "publication_id": "pub-local-runtime-eaglemountain-review-history-003",
+            "publication_version": 1,
+            "artifact_id": "artifact-local-runtime-eaglemountain-review-history-003",
+            "document_id": "canonical-local-runtime-eaglemountain-review-history-003",
+            "document_revision_id": "local-runtime-eaglemountain-review-history-003",
+            "document_revision_number": 1,
+            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/149/media",
+            "authority_note": "Local review fixture showing recurring December Eagle Mountain processing.",
+            "selected_event_name": "Eagle Mountain City Council",
+            "summary": (
+                "The council adopted a utility-rate transition schedule, approved a downtown wayfinding sign package, "
+                "and asked staff to publish a resident FAQ covering billing changes before January statements go out."
+            ),
+            "decisions": (
+                "Adopted the utility-rate transition schedule effective with January billing.",
+                "Approved the downtown wayfinding sign package and fabrication bid.",
+            ),
+            "actions": (
+                "Directed staff to publish a resident FAQ before January utility statements are mailed.",
+                "Asked engineering to verify installation sequencing for the sign package.",
+            ),
+            "topics": (
+                "Utility-rate transition",
+                "Downtown wayfinding signage",
+                "Resident billing communications",
+            ),
+            "claims": (
+                {
+                    "claim_id": "claim-local-runtime-eaglemountain-review-history-003-1",
+                    "pointer_id": "pointer-local-runtime-eaglemountain-review-history-003-1",
+                    "span_id": "span-local-runtime-eaglemountain-review-history-003-1",
+                    "claim_text": "The council adopted a utility-rate transition schedule effective with January billing.",
+                    "section_ref": "minutes.section.4",
+                    "section_path": "minutes/section/4",
+                    "char_start": 0,
+                    "excerpt": "The council adopted the utility-rate transition schedule with the first change effective on January billing statements.",
+                },
+                {
+                    "claim_id": "claim-local-runtime-eaglemountain-review-history-003-2",
+                    "pointer_id": "pointer-local-runtime-eaglemountain-review-history-003-2",
+                    "span_id": "span-local-runtime-eaglemountain-review-history-003-2",
+                    "claim_text": "Staff was directed to publish a resident FAQ before January statements are mailed.",
+                    "section_ref": "minutes.section.6",
+                    "section_path": "minutes/section/6",
+                    "char_start": 158,
+                    "excerpt": "Staff was directed to publish a resident FAQ on billing changes before January statements are mailed.",
+                },
+            ),
+            "processing_run_id": "run-local-runtime-eaglemountain-review-history-003",
+            "cycle_id": "cycle-local-runtime-eaglemountain-review-history-003",
+            "stage_outcome_id": "outcome-ingest-local-runtime-eaglemountain-review-history-003",
+        },
+    )
+
+
+def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_id: str, fixture: dict[str, Any]) -> None:
     repository = CanonicalDocumentRepository(connection)
     repository.upsert_document_revision(
-        canonical_document_id=_FIXTURE_DOCUMENT_ID,
+        canonical_document_id=str(fixture["document_id"]),
         meeting_id=meeting_id,
         document_kind="minutes",
-        revision_id=_FIXTURE_DOCUMENT_REVISION_ID,
-        revision_number=_FIXTURE_DOCUMENT_REVISION_NUMBER,
+        revision_id=str(fixture["document_revision_id"]),
+        revision_number=int(fixture["document_revision_number"]),
         is_active_revision=True,
         authority_level="authoritative",
         authority_source="local-runtime-fixture",
-        authority_note="Grounded local review fixture for Eagle Mountain detail verification.",
-        source_document_url=_FIXTURE_SOURCE_DOCUMENT_URL,
+        authority_note=str(fixture["authority_note"]),
+        source_document_url=str(fixture["source_document_url"]),
         source_checksum=None,
         parser_name="local-runtime-fixture",
         parser_version="v3",
@@ -117,13 +270,13 @@ def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_i
         extracted_at="2026-03-07T00:00:00Z",
     )
 
-    for claim in _FIXTURE_CLAIMS:
+    for claim in tuple(fixture["claims"]):
         excerpt = str(claim["excerpt"])
         start_offset = int(claim["char_start"])
         repository.upsert_document_span(
             canonical_document_span_id=str(claim["span_id"]),
-            canonical_document_id=_FIXTURE_DOCUMENT_ID,
-            artifact_id=_FIXTURE_ARTIFACT_ID,
+            canonical_document_id=str(fixture["document_id"]),
+            artifact_id=str(fixture["artifact_id"]),
             stable_section_path=str(claim["section_path"]),
             page_number=4,
             line_index=None,
@@ -137,7 +290,7 @@ def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_i
         )
 
 
-def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: str, fixture: dict[str, Any]) -> None:
     connection.execute(
         """
         INSERT OR IGNORE INTO processing_runs (
@@ -152,9 +305,9 @@ def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: 
         VALUES (?, ?, ?, 'processed', ?, ?, ?)
         """,
         (
-            "run-local-runtime-eaglemountain-review-v3",
+            str(fixture["processing_run_id"]),
             PILOT_CITY_ID,
-            "cycle-local-runtime-eaglemountain-review-v3",
+            str(fixture["cycle_id"]),
             "local-runtime-fixture-v3",
             "local-runtime-fixture-v3",
             "2026-03-07T00:00:00Z",
@@ -176,15 +329,15 @@ def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: 
         VALUES (?, ?, ?, ?, 'ingest', 'processed', ?, ?, ?)
         """,
         (
-            "outcome-ingest-local-runtime-eaglemountain-review-v3",
-            "run-local-runtime-eaglemountain-review-v3",
+            str(fixture["stage_outcome_id"]),
+            str(fixture["processing_run_id"]),
             PILOT_CITY_ID,
             meeting_id,
             json.dumps(
                 {
-                    "selected_event_name": "Eagle Mountain City Council",
-                    "selected_event_date": "2024-12-03",
-                    "candidate_url": _FIXTURE_SOURCE_DOCUMENT_URL,
+                    "selected_event_name": str(fixture["selected_event_name"]),
+                    "selected_event_date": str(fixture["meeting_date"]),
+                    "candidate_url": str(fixture["source_document_url"]),
                 },
                 separators=(",", ":"),
             ),
@@ -194,7 +347,7 @@ def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: 
     )
 
 
-def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str, fixture: dict[str, Any]) -> None:
     connection.execute(
         """
         INSERT OR IGNORE INTO summary_publications (
@@ -214,21 +367,21 @@ def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
-            _FIXTURE_PUBLICATION_ID,
+            str(fixture["publication_id"]),
             meeting_id,
             None,
             None,
-            _FIXTURE_PUBLICATION_VERSION,
+            int(fixture["publication_version"]),
             "processed",
             "high",
-            _FIXTURE_SUMMARY,
-            json.dumps(_FIXTURE_DECISIONS, separators=(",", ":")),
-            json.dumps(_FIXTURE_ACTIONS, separators=(",", ":")),
-            json.dumps(_FIXTURE_TOPICS, separators=(",", ":")),
+            str(fixture["summary"]),
+            json.dumps(tuple(fixture["decisions"]), separators=(",", ":")),
+            json.dumps(tuple(fixture["actions"]), separators=(",", ":")),
+            json.dumps(tuple(fixture["topics"]), separators=(",", ":")),
         ),
     )
 
-    for claim_order, claim in enumerate(_FIXTURE_CLAIMS, start=1):
+    for claim_order, claim in enumerate(tuple(fixture["claims"]), start=1):
         excerpt = str(claim["excerpt"])
         start_offset = int(claim["char_start"])
         connection.execute(
@@ -243,7 +396,7 @@ def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str
             """,
             (
                 str(claim["claim_id"]),
-                _FIXTURE_PUBLICATION_ID,
+                str(fixture["publication_id"]),
                 claim_order,
                 str(claim["claim_text"]),
             ),
@@ -270,12 +423,12 @@ def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str
             (
                 str(claim["pointer_id"]),
                 str(claim["claim_id"]),
-                _FIXTURE_ARTIFACT_ID,
+                str(fixture["artifact_id"]),
                 str(claim["section_ref"]),
                 start_offset,
                 start_offset + len(excerpt),
                 excerpt,
-                _FIXTURE_DOCUMENT_ID,
+                str(fixture["document_id"]),
                 str(claim["span_id"]),
                 "minutes",
                 str(claim["section_path"]),
@@ -283,6 +436,34 @@ def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str
                 "high",
             ),
         )
+
+
+def _seed_fixture_meeting_record(
+    connection: sqlite3.Connection,
+    *,
+    write_repository: MeetingWriteRepository,
+    fixture: dict[str, Any],
+) -> str:
+    meeting = write_repository.upsert_meeting(
+        meeting_id=str(fixture["meeting_id"]),
+        meeting_uid=str(fixture["meeting_uid"]),
+        city_id=PILOT_CITY_ID,
+        title=str(fixture["title"]),
+    )
+    connection.execute(
+        """
+        UPDATE meetings
+        SET title = ?, created_at = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            str(fixture["title"]),
+            str(fixture["created_at"]),
+            str(fixture["updated_at"]),
+            meeting.id,
+        ),
+    )
+    return meeting.id
 
 
 def _build_command_envelope(
@@ -330,22 +511,25 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
 
     write_repository = MeetingWriteRepository(connection)
 
-    meeting = write_repository.upsert_meeting(
-        meeting_id=_FIXTURE_MEETING_ID,
-        meeting_uid=_FIXTURE_MEETING_UID,
-        city_id=PILOT_CITY_ID,
-        title=_FIXTURE_TITLE,
-    )
+    fixture_history = _fixture_history()
+    seeded_meeting_ids: list[str] = []
 
     with connection:
-        _seed_fixture_ingest_context(connection, meeting_id=meeting.id)
-        _seed_fixture_canonical_minutes(connection, meeting_id=meeting.id)
-        _seed_fixture_publication(connection, meeting_id=meeting.id)
+        for fixture in fixture_history:
+            meeting_id = _seed_fixture_meeting_record(
+                connection,
+                write_repository=write_repository,
+                fixture=fixture,
+            )
+            seeded_meeting_ids.append(meeting_id)
+            _seed_fixture_ingest_context(connection, meeting_id=meeting_id, fixture=fixture)
+            _seed_fixture_canonical_minutes(connection, meeting_id=meeting_id, fixture=fixture)
+            _seed_fixture_publication(connection, meeting_id=meeting_id, fixture=fixture)
 
     enqueue_result = enqueue_publish_notifications_to_outbox(
         connection=connection,
         city_id=PILOT_CITY_ID,
-        meeting_id=meeting.id,
+        meeting_id=_FIXTURE_MEETING_ID,
         subscription_targets=(
             NotificationSubscriptionTarget(
                 user_id="user-local-runtime-smoke",
@@ -357,7 +541,7 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
     )
 
     return {
-        "meeting_inserted": 1,
+        "meeting_inserted": len(seeded_meeting_ids),
         "notifications_enqueued": enqueue_result.enqueued_count,
         "notifications_dedupe_conflicts": enqueue_result.dedupe_conflict_count,
     }

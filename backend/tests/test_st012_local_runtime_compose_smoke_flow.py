@@ -36,6 +36,7 @@ def test_fixture_and_worker_flow_are_idempotent_under_rerun(tmp_path: Path) -> N
     first_worker = run_worker_once(connection)
     first_state = get_smoke_state(connection)
 
+    assert first_process["meeting_inserted"] == 3
     assert first_process["notifications_enqueued"] == 1
     assert first_process["notifications_dedupe_conflicts"] == 0
     assert first_worker["sent_count"] == 1
@@ -45,6 +46,7 @@ def test_fixture_and_worker_flow_are_idempotent_under_rerun(tmp_path: Path) -> N
     second_worker = run_worker_once(connection)
     second_state = get_smoke_state(connection)
 
+    assert second_process["meeting_inserted"] == 3
     assert second_process["notifications_enqueued"] == 0
     assert second_process["notifications_dedupe_conflicts"] == 1
     assert second_worker["sent_count"] == 0
@@ -166,7 +168,7 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
     assert json.loads(latest_publication[5]) == list(local_runtime._FIXTURE_TOPICS)
     assert canonical_document == ("minutes", local_runtime._FIXTURE_SOURCE_DOCUMENT_URL, 1)
     assert detail is not None
-    assert detail.meeting_date == "2024-12-03"
+    assert detail.meeting_date == local_runtime._FIXTURE_MEETING_DATE
     assert detail.body_name == "Eagle Mountain City Council"
     assert detail.source_document_kind == "minutes"
     assert detail.source_document_url == local_runtime._FIXTURE_SOURCE_DOCUMENT_URL
@@ -189,3 +191,33 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
     assert all(row[5] is not None for row in evidence_rows)
     assert all(row[6] == "span" for row in evidence_rows)
     assert all(row[7] == "high" for row in evidence_rows)
+
+
+def test_seed_processing_fixture_exposes_recent_eagle_mountain_history_in_meetings_list(tmp_path: Path) -> None:
+    db_path = tmp_path / "local-runtime-history.db"
+    connection = sqlite3.connect(db_path)
+    connection.execute("PRAGMA foreign_keys = ON")
+
+    initialize_local_runtime_db(connection)
+    seed_processing_fixture(connection)
+
+    page = MeetingReadRepository(connection).list_city_meetings(
+        city_id="city-eagle-mountain-ut",
+        limit=10,
+    )
+
+    assert [item.id for item in page.items] == [
+        "meeting-local-runtime-smoke-001",
+        "meeting-local-runtime-smoke-002",
+        "meeting-local-runtime-smoke-003",
+    ]
+    assert [item.meeting_date for item in page.items] == [
+        "2026-02-18",
+        "2026-01-21",
+        "2025-12-16",
+    ]
+    assert all(item.city_name == "Eagle Mountain" for item in page.items)
+    assert all(item.body_name == "Eagle Mountain City Council" for item in page.items)
+    assert all(item.publication_status == "processed" for item in page.items)
+    assert all(item.confidence_label == "high" for item in page.items)
+    assert page.next_cursor is None
