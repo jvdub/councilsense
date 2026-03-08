@@ -2,6 +2,10 @@ const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8000";
 const DEFAULT_INTERNAL_API_BASE_URL = "http://api:8000";
 const DEFAULT_BROWSER_API_PORT = "8000";
 
+function useLocalServerApiFallback(): boolean {
+  return process.env.COUNCILSENSE_RUNTIME_ENV === "local" || process.env.NODE_ENV === "development";
+}
+
 function getBrowserDefaultApiBaseUrl(location: Pick<Location, "hostname" | "protocol">): string {
   if (!location.hostname || !/^https?:$/.test(location.protocol)) {
     return DEFAULT_LOCAL_API_BASE_URL;
@@ -18,6 +22,6 @@ export function getApiBaseUrl(): string {
   return (
     process.env.API_INTERNAL_BASE_URL ??
     process.env.NEXT_PUBLIC_API_BASE_URL ??
-    DEFAULT_INTERNAL_API_BASE_URL
+    (useLocalServerApiFallback() ? DEFAULT_LOCAL_API_BASE_URL : DEFAULT_INTERNAL_API_BASE_URL)
   );
 }

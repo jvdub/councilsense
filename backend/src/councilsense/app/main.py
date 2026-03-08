@@ -24,13 +24,18 @@ from councilsense.db import MeetingReadRepository, apply_migrations, seed_city_r
 from councilsense.app.settings import get_settings
 
 
+LOCAL_CORS_ALLOW_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+LOCAL_CORS_ALLOW_ORIGIN_REGEX = r"^https?://(?:localhost|127\.0\.0\.1|\[::1\]|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="CouncilSense API")
     settings = get_settings()
     if settings.runtime_env == "local":
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+            allow_origins=LOCAL_CORS_ALLOW_ORIGINS,
+            allow_origin_regex=LOCAL_CORS_ALLOW_ORIGIN_REGEX,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
