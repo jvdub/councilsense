@@ -11,6 +11,7 @@ from councilsense.app.local_runtime import (
     run_worker_once,
     seed_processing_fixture,
 )
+from councilsense.db import MeetingReadRepository
 
 
 def _repo_root() -> Path:
@@ -124,15 +125,36 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
         """,
         (local_runtime._FIXTURE_MEETING_ID,),
     ).fetchone()
-    evidence_row = connection.execute(
+    evidence_rows = connection.execute(
         """
-        SELECT pc.claim_text, cep.excerpt
+        SELECT
+            pc.claim_text,
+            cep.excerpt,
+            cep.document_id,
+            cep.span_id,
+            cep.document_kind,
+            cep.section_path,
+            cep.precision,
+            cep.confidence
         FROM publication_claims pc
         INNER JOIN claim_evidence_pointers cep ON cep.claim_id = pc.id
         WHERE pc.publication_id = ?
+        ORDER BY pc.claim_order ASC
         """,
         (local_runtime._FIXTURE_PUBLICATION_ID,),
+    ).fetchall()
+    canonical_document = connection.execute(
+        """
+        SELECT document_kind, source_document_url, is_active_revision
+        FROM canonical_documents
+        WHERE id = ?
+        """,
+        (local_runtime._FIXTURE_DOCUMENT_ID,),
     ).fetchone()
+
+    detail = MeetingReadRepository(connection).get_meeting_detail(
+        meeting_id=local_runtime._FIXTURE_MEETING_ID,
+    )
 
     assert meeting_row == (local_runtime._FIXTURE_TITLE,)
     assert latest_publication is not None
@@ -142,4 +164,22 @@ def test_seed_processing_fixture_promotes_resident_facing_eagle_mountain_review_
     assert json.loads(latest_publication[3]) == list(local_runtime._FIXTURE_DECISIONS)
     assert json.loads(latest_publication[4]) == list(local_runtime._FIXTURE_ACTIONS)
     assert json.loads(latest_publication[5]) == list(local_runtime._FIXTURE_TOPICS)
-    assert evidence_row == (local_runtime._FIXTURE_CLAIM_TEXT, local_runtime._FIXTURE_EVIDENCE_EXCERPT)
+    assert canonical_document == ("minutes", local_runtime._FIXTURE_SOURCE_DOCUMENT_URL, 1)
+    assert detail is not None
+    assert detail.source_document_kind == "minutes"
+    assert detail.source_document_url == local_runtime._FIXTURE_SOURCE_DOCUMENT_URL
+    assert len(detail.claims) == 2
+    assert len(evidence_rows) == 2
+    assert evidence_rows[0][:2] == (
+        local_runtime._FIXTURE_CLAIMS[0]["claim_text"],
+        local_runtime._FIXTURE_CLAIMS[0]["excerpt"],
+    )
+    assert evidence_rows[1][:2] == (
+        local_runtime._FIXTURE_CLAIMS[1]["claim_text"],
+        local_runtime._FIXTURE_CLAIMS[1]["excerpt"],
+    )
+    assert all(row[2] == local_runtime._FIXTURE_DOCUMENT_ID for row in evidence_rows)
+    assert all(row[4] == "minutes" for row in evidence_rows)
+    assert all(row[5] is not None for row in evidence_rows)
+    assert all(row[6] == "span" for row in evidence_rows)
+    assert all(row[7] == "high" for row in evidence_rows)

@@ -18,6 +18,7 @@ from councilsense.app.notification_fanout import (
     enqueue_publish_notifications_to_outbox,
 )
 from councilsense.db import (
+    CanonicalDocumentRepository,
     MeetingWriteRepository,
     PILOT_CITY_ID,
     apply_migrations,
@@ -29,38 +30,245 @@ _DEFAULT_DB_PATH = "/data/councilsense-local.db"
 _FIXTURE_MEETING_ID = "meeting-local-runtime-smoke-001"
 _FIXTURE_MEETING_UID = "local-runtime-smoke-uid-001"
 _FIXTURE_TITLE = "Eagle Mountain City Council Regular Meeting"
-_FIXTURE_PUBLICATION_ID = "pub-local-runtime-eaglemountain-review-v2"
-_FIXTURE_PUBLICATION_VERSION = 2
-_FIXTURE_CLAIM_ID = "claim-local-runtime-eaglemountain-review-v2"
-_FIXTURE_POINTER_ID = "pointer-local-runtime-eaglemountain-review-v2"
-_FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v2"
+_FIXTURE_PUBLICATION_ID = "pub-local-runtime-eaglemountain-review-v3"
+_FIXTURE_PUBLICATION_VERSION = 3
+_FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v3"
+_FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v3"
+_FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v3"
+_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/"
 _FIXTURE_SUMMARY = (
-    "Eagle Mountain City Council advanced two visible neighborhood projects: the Hidden Valley Park "
-    "restroom build and final design work for the North Ranch roundabout. Council also held off on "
-    "budget changes tied to long-term utility maintenance until staff returns with a side-by-side "
-    "water-rate comparison for residents."
+    "Eagle Mountain City Council approved the Hidden Valley Park restroom bid and directed staff to "
+    "return on March 19 with a comparison of water-rate options for long-term system maintenance."
 )
 _FIXTURE_DECISIONS = (
-    "Approved the Hidden Valley Park restroom construction bid.",
-    "Authorized final design work for the North Ranch roundabout.",
+    "Approved the Hidden Valley Park restroom bid not to exceed $148,500.",
 )
 _FIXTURE_ACTIONS = (
-    "Staff will bring back a March comparison of water-rate options before any utility budget amendment.",
-    "Public works will post a construction notice and anticipated start window for the park project.",
+    "Staff will return on March 19 with a comparison of water-rate options for long-term system maintenance.",
 )
 _FIXTURE_TOPICS = (
-    "Hidden Valley Park improvements",
-    "North Ranch roundabout design",
-    "Water rate planning",
+    "Hidden Valley Park restroom project",
+    "Water-rate options",
 )
-_FIXTURE_CLAIM_TEXT = (
-    "Council approved the park restroom bid and asked staff to return with a resident-facing water-rate comparison."
+_FIXTURE_CLAIMS = (
+    {
+        "claim_id": "claim-local-runtime-eaglemountain-review-v3-1",
+        "pointer_id": "pointer-local-runtime-eaglemountain-review-v3-1",
+        "span_id": "span-local-runtime-eaglemountain-review-v3-1",
+        "claim_text": "Council approved the Hidden Valley Park restroom bid not to exceed $148,500.",
+        "section_ref": "minutes.section.7",
+        "section_path": "minutes/section/7",
+        "char_start": 0,
+        "excerpt": (
+            "The council approved the Hidden Valley Park restroom bid not to exceed $148,500."
+        ),
+    },
+    {
+        "claim_id": "claim-local-runtime-eaglemountain-review-v3-2",
+        "pointer_id": "pointer-local-runtime-eaglemountain-review-v3-2",
+        "span_id": "span-local-runtime-eaglemountain-review-v3-2",
+        "claim_text": (
+            "Council directed staff to return on March 19 with a comparison of water-rate options for "
+            "long-term system maintenance."
+        ),
+        "section_ref": "minutes.section.8",
+        "section_path": "minutes/section/8",
+        "char_start": 96,
+        "excerpt": (
+            "Council directed staff to return on March 19 with a comparison of water-rate options for "
+            "long-term system maintenance."
+        ),
+    },
 )
-_FIXTURE_SECTION_REF = "minutes.section.7"
-_FIXTURE_EVIDENCE_EXCERPT = (
-    "The council approved the Hidden Valley Park restroom bid not to exceed $148,500 and directed staff "
-    "to return on March 19 with a comparison of water-rate options for long-term system maintenance."
-)
+
+
+def _seed_fixture_canonical_minutes(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+    repository = CanonicalDocumentRepository(connection)
+    repository.upsert_document_revision(
+        canonical_document_id=_FIXTURE_DOCUMENT_ID,
+        meeting_id=meeting_id,
+        document_kind="minutes",
+        revision_id=_FIXTURE_DOCUMENT_REVISION_ID,
+        revision_number=1,
+        is_active_revision=True,
+        authority_level="authoritative",
+        authority_source="local-runtime-fixture",
+        authority_note="Grounded local review fixture for Eagle Mountain detail verification.",
+        source_document_url=_FIXTURE_SOURCE_DOCUMENT_URL,
+        source_checksum=None,
+        parser_name="local-runtime-fixture",
+        parser_version="v3",
+        extraction_status="processed",
+        extraction_confidence=0.99,
+        extracted_at="2026-03-07T00:00:00Z",
+    )
+
+    for claim in _FIXTURE_CLAIMS:
+        excerpt = str(claim["excerpt"])
+        start_offset = int(claim["char_start"])
+        repository.upsert_document_span(
+            canonical_document_span_id=str(claim["span_id"]),
+            canonical_document_id=_FIXTURE_DOCUMENT_ID,
+            artifact_id=_FIXTURE_ARTIFACT_ID,
+            stable_section_path=str(claim["section_path"]),
+            page_number=4,
+            line_index=None,
+            start_char_offset=start_offset,
+            end_char_offset=start_offset + len(excerpt),
+            parser_name="local-runtime-fixture",
+            parser_version="v3",
+            source_chunk_id=None,
+            span_text=excerpt,
+            span_text_checksum=None,
+        )
+
+
+def _seed_fixture_ingest_context(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO processing_runs (
+            id,
+            city_id,
+            cycle_id,
+            status,
+            parser_version,
+            source_version,
+            started_at
+        )
+        VALUES (?, ?, ?, 'processed', ?, ?, ?)
+        """,
+        (
+            "run-local-runtime-eaglemountain-review-v3",
+            PILOT_CITY_ID,
+            "cycle-local-runtime-eaglemountain-review-v3",
+            "local-runtime-fixture-v3",
+            "local-runtime-fixture-v3",
+            "2026-03-07T00:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO processing_stage_outcomes (
+            id,
+            run_id,
+            city_id,
+            meeting_id,
+            stage_name,
+            status,
+            metadata_json,
+            started_at,
+            finished_at
+        )
+        VALUES (?, ?, ?, ?, 'ingest', 'processed', ?, ?, ?)
+        """,
+        (
+            "outcome-ingest-local-runtime-eaglemountain-review-v3",
+            "run-local-runtime-eaglemountain-review-v3",
+            PILOT_CITY_ID,
+            meeting_id,
+            json.dumps(
+                {
+                    "selected_event_name": "Eagle Mountain City Council",
+                    "selected_event_date": "2026-03-19",
+                    "candidate_url": _FIXTURE_SOURCE_DOCUMENT_URL,
+                },
+                separators=(",", ":"),
+            ),
+            "2026-03-07T00:00:00Z",
+            "2026-03-07T00:01:00Z",
+        ),
+    )
+
+
+def _seed_fixture_publication(connection: sqlite3.Connection, *, meeting_id: str) -> None:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO summary_publications (
+            id,
+            meeting_id,
+            processing_run_id,
+            publish_stage_outcome_id,
+            version_no,
+            publication_status,
+            confidence_label,
+            summary_text,
+            key_decisions_json,
+            key_actions_json,
+            notable_topics_json,
+            published_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (
+            _FIXTURE_PUBLICATION_ID,
+            meeting_id,
+            None,
+            None,
+            _FIXTURE_PUBLICATION_VERSION,
+            "processed",
+            "high",
+            _FIXTURE_SUMMARY,
+            json.dumps(_FIXTURE_DECISIONS, separators=(",", ":")),
+            json.dumps(_FIXTURE_ACTIONS, separators=(",", ":")),
+            json.dumps(_FIXTURE_TOPICS, separators=(",", ":")),
+        ),
+    )
+
+    for claim_order, claim in enumerate(_FIXTURE_CLAIMS, start=1):
+        excerpt = str(claim["excerpt"])
+        start_offset = int(claim["char_start"])
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO publication_claims (
+                id,
+                publication_id,
+                claim_order,
+                claim_text
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                str(claim["claim_id"]),
+                _FIXTURE_PUBLICATION_ID,
+                claim_order,
+                str(claim["claim_text"]),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO claim_evidence_pointers (
+                id,
+                claim_id,
+                artifact_id,
+                section_ref,
+                char_start,
+                char_end,
+                excerpt,
+                document_id,
+                span_id,
+                document_kind,
+                section_path,
+                precision,
+                confidence
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(claim["pointer_id"]),
+                str(claim["claim_id"]),
+                _FIXTURE_ARTIFACT_ID,
+                str(claim["section_ref"]),
+                start_offset,
+                start_offset + len(excerpt),
+                excerpt,
+                _FIXTURE_DOCUMENT_ID,
+                str(claim["span_id"]),
+                "minutes",
+                str(claim["section_path"]),
+                "span",
+                "high",
+            ),
+        )
 
 
 def _build_command_envelope(
@@ -115,85 +323,10 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
         title=_FIXTURE_TITLE,
     )
 
-    existing_publication = connection.execute(
-        "SELECT 1 FROM summary_publications WHERE id = ?",
-        (_FIXTURE_PUBLICATION_ID,),
-    ).fetchone()
-
     with connection:
-        if existing_publication is None:
-            connection.execute(
-                """
-                INSERT INTO summary_publications (
-                    id,
-                    meeting_id,
-                    processing_run_id,
-                    publish_stage_outcome_id,
-                    version_no,
-                    publication_status,
-                    confidence_label,
-                    summary_text,
-                    key_decisions_json,
-                    key_actions_json,
-                    notable_topics_json,
-                    published_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (
-                    _FIXTURE_PUBLICATION_ID,
-                    meeting.id,
-                    None,
-                    None,
-                    _FIXTURE_PUBLICATION_VERSION,
-                    "processed",
-                    "high",
-                    _FIXTURE_SUMMARY,
-                    json.dumps(_FIXTURE_DECISIONS, separators=(",", ":")),
-                    json.dumps(_FIXTURE_ACTIONS, separators=(",", ":")),
-                    json.dumps(_FIXTURE_TOPICS, separators=(",", ":")),
-                ),
-            )
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO publication_claims (
-                id,
-                publication_id,
-                claim_order,
-                claim_text
-            )
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                _FIXTURE_CLAIM_ID,
-                _FIXTURE_PUBLICATION_ID,
-                1,
-                _FIXTURE_CLAIM_TEXT,
-            ),
-        )
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO claim_evidence_pointers (
-                id,
-                claim_id,
-                artifact_id,
-                section_ref,
-                char_start,
-                char_end,
-                excerpt
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                _FIXTURE_POINTER_ID,
-                _FIXTURE_CLAIM_ID,
-                _FIXTURE_ARTIFACT_ID,
-                _FIXTURE_SECTION_REF,
-                0,
-                len(_FIXTURE_EVIDENCE_EXCERPT),
-                _FIXTURE_EVIDENCE_EXCERPT,
-            ),
-        )
+        _seed_fixture_ingest_context(connection, meeting_id=meeting.id)
+        _seed_fixture_canonical_minutes(connection, meeting_id=meeting.id)
+        _seed_fixture_publication(connection, meeting_id=meeting.id)
 
     enqueue_result = enqueue_publish_notifications_to_outbox(
         connection=connection,

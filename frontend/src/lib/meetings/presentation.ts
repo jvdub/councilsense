@@ -115,3 +115,40 @@ export function buildEvidenceLocator(pointer: {
 
   return parts.join(" • ");
 }
+
+export function buildEvidenceReferenceV2Locator(reference: {
+  section_path: string;
+  page_start: number | null;
+  page_end: number | null;
+  char_start: number | null;
+  char_end: number | null;
+  precision: string;
+}): string {
+  const parts: string[] = [];
+
+  if (reference.section_path.trim()) {
+    parts.push(reference.section_path.trim());
+  }
+
+  if (reference.page_start !== null) {
+    if (reference.page_end !== null && reference.page_end !== reference.page_start) {
+      parts.push(`pages ${reference.page_start}-${reference.page_end}`);
+    } else {
+      parts.push(`page ${reference.page_start}`);
+    }
+  }
+
+  if (reference.char_start !== null && reference.char_end !== null) {
+    parts.push(`chars ${reference.char_start}-${reference.char_end}`);
+  }
+
+  if (reference.precision.trim()) {
+    parts.push(`${humanizeIdentifier(reference.precision)} precision`);
+  }
+
+  if (parts.length === 0) {
+    return "Locator unavailable";
+  }
+
+  return parts.join(" • ");
+}

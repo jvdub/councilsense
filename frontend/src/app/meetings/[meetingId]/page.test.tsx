@@ -104,6 +104,22 @@ describe("MeetingDetailPage", () => {
       key_decisions: ["Approved downtown transit plan"],
       key_actions: ["Staff to publish implementation timeline"],
       notable_topics: ["Transit", "Budget"],
+      evidence_references_v2: [
+        {
+          evidence_id: "ev-1",
+          document_id: "doc-1",
+          document_kind: "minutes",
+          artifact_id: "artifact-1",
+          section_path: "minutes/section/4",
+          page_start: null,
+          page_end: null,
+          char_start: 12,
+          char_end: 80,
+          precision: "span",
+          confidence: "high",
+          excerpt: "Council voted 6-1 to approve the transit plan.",
+        },
+      ],
       claims: [
         {
           id: "claim-1",
@@ -159,6 +175,8 @@ describe("MeetingDetailPage", () => {
     expect(
       screen.getByRole("heading", { name: "Evidence references" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Quick verification")).toBeInTheDocument();
+    expect(screen.getByText("minutes/section/4 • chars 12-80 • Span precision")).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Planned" }),
     ).not.toBeInTheDocument();
@@ -169,8 +187,8 @@ describe("MeetingDetailPage", () => {
       screen.getByText("Council approved the transit plan."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Council voted 6-1 to approve the transit plan."),
-    ).toBeInTheDocument();
+      screen.getAllByText("Council voted 6-1 to approve the transit plan.").length,
+    ).toBe(2);
     expect(
       screen.getAllByRole("link", { name: "Open minutes source" }).length,
     ).toBeGreaterThan(0);

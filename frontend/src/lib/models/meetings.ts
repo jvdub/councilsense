@@ -38,7 +38,7 @@ export type MeetingClaim = {
 
 export type MeetingEvidenceReferenceV2 = {
   evidence_id: string;
-  document_id: string;
+  document_id: string | null;
   document_kind: "minutes" | "agenda" | "packet";
   artifact_id: string;
   section_path: string;
@@ -47,7 +47,7 @@ export type MeetingEvidenceReferenceV2 = {
   char_start: number | null;
   char_end: number | null;
   precision: "offset" | "span" | "section" | "file";
-  confidence: "high" | "medium" | "low";
+  confidence: "high" | "medium" | "low" | null;
   excerpt: string;
 };
 
@@ -127,6 +127,7 @@ export type MeetingDetailResponse = {
   key_actions: string[];
   notable_topics: string[];
   claims: MeetingClaim[];
+  evidence_references_v2?: MeetingEvidenceReferenceV2[];
   planned?: MeetingPlannedBlock;
   outcomes?: MeetingOutcomesBlock;
   planned_outcome_mismatches?: MeetingPlannedOutcomeMismatchesBlock;

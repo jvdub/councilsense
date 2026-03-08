@@ -492,7 +492,9 @@ export default async function MeetingDetailPage({
         <div className="mt-6">
           <EvidenceReferences
             claims={detailResponse.claims}
+            evidenceReferencesV2={detailResponse.evidence_references_v2 ?? []}
             sourceDocumentKind={detailResponse.source_document_kind}
+            sourceDocumentUrl={detailResponse.source_document_url}
           />
         </div>
       </section>
