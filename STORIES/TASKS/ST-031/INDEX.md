@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-031-01](TASK-ST-031-01-structured-log-correlation-context-for-multi-document-pipeline.md) — Structured Log Correlation Context for Multi-Document Pipeline
-- [ ] [TASK-ST-031-02](TASK-ST-031-02-source-aware-metrics-and-dashboard-panels.md) — Source-Aware Metrics and Dashboard Panels
-- [ ] [TASK-ST-031-03](TASK-ST-031-03-alert-policies-for-drift-failure-spikes-and-dlq-health.md) — Alert Policies for Drift, Failure Spikes, and DLQ Health
-- [ ] [TASK-ST-031-04](TASK-ST-031-04-runbook-updates-for-triage-replay-confidence-and-rollback.md) — Runbook Updates for Triage, Replay, Confidence, and Rollback
-- [ ] [TASK-ST-031-05](TASK-ST-031-05-staging-alert-simulations-and-runbook-walkthrough-evidence.md) — Staging Alert Simulations and Runbook Walkthrough Evidence
+- [x] [TASK-ST-031-01](TASK-ST-031-01-structured-log-correlation-context-for-multi-document-pipeline.md) — Structured Log Correlation Context for Multi-Document Pipeline
+- [x] [TASK-ST-031-02](TASK-ST-031-02-source-aware-metrics-and-dashboard-panels.md) — Source-Aware Metrics and Dashboard Panels
+- [x] [TASK-ST-031-03](TASK-ST-031-03-alert-policies-for-drift-failure-spikes-and-dlq-health.md) — Alert Policies for Drift, Failure Spikes, and DLQ Health
+- [x] [TASK-ST-031-04](TASK-ST-031-04-runbook-updates-for-triage-replay-confidence-and-rollback.md) — Runbook Updates for Triage, Replay, Confidence, and Rollback
+- [x] [TASK-ST-031-05](TASK-ST-031-05-staging-alert-simulations-and-runbook-walkthrough-evidence.md) — Staging Alert Simulations and Runbook Walkthrough Evidence
 
 ## Dependency Chain
 

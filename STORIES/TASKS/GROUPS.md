@@ -63,6 +63,16 @@ This file records the story grouping used to refine stories into task files.
 - ST-030 Document-Aware Quality Gates and Authority Alignment Enforcement
 - ST-031 Multi-Document Observability, Alerts, and Runbook Completion
 
+## Group K — Resident Relevance Extraction and API
+
+- ST-032 Resident Relevance Structured Subject, Location, and Impact Extraction
+- ST-033 Resident Relevance Reader API Additive Subject, Location, and Impact Fields
+
+## Group L — Resident Relevance Reader UX and Follow-Up Prompts
+
+- ST-034 Resident Relevance Meeting Detail Impact Cards and Scan View
+- ST-035 Evidence-Backed Follow-Up Prompts for Meeting Detail
+
 ## Correlation Pattern
 
 - Every task belongs to exactly one story folder: `STORIES/TASKS/ST-###/`.

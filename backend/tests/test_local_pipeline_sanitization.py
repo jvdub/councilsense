@@ -5,10 +5,12 @@ from councilsense.app.local_pipeline import (
     _AuthorityPolicyResult,
     _MeetingMaterialContext,
     _apply_material_context,
-    _evaluate_authority_policy,
+    _apply_structured_relevance_carry_through,
     _build_grounded_summary,
     _build_claims_from_findings,
+    _deterministic_summarize,
     _derive_grounded_sections,
+    _evaluate_authority_policy,
     _focus_source_text,
     _normalize_action_sentence,
     _normalize_decision_sentence,
@@ -20,6 +22,7 @@ from councilsense.app.multi_document_compose import (
     SourceCoverageSummary,
     SummarizeComposeInput,
 )
+from councilsense.app.summarization import ClaimEvidencePointer, StructuredRelevance, StructuredRelevanceField
 
 
 def test_normalize_generated_text_removes_think_blocks() -> None:
@@ -100,7 +103,9 @@ def test_apply_material_context_converts_agenda_only_meeting_to_preview_mode() -
             reason_codes=("agenda_preview_only", "missing_authoritative_minutes"),
             summarize_text=source_text,
             authoritative_source_type=None,
+            authoritative_locator_precision=None,
             outcome_source_types=("agenda",),
+            source_statuses={"minutes": "missing", "agenda": "present", "packet": "missing"},
             preview_only=True,
             conflicts=(),
         ),
@@ -112,6 +117,131 @@ def test_apply_material_context_converts_agenda_only_meeting_to_preview_mode() -
     assert key_actions == ()
     assert "Resolution Agenda Items" in notable_topics
     assert all(len(topic.split()) <= 6 for topic in notable_topics)
+
+
+def test_structured_relevance_carry_through_upgrades_generic_action_only_text() -> None:
+    summary, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary="The council approved the proposal.",
+        key_decisions=("Approved the item.",),
+        key_actions=(),
+        structured_relevance=_build_structured_relevance_fixture(
+            subject="North Gateway rezoning application",
+            location="North Gateway District",
+            action="approved",
+            scale="142 acres and 893 units",
+        ),
+        authority_policy=_AuthorityPolicyResult(
+            authority_outcome="minutes_authoritative",
+            publication_status="processed",
+            reason_codes=(),
+            summarize_text="Council approved the North Gateway rezoning application.",
+            authoritative_source_type="minutes",
+            authoritative_locator_precision="precise",
+            outcome_source_types=("minutes",),
+            source_statuses={"minutes": "present", "agenda": "present", "packet": "present"},
+            preview_only=False,
+            conflicts=(),
+        ),
+    )
+
+    assert "North Gateway rezoning application" in summary
+    assert "North Gateway District" in summary
+    assert key_decisions[0] == summary
+    assert "Approved the item" not in key_decisions[0]
+    assert key_actions == ()
+
+
+def test_structured_relevance_carry_through_preserves_conflict_uncertainty() -> None:
+    summary, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary="Agenda materials for this meeting preview scheduled items rather than confirmed outcomes.",
+        key_decisions=(),
+        key_actions=(),
+        structured_relevance=_build_structured_relevance_fixture(
+            subject="Main Street paving contract",
+            location="Main Street",
+            scale="$1,250,000",
+        ),
+        authority_policy=_AuthorityPolicyResult(
+            authority_outcome="unresolved_conflict",
+            publication_status="limited_confidence",
+            reason_codes=("missing_authoritative_minutes", "unresolved_source_conflict"),
+            summarize_text="[agenda] Consider adoption of Resolution 2026-09 awarding the Main Street paving contract.",
+            authoritative_source_type=None,
+            authoritative_locator_precision=None,
+            outcome_source_types=("agenda", "packet"),
+            source_statuses={"minutes": "missing", "agenda": "present", "packet": "present"},
+            preview_only=True,
+            conflicts=(),
+        ),
+    )
+
+    assert "Main Street paving contract" in summary
+    assert "final action remains uncertain" in summary
+    assert "sources conflict" in summary
+    assert "No decisions or completed actions are recorded yet" in summary
+    assert key_decisions == ()
+    assert key_actions == ()
+
+
+def test_structured_relevance_carry_through_preserves_weak_precision_downgrade() -> None:
+    summary, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary="The council approved the permit.",
+        key_decisions=("Approved the item.",),
+        key_actions=(),
+        structured_relevance=_build_structured_relevance_fixture(
+            subject="temporary road closure permit",
+            location="parade route",
+            action="approved",
+        ),
+        authority_policy=_AuthorityPolicyResult(
+            authority_outcome="minutes_authoritative_weak_precision",
+            publication_status="limited_confidence",
+            reason_codes=("weak_evidence_precision",),
+            summarize_text="Council authorized the temporary road closure permit for the parade route.",
+            authoritative_source_type="minutes",
+            authoritative_locator_precision="weak",
+            outcome_source_types=("minutes",),
+            source_statuses={"minutes": "present", "agenda": "present", "packet": "missing"},
+            preview_only=False,
+            conflicts=(),
+        ),
+    )
+
+    assert "temporary road closure permit" in summary
+    assert "parade route" in summary
+    assert "evidence locators remain weak" in summary
+    assert key_decisions[0] == summary
+    assert key_actions == ()
+
+
+def test_structured_relevance_carry_through_preserves_supplemental_sources_missing_downgrade() -> None:
+    summary, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary="The council approved the item.",
+        key_decisions=("Approved the item.",),
+        key_actions=(),
+        structured_relevance=_build_structured_relevance_fixture(
+            subject="interfund transfer resolution",
+            action="approved",
+        ),
+        authority_policy=_AuthorityPolicyResult(
+            authority_outcome="supplemental_coverage_missing",
+            publication_status="limited_confidence",
+            reason_codes=("supplemental_sources_missing",),
+            summarize_text="Council approved the interfund transfer resolution.",
+            authoritative_source_type="minutes",
+            authoritative_locator_precision="precise",
+            outcome_source_types=("minutes",),
+            source_statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+            preview_only=False,
+            conflicts=(),
+        ),
+    )
+
+    assert "interfund transfer resolution" in summary
+    assert "supporting agenda or packet materials are missing" in summary
+    assert key_decisions[0] == summary
+    assert "Approved the item" not in key_decisions[0]
+    assert key_actions == ()
 
 
 def test_evaluate_authority_policy_prefers_minutes_and_flags_conflicting_supporting_sources() -> None:
@@ -393,6 +523,428 @@ def test_build_claims_from_findings_attaches_precise_canonical_span_linkage() ->
     assert pointer.char_end == 76
 
 
+def test_deterministic_summarize_synthesizes_grounded_structured_relevance_from_minutes() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "Council approved the North Gateway rezoning application for the North Gateway District covering 142 acres and 893 units on March 9.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-minutes-relevance-1",
+                        artifact_id="artifact-minutes-relevance-1",
+                        stable_section_path="minutes/section/4",
+                        page_number=7,
+                        line_index=2,
+                        start_char_offset=18,
+                        end_char_offset=138,
+                        span_text="Council approved the North Gateway rezoning application for the North Gateway District covering 142 acres and 893 units on March 9.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.subject is not None
+    assert output.structured_relevance.location is not None
+    assert output.structured_relevance.action is not None
+    assert output.structured_relevance.scale is not None
+    assert output.structured_relevance.subject.value == "North Gateway rezoning application"
+    assert output.structured_relevance.location.value == "North Gateway District"
+    assert output.structured_relevance.action.value == "approved"
+    assert output.structured_relevance.scale.value == "142 acres and 893 units"
+    assert tuple(tag.tag for tag in output.structured_relevance.impact_tags) == ("housing", "land_use")
+    assert tuple(tag.tag for tag in output.structured_relevance.items[0].impact_tags) == ("housing", "land_use")
+    assert output.summary == output.key_decisions[0]
+    assert "proposal" not in output.summary.lower()
+    assert "North Gateway rezoning application" in output.summary
+    assert "North Gateway District" in output.summary
+    assert output.structured_relevance.items[0].subject is not None
+    assert output.structured_relevance.items[0].subject.evidence[0].section_ref == "minutes.section.4"
+    assert output.structured_relevance.items[0].subject.evidence[0].artifact_id == "artifact-minutes-relevance-1"
+    assert output.structured_relevance.items[0].impact_tags[0].evidence[0].section_ref == "minutes.section.4"
+
+
+def test_deterministic_summarize_degrades_safely_for_preview_only_partial_bundle() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "agenda",
+                "Consider adoption of Resolution 2026-09 awarding the Main Street paving contract on Main Street for $1,250,000.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-agenda-relevance-1",
+                        artifact_id="artifact-agenda-relevance-1",
+                        stable_section_path="agenda/section/7",
+                        page_number=None,
+                        line_index=None,
+                        start_char_offset=None,
+                        end_char_offset=None,
+                        span_text="Consider adoption of Resolution 2026-09 awarding the Main Street paving contract on Main Street for $1,250,000.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "missing", "agenda": "present", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="agenda",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="same_day_or_future",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.subject is not None
+    assert output.structured_relevance.subject.value == "Main Street paving contract"
+    assert output.structured_relevance.location is not None
+    assert output.structured_relevance.location.value == "Main Street"
+    assert output.structured_relevance.scale is not None
+    assert output.structured_relevance.scale.value == "$1,250,000"
+    assert output.structured_relevance.action is None
+    assert output.structured_relevance.subject.confidence == "medium"
+    assert output.structured_relevance.location.confidence == "medium"
+    assert output.structured_relevance.scale.confidence == "medium"
+    assert tuple(tag.tag for tag in output.structured_relevance.impact_tags) == ("traffic",)
+    assert output.structured_relevance.impact_tags[0].confidence == "medium"
+    assert "preview scheduled items rather than confirmed outcomes" in output.summary
+    assert "Main Street paving contract on Main Street for $1,250,000" in output.summary
+    assert "No decisions or completed actions are recorded yet" in output.summary
+
+
+def test_deterministic_summarize_preserves_conflict_uncertainty_with_specific_subject_and_location() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "agenda",
+                "Consider adoption of Resolution 2026-09 awarding the Main Street paving contract on Main Street for $1,250,000.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-agenda-relevance-conflict-1",
+                        artifact_id="artifact-agenda-relevance-conflict-1",
+                        stable_section_path="agenda/section/7",
+                        page_number=None,
+                        line_index=None,
+                        start_char_offset=None,
+                        end_char_offset=None,
+                        span_text="Consider adoption of Resolution 2026-09 awarding the Main Street paving contract on Main Street for $1,250,000.",
+                    ),
+                ),
+            ),
+            _compose_source(
+                "packet",
+                "Staff recommendation was to continue Resolution 2026-09 pending updated bids for the Main Street paving contract on Main Street.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-packet-relevance-conflict-1",
+                        artifact_id="artifact-packet-relevance-conflict-1",
+                        stable_section_path="packet/section/3",
+                        page_number=None,
+                        line_index=None,
+                        start_char_offset=None,
+                        end_char_offset=None,
+                        span_text="Staff recommendation was to continue Resolution 2026-09 pending updated bids for the Main Street paving contract on Main Street.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "missing", "agenda": "present", "packet": "present"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="agenda",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="same_day_or_future",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert authority_policy.authority_outcome == "unresolved_conflict"
+    assert authority_policy.publication_status == "limited_confidence"
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.subject is not None
+    assert output.structured_relevance.subject.value == "Main Street paving contract"
+    assert output.structured_relevance.subject.confidence == "medium"
+    assert output.structured_relevance.location is not None
+    assert output.structured_relevance.location.value == "Main Street"
+    assert output.structured_relevance.location.confidence == "medium"
+    assert output.structured_relevance.action is None
+    assert tuple(tag.tag for tag in output.structured_relevance.impact_tags) == ("traffic",)
+    assert output.structured_relevance.impact_tags[0].confidence == "medium"
+    assert "preview scheduled items rather than confirmed outcomes" in output.summary
+    assert "No decisions or completed actions are recorded yet" in output.summary
+    assert "approved the Main Street paving contract" not in output.summary
+
+
+def test_deterministic_summarize_marks_fallback_extract_specificity_as_low_confidence() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "agenda",
+                "Agenda scheduled the River Road Corridor Plan for River Road.",
+                locator_precision="unknown",
+                source_origin="fallback_extract",
+            ),
+        ),
+        statuses={"minutes": "missing", "agenda": "present", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="agenda",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="same_day_or_future",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert authority_policy.publication_status == "limited_confidence"
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.subject is not None
+    assert output.structured_relevance.subject.value == "River Road Corridor Plan"
+    assert output.structured_relevance.subject.confidence == "low"
+    assert output.structured_relevance.location is not None
+    assert output.structured_relevance.location.value == "River Road Corridor"
+    assert output.structured_relevance.location.confidence == "low"
+    assert output.structured_relevance.action is not None
+    assert output.structured_relevance.action.confidence == "low"
+    assert "preview scheduled consideration of the River Road Corridor Plan" in output.summary
+    assert "published minutes are not available" in output.summary
+
+
+def test_deterministic_summarize_classifies_utilities_fees_and_parks_from_grounded_snippets() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                (
+                    "Council adopted the stormwater utility fee schedule for fiscal year 2027. "
+                    "Council approved the Silver Lake Park playground renovation."
+                ),
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-minutes-impact-1",
+                        artifact_id="artifact-minutes-impact-1",
+                        stable_section_path="minutes/section/8",
+                        page_number=11,
+                        line_index=3,
+                        start_char_offset=12,
+                        end_char_offset=78,
+                        span_text="Council adopted the stormwater utility fee schedule for fiscal year 2027.",
+                    ),
+                    ComposedSourceSpan(
+                        span_id="span-minutes-impact-2",
+                        artifact_id="artifact-minutes-impact-2",
+                        stable_section_path="minutes/section/9",
+                        page_number=12,
+                        line_index=1,
+                        start_char_offset=80,
+                        end_char_offset=138,
+                        span_text="Council approved the Silver Lake Park playground renovation.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+    rerun = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.structured_relevance is not None
+    assert rerun.structured_relevance is not None
+    assert tuple(tag.tag for tag in output.structured_relevance.impact_tags) == ("utilities", "parks", "fees")
+    assert output.structured_relevance.to_payload() == rerun.structured_relevance.to_payload()
+    assert tuple(tag.tag for tag in output.structured_relevance.items[0].impact_tags) == ("utilities", "fees")
+    assert tuple(tag.tag for tag in output.structured_relevance.items[1].impact_tags) == ("parks",)
+    assert output.structured_relevance.items[0].impact_tags[0].evidence[0].artifact_id == "artifact-minutes-impact-1"
+    assert output.structured_relevance.items[1].impact_tags[0].evidence[0].artifact_id == "artifact-minutes-impact-2"
+
+
+def test_deterministic_summarize_omits_impact_tags_without_explicit_support_beyond_location_tokens() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "Council approved Resolution 2026-10 for the annual report on Main Street.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-minutes-impact-3",
+                        artifact_id="artifact-minutes-impact-3",
+                        stable_section_path="minutes/section/10",
+                        page_number=13,
+                        line_index=2,
+                        start_char_offset=15,
+                        end_char_offset=84,
+                        span_text="Council approved Resolution 2026-10 for the annual report on Main Street.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.location is not None
+    assert output.structured_relevance.location.value == "Main Street"
+    assert output.structured_relevance.impact_tags == ()
+    assert output.structured_relevance.items[0].impact_tags == ()
+
+
+def test_deterministic_summarize_structured_relevance_is_stable_across_repeated_runs() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "Council approved the Old Airport Road right-of-way acquisition covering 12 acres and a 3-1 vote.",
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-minutes-relevance-2",
+                        artifact_id="artifact-minutes-relevance-2",
+                        stable_section_path="minutes/section/6",
+                        page_number=9,
+                        line_index=4,
+                        start_char_offset=22,
+                        end_char_offset=111,
+                        span_text="Council approved the Old Airport Road right-of-way acquisition covering 12 acres and a 3-1 vote.",
+                    ),
+                ),
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    first = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+    second = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-03-09",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert first.structured_relevance is not None
+    assert second.structured_relevance is not None
+    assert first.structured_relevance.to_payload() == second.structured_relevance.to_payload()
+    assert tuple(tag.tag for tag in first.structured_relevance.impact_tags) == ("traffic",)
+
+
 def _build_compose_input(
     *,
     sources: tuple[ComposedSourceDocument, ...],
@@ -417,15 +969,47 @@ def _build_compose_input(
     )
 
 
+def _build_structured_relevance_fixture(
+    *,
+    subject: str | None = None,
+    location: str | None = None,
+    action: str | None = None,
+    scale: str | None = None,
+) -> StructuredRelevance:
+    evidence = ClaimEvidencePointer(
+        artifact_id="artifact-test",
+        section_ref="minutes.section.1",
+        char_start=None,
+        char_end=None,
+        excerpt="Grounded evidence excerpt.",
+        confidence="high",
+    )
+
+    def make_field(value: str | None) -> StructuredRelevanceField | None:
+        if value is None:
+            return None
+        return StructuredRelevanceField(value=value, evidence=(evidence,), confidence="high")
+
+    return StructuredRelevance(
+        subject=make_field(subject),
+        location=make_field(location),
+        action=make_field(action),
+        scale=make_field(scale),
+        impact_tags=(),
+        items=(),
+    )
+
+
 def _compose_source(
     source_type: str,
     text: str,
     locator_precision: str = "precise",
     spans: tuple[ComposedSourceSpan, ...] = (),
+    source_origin: str = "canonical",
 ) -> ComposedSourceDocument:
     return ComposedSourceDocument(
         source_type=source_type,
-        source_origin="canonical",
+        source_origin=source_origin,
         coverage_status="present",
         text=text,
         locator_precision=locator_precision,

@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   afterAll,
   afterEach,
@@ -14,6 +15,7 @@ import {
   MEETING_DETAIL_MISMATCH_SIGNALS_FLAG,
   MEETING_DETAIL_PLANNED_OUTCOMES_FLAG,
 } from "../../../lib/meetings/detailRenderMode";
+import { MEETING_DETAIL_RESIDENT_SCAN_FLAG } from "../../../lib/meetings/residentScanMode";
 
 const redirectMock = vi.fn((path: string) => {
   throw new Error(`REDIRECT:${path}`);
@@ -27,6 +29,8 @@ const originalPlannedOutcomesFlag =
   process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
 const originalMismatchSignalsFlag =
   process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
+const originalResidentScanFlag =
+  process.env.NEXT_PUBLIC_ST034_UI_RESIDENT_SCAN_ENABLED;
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
@@ -50,6 +54,12 @@ vi.mock("../../../lib/api/meetings", () => ({
     fetchMeetingDetailMock(authToken, meetingId),
 }));
 
+function getLabelledSectionHeadings(container: HTMLElement) {
+  return Array.from(container.querySelectorAll("section[aria-label] > h2")).map(
+    (heading) => heading.textContent,
+  );
+}
+
 describe("MeetingDetailPage", () => {
   const returningBootstrap = {
     user_id: "user-returning",
@@ -69,6 +79,7 @@ describe("MeetingDetailPage", () => {
     getOnboardingRedirectPathMock.mockReturnValue(null);
     delete process.env.NEXT_PUBLIC_ST022_UI_PLANNED_OUTCOMES_ENABLED;
     delete process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED;
+    delete process.env.NEXT_PUBLIC_ST034_UI_RESIDENT_SCAN_ENABLED;
   });
 
   it("redirects unauthenticated users to sign-in", async () => {
@@ -189,6 +200,9 @@ describe("MeetingDetailPage", () => {
       screen.queryByRole("heading", { name: "Outcomes" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("heading", { name: "Suggested follow-up prompts" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.getByText("Council approved the transit plan."),
     ).toBeInTheDocument();
     expect(
@@ -210,6 +224,755 @@ describe("MeetingDetailPage", () => {
       "meeting-1",
     );
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("renders bounded suggested prompts and links answers into prompt evidence groups", async () => {
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st035-1",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st035-1",
+      title: "Council Session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/council-session.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st035-1",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council approved the North Gateway rezoning application.",
+      key_decisions: ["Approved the North Gateway rezoning application"],
+      key_actions: ["Staff will publish the ordinance by April 15, 2026."],
+      notable_topics: ["Land use"],
+      claims: [],
+      evidence_references_v2: [],
+      suggested_prompts: [
+        {
+          prompt_id: "project_identity",
+          prompt: "What project or item is this about?",
+          answer: "North Gateway rezoning application.",
+          evidence_references_v2: [
+            {
+              evidence_id: "ev-st035-1",
+              document_id: "doc-st035-1",
+              document_kind: "minutes",
+              artifact_id: "artifact-st035-1",
+              section_path: "minutes.section.4",
+              page_start: null,
+              page_end: null,
+              char_start: 18,
+              char_end: 122,
+              precision: "offset",
+              confidence: "high",
+              excerpt:
+                "Council approved the North Gateway rezoning application for the North Gateway District.",
+            },
+          ],
+        },
+        {
+          prompt_id: "next_step",
+          prompt: "What happens next?",
+          answer: "Staff will publish the ordinance by April 15, 2026.",
+          evidence_references_v2: [
+            {
+              evidence_id: "ev-st035-2",
+              document_id: "doc-st035-2",
+              document_kind: "minutes",
+              artifact_id: "artifact-st035-2",
+              section_path: "minutes.section.7",
+              page_start: null,
+              page_end: null,
+              char_start: 40,
+              char_end: 112,
+              precision: "offset",
+              confidence: "high",
+              excerpt: "Staff will publish the ordinance by April 15, 2026.",
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st035-1" }),
+      }),
+    );
+
+    const user = userEvent.setup();
+    const promptSection = screen.getByRole("region", {
+      name: "Suggested follow-up prompts",
+    });
+    const projectEvidenceLink = within(promptSection).getByRole("link", {
+      name: "View evidence for What project or item is this about?",
+    });
+    const nextStepEvidenceLink = within(promptSection).getByRole("link", {
+      name: "View evidence for What happens next?",
+    });
+
+    expect(
+      within(promptSection).getByRole("heading", {
+        level: 2,
+        name: "Suggested follow-up prompts",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(promptSection).getByText(
+        "Quick answers to a fixed set of common follow-up questions from this meeting record.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(promptSection).getAllByText("Approved prompt")).toHaveLength(2);
+    expect(
+      within(promptSection).getByText("What project or item is this about?"),
+    ).toBeInTheDocument();
+    expect(
+      within(promptSection).getByText("North Gateway rezoning application."),
+    ).toBeInTheDocument();
+    expect(
+      within(promptSection).getByText("What happens next?"),
+    ).toBeInTheDocument();
+    expect(
+      within(promptSection).getByText(
+        "Staff will publish the ordinance by April 15, 2026.",
+      ),
+    ).toBeInTheDocument();
+    expect(projectEvidenceLink).toHaveAttribute(
+      "href",
+      "#suggested-prompt-evidence-project_identity",
+    );
+    expect(nextStepEvidenceLink).toHaveAttribute(
+      "href",
+      "#suggested-prompt-evidence-next_step",
+    );
+    projectEvidenceLink.focus();
+    expect(projectEvidenceLink).toHaveFocus();
+    await user.tab();
+    expect(nextStepEvidenceLink).toHaveFocus();
+    expect(
+      screen.getByRole("heading", { name: "Suggested prompt evidence" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("What project or item is this about?").length,
+    ).toBeGreaterThan(1);
+    expect(screen.getByText("Minutes section 4")).toBeInTheDocument();
+    expect(screen.getByText("Minutes section 7")).toBeInTheDocument();
+  });
+
+  it("omits the prompt section cleanly when suggested prompts are absent", async () => {
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st035-absent",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st035-absent",
+      title: "Council Session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/council-session.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st035-absent",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council discussed a work plan update.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Operations"],
+      claims: [],
+      evidence_references_v2: [],
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st035-absent" }),
+      }),
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Suggested follow-up prompts" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Suggested prompt evidence" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("omits the prompt section cleanly when suggested prompts are empty", async () => {
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st035-2",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st035-2",
+      title: "Council Session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/council-session.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st035-2",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council discussed a work plan update.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Operations"],
+      claims: [],
+      evidence_references_v2: [],
+      suggested_prompts: [],
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st035-2" }),
+      }),
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Suggested follow-up prompts" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Suggested prompt evidence" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders resident impact scan cards when resident scan mode is enabled", async () => {
+    process.env[MEETING_DETAIL_RESIDENT_SCAN_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st034-1",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st034-1",
+      title: "Growth and mobility session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/growth-mobility.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st034-1",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council approved the North Gateway rezoning application.",
+      key_decisions: ["Approved the North Gateway rezoning application"],
+      key_actions: ["Staff to publish the ordinance"],
+      notable_topics: ["Land use", "Housing"],
+      claims: [],
+      structured_relevance: {
+        subject: {
+          value: "North Gateway rezoning application",
+          confidence: "high",
+        },
+        location: {
+          value: "North Gateway District",
+          confidence: "high",
+        },
+        action: {
+          value: "approved",
+          confidence: "high",
+        },
+        scale: {
+          value: "142 acres and 893 units",
+          confidence: "high",
+        },
+        impact_tags: [
+          {
+            tag: "housing",
+            confidence: "high",
+          },
+          {
+            tag: "land_use",
+            confidence: "high",
+          },
+        ],
+      },
+      evidence_references_v2: [],
+      outcomes: {
+        generated_at: "2026-03-09T19:00:00Z",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-st034-1",
+            title: "North Gateway rezoning approved",
+            result: "approved",
+            confidence: "high",
+            evidence_references_v2: [],
+            subject: {
+              value: "North Gateway rezoning application",
+              confidence: "high",
+            },
+            location: {
+              value: "North Gateway District",
+              confidence: "high",
+            },
+            action: {
+              value: "approved",
+              confidence: "high",
+            },
+            scale: {
+              value: "142 acres and 893 units",
+              confidence: "high",
+            },
+            impact_tags: [
+              {
+                tag: "housing",
+                confidence: "high",
+              },
+              {
+                tag: "land_use",
+                confidence: "high",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-1" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-resident-scan-mode]");
+    const sectionHeadings = Array.from(
+      container.querySelectorAll("section[aria-label] > h2"),
+    ).map((heading) => heading.textContent);
+    const residentScanSection = screen.getByRole("region", {
+      name: "Resident impact scan",
+    });
+
+    expect(main).toHaveAttribute("data-resident-scan-mode", "resident_scan");
+    expect(sectionHeadings).toEqual([
+      "Resident impact scan",
+      "Summary",
+      "Decisions and actions",
+      "Notable topics",
+      "Evidence references",
+    ]);
+    expect(
+      within(residentScanSection).getAllByText(
+        "North Gateway rezoning application",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(within(residentScanSection).getByText("What")).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Where")).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Action")).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Scale")).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("North Gateway District"),
+    ).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("approved")).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("142 acres and 893 units"),
+    ).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Impact tags")).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Housing")).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Land Use")).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText(
+        "Supporting links are not available for this scan yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Decisions and actions" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Notable topics" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Evidence references" }),
+    ).toBeInTheDocument();
+  });
+
+  it("adds resident scan navigation affordances into supporting detail and evidence when links are available", async () => {
+    process.env[MEETING_DETAIL_RESIDENT_SCAN_FLAG] = "true";
+    process.env[MEETING_DETAIL_PLANNED_OUTCOMES_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st034-3",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st034-3",
+      title: "Growth and mobility session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/growth-mobility.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st034-3",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council approved the North Gateway rezoning application.",
+      key_decisions: ["Approved the North Gateway rezoning application"],
+      key_actions: ["Staff to publish the ordinance"],
+      notable_topics: ["Land use", "Housing"],
+      claims: [],
+      evidence_references_v2: [],
+      structured_relevance: {
+        subject: {
+          value: "North Gateway rezoning application",
+          confidence: "high",
+        },
+      },
+      planned: {
+        generated_at: "2026-03-09T18:55:00Z",
+        source_coverage: {
+          minutes: "present",
+          agenda: "present",
+          packet: "present",
+        },
+        items: [],
+      },
+      outcomes: {
+        generated_at: "2026-03-09T19:00:00Z",
+        authority_source: "minutes",
+        items: [
+          {
+            outcome_id: "outcome-st034-3",
+            title: "North Gateway rezoning approved",
+            result: "approved",
+            confidence: "high",
+            evidence_references_v2: [],
+            subject: {
+              value: "North Gateway rezoning application",
+              confidence: "high",
+              evidence_references_v2: [
+                {
+                  evidence_id: "ev-st034-3",
+                  document_id: "doc-st034-3",
+                  document_kind: "minutes",
+                  artifact_id: "artifact-st034-3",
+                  section_path: "minutes.section.7",
+                  page_start: 4,
+                  page_end: 4,
+                  char_start: 22,
+                  char_end: 101,
+                  precision: "span",
+                  confidence: "high",
+                  excerpt: "Council approved the North Gateway rezoning application.",
+                },
+              ],
+            },
+            location: {
+              value: "North Gateway District",
+              confidence: "high",
+            },
+            action: {
+              value: "approved",
+              confidence: "high",
+            },
+            scale: {
+              value: "142 acres and 893 units",
+              confidence: "high",
+            },
+            impact_tags: [
+              {
+                tag: "housing",
+                confidence: "high",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-3" }),
+      }),
+    );
+
+    const user = userEvent.setup();
+    const residentScanSection = screen.getByRole("region", {
+      name: "Resident impact scan",
+    });
+    const supportingDetailLink = within(residentScanSection).getByRole("link", {
+      name: "View supporting detail",
+    });
+    const evidenceLink = within(residentScanSection).getByRole("link", {
+      name: "View evidence",
+    });
+
+    expect(
+      within(residentScanSection).getByRole("heading", {
+        level: 2,
+        name: "Resident impact scan",
+      }),
+    ).toBeInTheDocument();
+    expect(supportingDetailLink).toHaveAttribute(
+      "href",
+      "#outcome-item-outcome-st034-3",
+    );
+    expect(evidenceLink).toHaveAttribute(
+      "href",
+      "#resident-scan-evidence-outcome-outcome-st034-3",
+    );
+    supportingDetailLink.focus();
+    expect(supportingDetailLink).toHaveFocus();
+    await user.tab();
+    expect(evidenceLink).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Outcomes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Resident scan evidence" })).toBeInTheDocument();
+    expect(screen.getByText("Minutes section 7 • page 4")).toBeInTheDocument();
+  });
+
+  it("renders neutral sparse-state messaging without broken resident evidence links", async () => {
+    process.env[MEETING_DETAIL_RESIDENT_SCAN_FLAG] = "true";
+
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st034-4",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st034-4",
+      title: "Utilities work session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "agenda",
+      source_document_url: "https://example.org/agenda/utilities-session.pdf",
+      status: "processed",
+      confidence_label: "medium",
+      reader_low_confidence: false,
+      publication_id: "publication-st034-4",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Agenda materials describe a utility contract work session.",
+      key_decisions: [],
+      key_actions: [],
+      notable_topics: ["Utilities"],
+      claims: [],
+      evidence_references_v2: [],
+      structured_relevance: {
+        subject: {
+          value: "Utility contract work session",
+          confidence: "medium",
+        },
+      },
+      planned: {
+        generated_at: "2026-03-09T18:55:00Z",
+        source_coverage: {
+          minutes: "missing",
+          agenda: "present",
+          packet: "missing",
+        },
+        items: [],
+      },
+      outcomes: {
+        generated_at: "2026-03-09T19:00:00Z",
+        authority_source: "minutes",
+        items: [],
+      },
+    });
+
+    render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-4" }),
+      }),
+    );
+
+    const residentScanSection = screen.getByRole("region", {
+      name: "Resident impact scan",
+    });
+
+    expect(
+      within(residentScanSection).getByText(
+        "No specific impact tags were identified for this scan.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText(
+        "Some structured details were not available for this item.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(residentScanSection).getByText("Partial")).toBeInTheDocument();
+    expect(within(residentScanSection).getAllByText("Not specified")).toHaveLength(3);
+    expect(
+      within(residentScanSection).getByRole("link", { name: "View summary" }),
+    ).toHaveAttribute("href", "#summary-section");
+    expect(
+      within(residentScanSection).queryByRole("link", { name: "View evidence" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Resident scan evidence" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("preserves baseline meeting detail content when resident scan rendering is enabled additively", async () => {
+    const detail = {
+      id: "meeting-st034-parity",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st034-parity",
+      title: "Neighborhood parking session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "Transportation Committee",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/parking-session.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st034-parity",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council reviewed neighborhood parking changes near schools.",
+      key_decisions: ["Accepted the parking update"],
+      key_actions: ["Staff to draft final curb-zone changes"],
+      notable_topics: ["Traffic", "Schools"],
+      claims: [],
+      evidence_references_v2: [],
+      structured_relevance: {
+        subject: {
+          value: "Neighborhood parking changes",
+          confidence: "high",
+        },
+        location: {
+          value: "School safety zones",
+          confidence: "medium",
+        },
+      },
+    };
+
+    fetchMeetingDetailMock.mockResolvedValueOnce(detail);
+
+    const baselineRender = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-parity" }),
+      }),
+    );
+
+    const baselineMain = baselineRender.container.querySelector(
+      "main[data-resident-scan-mode]",
+    );
+    const baselineHeadings = getLabelledSectionHeadings(baselineRender.container);
+
+    expect(baselineMain).toHaveAttribute("data-resident-scan-mode", "baseline");
+    expect(
+      screen.queryByRole("heading", { name: "Resident impact scan" }),
+    ).not.toBeInTheDocument();
+    expect(baselineHeadings).toEqual([
+      "Summary",
+      "Decisions and actions",
+      "Notable topics",
+      "Evidence references",
+    ]);
+    expect(
+      screen.getByText(
+        "Council reviewed neighborhood parking changes near schools.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Accepted the parking update")).toBeInTheDocument();
+    expect(
+      screen.getByText("Staff to draft final curb-zone changes"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Traffic")).toBeInTheDocument();
+
+    cleanup();
+    process.env[MEETING_DETAIL_RESIDENT_SCAN_FLAG] = "true";
+    fetchMeetingDetailMock.mockResolvedValueOnce(detail);
+
+    const additiveRender = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-parity" }),
+      }),
+    );
+
+    const additiveMain = additiveRender.container.querySelector(
+      "main[data-resident-scan-mode]",
+    );
+    const additiveHeadings = getLabelledSectionHeadings(additiveRender.container);
+
+    expect(additiveMain).toHaveAttribute(
+      "data-resident-scan-mode",
+      "resident_scan",
+    );
+    expect(additiveHeadings).toEqual([
+      "Resident impact scan",
+      "Summary",
+      "Decisions and actions",
+      "Notable topics",
+      "Evidence references",
+    ]);
+    expect(additiveHeadings.slice(1)).toEqual(baselineHeadings);
+    expect(
+      screen.getByRole("region", { name: "Resident impact scan" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Council reviewed neighborhood parking changes near schools.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Accepted the parking update")).toBeInTheDocument();
+    expect(
+      screen.getByText("Staff to draft final curb-zone changes"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Traffic")).toBeInTheDocument();
+  });
+
+  it("suppresses resident impact scan cards when the resident scan flag is off", async () => {
+    fetchMeetingDetailMock.mockResolvedValueOnce({
+      id: "meeting-st034-2",
+      city_id: "seattle-wa",
+      city_name: "Seattle",
+      meeting_uid: "uid-st034-2",
+      title: "Growth and mobility session",
+      created_at: "2026-03-09 18:00:00",
+      updated_at: "2026-03-09 19:00:00",
+      meeting_date: "2026-03-09",
+      body_name: "City Council",
+      source_document_kind: "minutes",
+      source_document_url: "https://example.org/minutes/growth-mobility.pdf",
+      status: "processed",
+      confidence_label: "high",
+      reader_low_confidence: false,
+      publication_id: "publication-st034-2",
+      published_at: "2026-03-09 19:00:00",
+      summary: "Council approved the North Gateway rezoning application.",
+      key_decisions: ["Approved the North Gateway rezoning application"],
+      key_actions: ["Staff to publish the ordinance"],
+      notable_topics: ["Land use", "Housing"],
+      claims: [],
+      evidence_references_v2: [],
+      structured_relevance: {
+        subject: {
+          value: "North Gateway rezoning application",
+          confidence: "high",
+        },
+      },
+    });
+
+    const { container } = render(
+      await MeetingDetailPage({
+        params: Promise.resolve({ meetingId: "meeting-st034-2" }),
+      }),
+    );
+
+    const main = container.querySelector("main[data-resident-scan-mode]");
+
+    expect(main).toHaveAttribute("data-resident-scan-mode", "baseline");
+    expect(main).toHaveAttribute(
+      "data-resident-scan-fallback",
+      "resident_scan_flag_disabled",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Resident impact scan" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
   });
 
   it("preserves baseline output when additive fields are malformed and feature flags are off", async () => {
@@ -910,5 +1673,12 @@ afterAll(() => {
   } else {
     process.env.NEXT_PUBLIC_ST022_UI_MISMATCH_SIGNALS_ENABLED =
       originalMismatchSignalsFlag;
+  }
+
+  if (originalResidentScanFlag === undefined) {
+    delete process.env.NEXT_PUBLIC_ST034_UI_RESIDENT_SCAN_ENABLED;
+  } else {
+    process.env.NEXT_PUBLIC_ST034_UI_RESIDENT_SCAN_ENABLED =
+      originalResidentScanFlag;
   }
 });

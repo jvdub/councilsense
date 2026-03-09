@@ -17,6 +17,9 @@ from councilsense.app.summarization import (
     ClaimEvidenceValidationError,
     EMPTY_SUMMARY_TEXT,
     QualityGateConfig,
+    StructuredImpactTag,
+    StructuredRelevance,
+    StructuredRelevanceField,
     SummarizationOutput,
     attach_claim_evidence,
     publish_summarization_output,
@@ -76,6 +79,136 @@ def test_contract_is_stable_and_empty_safe_for_sparse_input() -> None:
     }
 
 
+def test_structured_relevance_round_trips_with_meeting_and_item_level_fields() -> None:
+    output = SummarizationOutput.from_payload(
+        {
+            "summary": "Council approved the North Gateway rezoning.",
+            "key_decisions": ["Approved North Gateway rezoning."],
+            "key_actions": ["Staff will publish the ordinance."],
+            "notable_topics": ["Land use"],
+            "structured_relevance": {
+                "subject": {
+                    "value": "North Gateway rezoning",
+                    "confidence": "high",
+                    "evidence": [
+                        {
+                            "artifact_id": "artifact-minutes-100",
+                            "section_ref": "minutes.section.5",
+                            "excerpt": "Council approved the North Gateway rezoning application.",
+                            "document_kind": "minutes",
+                            "precision": "section",
+                            "confidence": "high",
+                        }
+                    ],
+                },
+                "action": {"value": "approved", "confidence": "high"},
+                "impact_tags": [
+                    {
+                        "tag": "land_use",
+                        "confidence": "high",
+                        "evidence": [
+                            {
+                                "artifact_id": "artifact-minutes-100",
+                                "section_ref": "minutes.section.5",
+                                "excerpt": "The rezoning changes the land use designation.",
+                            }
+                        ],
+                    }
+                ],
+                "items": [
+                    {
+                        "item_id": "outcome-1",
+                        "location": {"value": "North Gateway district", "confidence": "medium"},
+                        "scale": {"value": "142 acres", "confidence": "high"},
+                    }
+                ],
+            },
+        }
+    )
+
+    assert output.structured_relevance == StructuredRelevance(
+        subject=StructuredRelevanceField(
+            value="North Gateway rezoning",
+            confidence="high",
+            evidence=(
+                output.structured_relevance.subject.evidence[0],
+            ),
+        ),
+        action=StructuredRelevanceField(value="approved", confidence="high"),
+        impact_tags=(
+            StructuredImpactTag(
+                tag="land_use",
+                confidence="high",
+                evidence=(output.structured_relevance.impact_tags[0].evidence[0],),
+            ),
+        ),
+        items=output.structured_relevance.items,
+    )
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.items[0].item_id == "outcome-1"
+    assert output.to_payload()["structured_relevance"] == {
+        "subject": {
+            "value": "North Gateway rezoning",
+            "confidence": "high",
+            "evidence": [
+                {
+                    "artifact_id": "artifact-minutes-100",
+                    "section_ref": "minutes.section.5",
+                    "char_start": None,
+                    "char_end": None,
+                    "excerpt": "Council approved the North Gateway rezoning application.",
+                    "document_id": None,
+                    "span_id": None,
+                    "document_kind": "minutes",
+                    "section_path": None,
+                    "precision": "section",
+                    "confidence": "high",
+                }
+            ],
+        },
+        "action": {"value": "approved", "confidence": "high"},
+        "impact_tags": [
+            {
+                "tag": "land_use",
+                "confidence": "high",
+                "evidence": [
+                    {
+                        "artifact_id": "artifact-minutes-100",
+                        "section_ref": "minutes.section.5",
+                        "char_start": None,
+                        "char_end": None,
+                        "excerpt": "The rezoning changes the land use designation.",
+                        "document_id": None,
+                        "span_id": None,
+                        "document_kind": None,
+                        "section_path": None,
+                        "precision": None,
+                        "confidence": None,
+                    }
+                ],
+            }
+        ],
+        "items": [
+            {
+                "item_id": "outcome-1",
+                "location": {"value": "North Gateway district", "confidence": "medium"},
+                "scale": {"value": "142 acres", "confidence": "high"},
+            }
+        ],
+    }
+
+
+def test_structured_relevance_is_omitted_when_absent() -> None:
+    output = SummarizationOutput.from_sections(
+        summary="Council approved the transportation package.",
+        key_decisions=["Approved transportation package"],
+        key_actions=["Staff to publish implementation timeline"],
+        notable_topics=["Funding allocation"],
+    )
+
+    assert "structured_relevance" not in output.to_payload()
+
+
 def test_contract_output_persists_required_sections_to_publication_record(
     connection: sqlite3.Connection,
 ) -> None:
@@ -127,6 +260,77 @@ def test_contract_output_persists_required_sections_to_publication_record(
     assert publication.notable_topics_json == '["Funding allocation","Project sequencing"]'
     assert publication.processing_run_id == run.id
     assert publication.publish_stage_outcome_id == publish_outcome.id
+
+
+def test_publish_annotations_store_structured_relevance_in_stage_metadata_without_changing_publication_record(
+    connection: sqlite3.Connection,
+) -> None:
+    apply_migrations(connection)
+    seed_city_registry(connection)
+    _create_meeting(connection, meeting_id="meeting-contract-structured-1", uid="meeting-contract-structured-uid-1")
+
+    run_repository = ProcessingRunRepository(connection)
+    run = run_repository.create_pending_run(
+        run_id="run-contract-structured-1",
+        city_id=PILOT_CITY_ID,
+        cycle_id="2026-03-09T11:00:00Z",
+    )
+    publish_outcome = run_repository.upsert_stage_outcome(
+        outcome_id="outcome-contract-structured-publish-1",
+        run_id=run.id,
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-contract-structured-1",
+        stage_name="publish",
+        status="processed",
+        metadata_json='{"source":"summarizer"}',
+        started_at="2026-03-09T11:00:10Z",
+        finished_at="2026-03-09T11:00:20Z",
+    )
+
+    output = SummarizationOutput.from_sections(
+        summary="Council approved the Main Street paving contract.",
+        key_decisions=["Approved the Main Street paving contract."],
+        key_actions=["Staff will publish the award memo."],
+        notable_topics=["Transportation"],
+        structured_relevance=StructuredRelevance(
+            subject=StructuredRelevanceField(value="Main Street paving contract", confidence="high"),
+            action=StructuredRelevanceField(value="approved", confidence="high"),
+            impact_tags=(StructuredImpactTag(tag="traffic", confidence="medium"),),
+        ),
+    )
+
+    publication_result = publish_summarization_output(
+        repository=MeetingSummaryRepository(connection),
+        publication_id="pub-contract-structured-1",
+        meeting_id="meeting-contract-structured-1",
+        processing_run_id=run.id,
+        publish_stage_outcome_id=publish_outcome.id,
+        version_no=1,
+        base_confidence_label="high",
+        output=output,
+        published_at="2026-03-09T11:00:30Z",
+    )
+
+    assert publication_result.publication.summary_text == "Council approved the Main Street paving contract."
+    assert publication_result.publication.key_decisions_json == '["Approved the Main Street paving contract."]'
+    assert publication_result.publication.key_actions_json == '["Staff will publish the award memo."]'
+    assert publication_result.publication.notable_topics_json == '["Transportation"]'
+
+    metadata_row = connection.execute(
+        """
+        SELECT metadata_json
+        FROM processing_stage_outcomes
+        WHERE id = ?
+        """,
+        (publish_outcome.id,),
+    ).fetchone()
+    assert metadata_row is not None
+    metadata = json.loads(str(metadata_row[0]))
+    assert metadata["structured_relevance"] == {
+        "subject": {"value": "Main Street paving contract", "confidence": "high"},
+        "action": {"value": "approved", "confidence": "high"},
+        "impact_tags": [{"tag": "traffic", "confidence": "medium"}],
+    }
 
 
 def test_claim_evidence_records_reject_missing_required_fields() -> None:

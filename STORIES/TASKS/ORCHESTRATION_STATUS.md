@@ -1,6 +1,6 @@
 # Orchestration Status
 
-Last updated: 2026-03-06
+Last updated: 2026-03-09
 
 ## Execution Policies
 
@@ -195,20 +195,29 @@ Last updated: 2026-03-06
 - ST-026 is completed.
 - ST-027 is completed.
 - ST-028 is completed.
-- ST-029 is next in queue and dependency-safe to start.
-- ST-026 through ST-031 remain fully decomposed and ready for execution when dependencies are satisfied.
+- ST-029 is completed.
+- ST-030 is completed.
+- ST-031 is completed.
+- ST-032 is completed.
+- ST-033 is completed.
+- ST-034 is completed.
+- ST-035 is completed.
 
 ## Prepared and Execution Stories (Decomposed)
 
-| Story  | Story Folder                                                                         | Task Pack               | Decomposition Status | Execution Status |
-| ------ | ------------------------------------------------------------------------------------ | ----------------------- | -------------------- | ---------------- |
-| ST-022 | `STORIES/ST-022-agenda-plan-v1-contract-schema-and-rollout-freeze.md`                | `STORIES/TASKS/ST-022/` | ✅ Complete          | ✅ Completed     |
-| ST-023 | `STORIES/ST-023-meeting-bundle-planner-and-source-scoped-ingestion.md`               | `STORIES/TASKS/ST-023/` | ✅ Complete          | ✅ Completed     |
-| ST-024 | `STORIES/ST-024-canonical-documents-artifacts-and-spans-persistence.md`              | `STORIES/TASKS/ST-024/` | ✅ Complete          | ✅ Completed     |
-| ST-025 | `STORIES/ST-025-authority-aware-multi-document-compose-and-limited-confidence.md`    | `STORIES/TASKS/ST-025/` | ✅ Complete          | ✅ Completed     |
-| ST-026 | `STORIES/ST-026-evidence-v2-linkage-precision-ladder-and-deterministic-ordering.md`  | `STORIES/TASKS/ST-026/` | ✅ Complete          | ✅ Completed     |
-| ST-027 | `STORIES/ST-027-reader-api-additive-planned-outcomes-and-mismatch-fields.md`         | `STORIES/TASKS/ST-027/` | ✅ Complete          | ✅ Completed     |
-| ST-028 | `STORIES/ST-028-frontend-meeting-detail-planned-outcomes-and-mismatch-rendering.md`  | `STORIES/TASKS/ST-028/` | ✅ Complete          | ✅ Completed     |
-| ST-029 | `STORIES/ST-029-pipeline-retry-classification-dlq-and-replay-audit.md`               | `STORIES/TASKS/ST-029/` | ✅ Complete          | ⏳ Not started   |
-| ST-030 | `STORIES/ST-030-document-aware-quality-gates-and-authority-alignment-enforcement.md` | `STORIES/TASKS/ST-030/` | ✅ Complete          | ⏳ Not started   |
-| ST-031 | `STORIES/ST-031-multi-document-observability-alerts-and-runbook-completion.md`       | `STORIES/TASKS/ST-031/` | ✅ Complete          | ⏳ Not started   |
+| Story  | Story Folder                                                                             | Task Pack               | Decomposition Status | Execution Status |
+| ------ | ---------------------------------------------------------------------------------------- | ----------------------- | -------------------- | ---------------- |
+| ST-022 | `STORIES/ST-022-agenda-plan-v1-contract-schema-and-rollout-freeze.md`                    | `STORIES/TASKS/ST-022/` | ✅ Complete          | ✅ Completed     |
+| ST-023 | `STORIES/ST-023-meeting-bundle-planner-and-source-scoped-ingestion.md`                   | `STORIES/TASKS/ST-023/` | ✅ Complete          | ✅ Completed     |
+| ST-024 | `STORIES/ST-024-canonical-documents-artifacts-and-spans-persistence.md`                  | `STORIES/TASKS/ST-024/` | ✅ Complete          | ✅ Completed     |
+| ST-025 | `STORIES/ST-025-authority-aware-multi-document-compose-and-limited-confidence.md`        | `STORIES/TASKS/ST-025/` | ✅ Complete          | ✅ Completed     |
+| ST-026 | `STORIES/ST-026-evidence-v2-linkage-precision-ladder-and-deterministic-ordering.md`      | `STORIES/TASKS/ST-026/` | ✅ Complete          | ✅ Completed     |
+| ST-027 | `STORIES/ST-027-reader-api-additive-planned-outcomes-and-mismatch-fields.md`             | `STORIES/TASKS/ST-027/` | ✅ Complete          | ✅ Completed     |
+| ST-028 | `STORIES/ST-028-frontend-meeting-detail-planned-outcomes-and-mismatch-rendering.md`      | `STORIES/TASKS/ST-028/` | ✅ Complete          | ✅ Completed     |
+| ST-029 | `STORIES/ST-029-pipeline-retry-classification-dlq-and-replay-audit.md`                   | `STORIES/TASKS/ST-029/` | ✅ Complete          | ✅ Completed     |
+| ST-030 | `STORIES/ST-030-document-aware-quality-gates-and-authority-alignment-enforcement.md`     | `STORIES/TASKS/ST-030/` | ✅ Complete          | ✅ Completed     |
+| ST-031 | `STORIES/ST-031-multi-document-observability-alerts-and-runbook-completion.md`           | `STORIES/TASKS/ST-031/` | ✅ Complete          | ✅ Completed     |
+| ST-032 | `STORIES/ST-032-resident-relevance-structured-subject-location-and-impact-extraction.md` | `STORIES/TASKS/ST-032/` | ✅ Complete          | ✅ Completed     |
+| ST-033 | `STORIES/ST-033-reader-api-additive-resident-relevance-fields.md`                        | `STORIES/TASKS/ST-033/` | ✅ Complete          | ✅ Completed     |
+| ST-034 | `STORIES/ST-034-frontend-meeting-detail-resident-impact-cards-and-scan-view.md`          | `STORIES/TASKS/ST-034/` | ✅ Complete          | ✅ Completed     |
+| ST-035 | `STORIES/ST-035-evidence-backed-follow-up-prompts-for-meeting-detail.md`                 | `STORIES/TASKS/ST-035/` | ✅ Complete          | ✅ Completed     |

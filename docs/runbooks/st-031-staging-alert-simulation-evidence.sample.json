@@ -77,9 +77,7 @@
           "docs/runbooks/st-016-parser-drift-monitoring-runbook.md",
           "docs/runbooks/st-010-health-and-confidence-policy.md"
         ],
-        "follow_up_action_ids": [
-          "st031-follow-up-001"
-        ]
+        "follow_up_action_ids": ["st031-follow-up-001"]
       }
     },
     {
@@ -128,10 +126,7 @@
         "started_at_utc": "2026-03-07T17:47:00Z",
         "completed_at_utc": "2026-03-07T18:04:00Z",
         "facilitator": "release-owner",
-        "responders": [
-          "ops-ingestion-oncall",
-          "source-operations-owner"
-        ],
+        "responders": ["ops-ingestion-oncall", "source-operations-owner"],
         "result": "completed",
         "remediation_outcome": "Source-owner incident opened, source configuration verified as correct, and the affected bundle remained limited-confidence without replay until authoritative minutes return.",
         "closure_status": "mitigated_with_follow_up",
@@ -139,9 +134,7 @@
           "docs/runbooks/st-010-health-and-confidence-policy.md",
           "docs/runbooks/st-031-source-aware-observability-contract.md"
         ],
-        "follow_up_action_ids": [
-          "st031-follow-up-002"
-        ]
+        "follow_up_action_ids": ["st031-follow-up-002"]
       }
     },
     {
@@ -206,9 +199,7 @@
           "docs/runbooks/st-021-quality-gates-rollout-and-rollback.md",
           "docs/runbooks/st-010-health-and-confidence-policy.md"
         ],
-        "follow_up_action_ids": [
-          "st031-follow-up-003"
-        ]
+        "follow_up_action_ids": ["st031-follow-up-003"]
       }
     },
     {
@@ -258,10 +249,7 @@
         "started_at_utc": "2026-03-07T18:37:00Z",
         "completed_at_utc": "2026-03-07T18:43:00Z",
         "facilitator": "release-owner",
-        "responders": [
-          "ops-pipeline-oncall",
-          "backend-oncall"
-        ],
+        "responders": ["ops-pipeline-oncall", "backend-oncall"],
         "result": "completed",
         "remediation_outcome": "The replay batch drained the source-scoped DLQ backlog, audit events reached a terminal replayed outcome, and no duplicate side effects were observed.",
         "closure_status": "resolved_with_follow_up",
@@ -269,9 +257,7 @@
           "docs/runbooks/st-029-pipeline-dlq-contract.md",
           "docs/runbooks/st-021-quality-gates-rollout-and-rollback.md"
         ],
-        "follow_up_action_ids": [
-          "st031-follow-up-004"
-        ]
+        "follow_up_action_ids": ["st031-follow-up-004"]
       }
     }
   ],

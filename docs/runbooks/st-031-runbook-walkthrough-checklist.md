@@ -6,12 +6,12 @@ Purpose: document-only walkthrough coverage for ST-031 runbook completeness. Fin
 
 ## Representative Incident Coverage
 
-| Alert class | Primary runbook entry | Supporting docs checked | Result |
-| --- | --- | --- | --- |
-| `parser_drift_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-016-parser-drift-monitoring-runbook.md`, `docs/runbooks/st-010-health-and-confidence-policy.md` | PASS |
-| `missing_minutes_surge` | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-010-health-and-confidence-policy.md`, `docs/runbooks/st-031-source-aware-observability-contract.md` | PASS |
-| `summarize_failure_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-029-pipeline-dlq-contract.md`, `docs/runbooks/st-010-health-and-confidence-policy.md`, `docs/runbooks/st-021-quality-gates-rollout-and-rollback.md` | PASS |
-| `stale_pipeline_dlq_backlog` | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-029-pipeline-dlq-contract.md`, `docs/runbooks/st-021-quality-gates-rollout-and-rollback.md` | PASS |
+| Alert class                  | Primary runbook entry                                    | Supporting docs checked                                                                                                                                               | Result |
+| ---------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `parser_drift_spike`         | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-016-parser-drift-monitoring-runbook.md`, `docs/runbooks/st-010-health-and-confidence-policy.md`                                                     | PASS   |
+| `missing_minutes_surge`      | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-010-health-and-confidence-policy.md`, `docs/runbooks/st-031-source-aware-observability-contract.md`                                                 | PASS   |
+| `summarize_failure_spike`    | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-029-pipeline-dlq-contract.md`, `docs/runbooks/st-010-health-and-confidence-policy.md`, `docs/runbooks/st-021-quality-gates-rollout-and-rollback.md` | PASS   |
+| `stale_pipeline_dlq_backlog` | `docs/runbooks/st-031-source-aware-incident-response.md` | `docs/runbooks/st-029-pipeline-dlq-contract.md`, `docs/runbooks/st-021-quality-gates-rollout-and-rollback.md`                                                         | PASS   |
 
 ## Completeness Checks
 

@@ -51,6 +51,7 @@ def test_process_latest_ollama_unavailable_falls_back_to_deterministic(
         text: str,
         artifact_id: str,
         section_ref: str,
+        compose_input,
         material_context,
         authority_policy,
         topic_hardening_enabled: bool,

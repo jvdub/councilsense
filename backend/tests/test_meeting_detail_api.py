@@ -12,10 +12,18 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
+from councilsense.api.routes.meetings import _build_follow_up_prompt_suggestions
 from councilsense.api.routes.meetings import _merge_additive_blocks
+from councilsense.api.routes.meetings import _merge_follow_up_prompt_suggestions
+from councilsense.api.routes.meetings import _merge_resident_relevance_fields
 from councilsense.app.main import create_app
 from councilsense.app.settings import MeetingDetailAdditiveApiSettings
+from councilsense.app.settings import MeetingDetailFollowUpPromptsApiSettings
+from councilsense.app.settings import MeetingDetailResidentRelevanceApiSettings
 from councilsense.db import PILOT_CITY_ID
+from councilsense.db.meetings import MeetingDetail
+from councilsense.db.meetings import MeetingDetailClaim
+from councilsense.db.meetings import MeetingDetailEvidencePointer
 
 
 EVIDENCE_V2_KEYS = {
@@ -63,12 +71,38 @@ def _st027_contract_fixture_path() -> Path:
     return _repo_root() / "backend" / "tests" / "fixtures" / "st027_reader_api_additive_contract_examples.json"
 
 
+def _st033_contract_fixture_path() -> Path:
+    return _repo_root() / "backend" / "tests" / "fixtures" / "st033_resident_relevance_additive_contract_examples.json"
+
+
+def _st035_contract_fixture_path() -> Path:
+    return _repo_root() / "backend" / "tests" / "fixtures" / "st035_follow_up_prompts_additive_contract_examples.json"
+
+
 def _load_st027_contract_bundle() -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(_st027_contract_fixture_path().read_text(encoding="utf-8")))
 
 
+def _load_st033_contract_bundle() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(_st033_contract_fixture_path().read_text(encoding="utf-8")))
+
+
+def _load_st035_contract_bundle() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(_st035_contract_fixture_path().read_text(encoding="utf-8")))
+
+
 def _load_st027_contract_scenario(fixture_id: str) -> dict[str, Any]:
     scenarios = cast(list[dict[str, Any]], _load_st027_contract_bundle()["scenarios"])
+    return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
+
+
+def _load_st033_contract_scenario(fixture_id: str) -> dict[str, Any]:
+    scenarios = cast(list[dict[str, Any]], _load_st033_contract_bundle()["scenarios"])
+    return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
+
+
+def _load_st035_contract_scenario(fixture_id: str) -> dict[str, Any]:
+    scenarios = cast(list[dict[str, Any]], _load_st035_contract_bundle()["scenarios"])
     return next(scenario for scenario in scenarios if scenario["fixture_id"] == fixture_id)
 
 
@@ -81,11 +115,39 @@ def _with_reader_context(payload: dict[str, Any]) -> dict[str, Any]:
             "city_name": "Eagle Mountain",
             "meeting_date": meeting_date,
             "body_name": None,
-            "source_document_kind": None,
-            "source_document_url": None,
+            "source_document_kind": payload.get("source_document_kind"),
+            "source_document_url": payload.get("source_document_url"),
         }
     )
     return enriched
+
+
+def _strip_st033_resident_relevance_fields(value: object) -> object:
+    if isinstance(value, list):
+        return [_strip_st033_resident_relevance_fields(item) for item in value]
+
+    if not isinstance(value, dict):
+        return value
+
+    return {
+        key: _strip_st033_resident_relevance_fields(item)
+        for key, item in value.items()
+        if key not in {"structured_relevance", "subject", "location", "action", "scale", "impact_tags"}
+    }
+
+
+def _strip_st035_follow_up_prompt_fields(value: object) -> object:
+    if isinstance(value, list):
+        return [_strip_st035_follow_up_prompt_fields(item) for item in value]
+
+    if not isinstance(value, dict):
+        return value
+
+    return {
+        key: _strip_st035_follow_up_prompt_fields(item)
+        for key, item in value.items()
+        if key != "suggested_prompts"
+    }
 
 
 def _insert_meeting(
@@ -521,6 +583,250 @@ def _seed_st027_contract_scenario(
     )
 
 
+def _scramble_resident_relevance_fields(value: dict[str, Any]) -> dict[str, Any]:
+    scrambled = cast(dict[str, Any], json.loads(json.dumps(value)))
+
+    for field_name in ("subject", "location", "action", "scale"):
+        field = scrambled.get(field_name)
+        if isinstance(field, dict) and isinstance(field.get("evidence_references_v2"), list):
+            field["evidence_references_v2"] = list(reversed(cast(list[dict[str, Any]], field["evidence_references_v2"])))
+
+    impact_tags = scrambled.get("impact_tags")
+    if isinstance(impact_tags, list):
+        for tag in impact_tags:
+            if isinstance(tag, dict) and isinstance(tag.get("evidence_references_v2"), list):
+                tag["evidence_references_v2"] = list(reversed(cast(list[dict[str, Any]], tag["evidence_references_v2"])))
+        scrambled["impact_tags"] = list(reversed(impact_tags))
+
+    return scrambled
+
+
+def _scramble_resident_relevance_block(value: dict[str, Any]) -> dict[str, Any]:
+    scrambled = cast(dict[str, Any], json.loads(json.dumps(value)))
+    items = scrambled.get("items")
+    if isinstance(items, list):
+        scrambled["items"] = [
+            _scramble_resident_relevance_fields(item) if isinstance(item, dict) else item
+            for item in items
+        ]
+    return scrambled
+
+
+def _seed_st033_contract_scenario(
+    client: TestClient,
+    *,
+    scenario: dict[str, Any],
+    scramble_projection_ordering: bool,
+) -> None:
+    payload = cast(dict[str, Any], scenario["payload"])
+    meeting_id = cast(str, payload["id"])
+    publication_id = cast(str, payload["publication_id"])
+
+    _insert_meeting(
+        client,
+        meeting_id=meeting_id,
+        meeting_uid=cast(str, payload["meeting_uid"]),
+        title=cast(str, payload["title"]),
+        created_at=cast(str, payload["created_at"]),
+        updated_at=cast(str, payload["updated_at"]),
+        city_id=cast(str, payload["city_id"]),
+    )
+
+    metadata: dict[str, Any] = {}
+    structured_relevance = payload.get("structured_relevance")
+    if isinstance(structured_relevance, dict):
+        metadata["structured_relevance"] = (
+            _scramble_resident_relevance_fields(structured_relevance)
+            if scramble_projection_ordering
+            else cast(dict[str, Any], json.loads(json.dumps(structured_relevance)))
+        )
+
+    additive_blocks: dict[str, Any] = {}
+    for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
+        block = payload.get(block_name)
+        if not isinstance(block, dict):
+            continue
+        additive_blocks[block_name] = (
+            _scramble_resident_relevance_block(block)
+            if scramble_projection_ordering and block_name in {"planned", "outcomes"}
+            else cast(dict[str, Any], json.loads(json.dumps(block)))
+        )
+
+    if additive_blocks:
+        metadata["additive_blocks"] = additive_blocks
+
+    publish_stage_outcome_id = f"outcome-{publication_id}"
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id=publish_stage_outcome_id,
+        run_id=f"run-{publication_id}",
+        city_id=cast(str, payload["city_id"]),
+        meeting_id=meeting_id,
+        metadata=metadata,
+    )
+
+    _insert_publication(
+        client,
+        publication_id=publication_id,
+        meeting_id=meeting_id,
+        publication_status=cast(str, payload["status"]),
+        confidence_label=cast(str, payload["confidence_label"]),
+        summary_text=cast(str | None, payload["summary"]) or "",
+        key_decisions_json=json.dumps(payload["key_decisions"], separators=(",", ":")),
+        key_actions_json=json.dumps(payload["key_actions"], separators=(",", ":")),
+        notable_topics_json=json.dumps(payload["notable_topics"], separators=(",", ":")),
+        published_at=cast(str, payload["published_at"]),
+        publish_stage_outcome_id=publish_stage_outcome_id,
+    )
+
+
+def _seed_st035_contract_scenario(client: TestClient, *, scenario: dict[str, Any]) -> None:
+    payload = cast(dict[str, Any], scenario["payload"])
+    publish_metadata = cast(dict[str, Any], scenario.get("publish_metadata") or {})
+    meeting_id = cast(str, payload["id"])
+    publication_id = cast(str, payload["publication_id"])
+
+    _insert_meeting(
+        client,
+        meeting_id=meeting_id,
+        meeting_uid=cast(str, payload["meeting_uid"]),
+        title=cast(str, payload["title"]),
+        created_at=cast(str, payload["created_at"]),
+        updated_at=cast(str, payload["updated_at"]),
+        city_id=cast(str, payload["city_id"]),
+    )
+
+    publish_stage_outcome_id = f"outcome-{publication_id}"
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id=publish_stage_outcome_id,
+        run_id=f"run-{publication_id}",
+        city_id=cast(str, payload["city_id"]),
+        meeting_id=meeting_id,
+        metadata=publish_metadata,
+    )
+
+    _insert_publication(
+        client,
+        publication_id=publication_id,
+        meeting_id=meeting_id,
+        publication_status=cast(str, payload["status"]),
+        confidence_label=cast(str, payload["confidence_label"]),
+        summary_text=cast(str | None, payload["summary"]) or "",
+        key_decisions_json=json.dumps(payload["key_decisions"], separators=(",", ":")),
+        key_actions_json=json.dumps(payload["key_actions"], separators=(",", ":")),
+        notable_topics_json=json.dumps(payload["notable_topics"], separators=(",", ":")),
+        published_at=cast(str, payload["published_at"]),
+        publish_stage_outcome_id=publish_stage_outcome_id,
+    )
+
+    for claim in cast(list[dict[str, Any]], payload.get("claims") or []):
+        claim_id = cast(str, claim["id"])
+        _insert_claim(
+            client,
+            claim_id=claim_id,
+            publication_id=publication_id,
+            claim_order=cast(int, claim["claim_order"]),
+            claim_text=cast(str, claim["claim_text"]),
+        )
+        for evidence in cast(list[dict[str, Any]], claim.get("evidence") or []):
+            matching_reference = next(
+                (
+                    reference
+                    for reference in cast(list[dict[str, Any]], payload.get("evidence_references_v2") or [])
+                    if reference.get("evidence_id") == evidence.get("id")
+                ),
+                None,
+            )
+            _insert_evidence_pointer(
+                client,
+                pointer_id=cast(str, evidence["id"]),
+                claim_id=claim_id,
+                artifact_id=cast(str, evidence["artifact_id"]),
+                section_ref=cast(str | None, evidence.get("section_ref")),
+                char_start=cast(int | None, evidence.get("char_start")),
+                char_end=cast(int | None, evidence.get("char_end")),
+                excerpt=cast(str, evidence["excerpt"]),
+                document_id=cast(str | None, None if matching_reference is None else matching_reference.get("document_id")),
+                span_id=(None if matching_reference is None else f"span-{matching_reference['evidence_id']}"),
+                document_kind=cast(str | None, None if matching_reference is None else matching_reference.get("document_kind")),
+                section_path=cast(str | None, None if matching_reference is None else matching_reference.get("section_path")),
+                precision=cast(str | None, None if matching_reference is None else matching_reference.get("precision")),
+                confidence=cast(str | None, None if matching_reference is None else matching_reference.get("confidence")),
+            )
+
+
+def _meeting_detail_with_follow_up_prompt_inputs(
+    *,
+    structured_relevance: dict[str, Any] | None,
+    key_actions: tuple[str, ...],
+    claims: tuple[MeetingDetailClaim, ...],
+) -> MeetingDetail:
+    return MeetingDetail(
+        id="meeting-follow-up-test",
+        city_id=PILOT_CITY_ID,
+        city_name="Eagle Mountain",
+        meeting_uid="uid-follow-up-test",
+        title="Follow Up Prompt Test Meeting",
+        created_at="2026-03-09T12:00:00Z",
+        updated_at="2026-03-09T12:05:00Z",
+        meeting_date="2026-03-09",
+        body_name=None,
+        source_document_kind="minutes",
+        source_document_url="https://example.org/minutes/follow-up-test.pdf",
+        publication_id="pub-follow-up-test",
+        publication_status="processed",
+        confidence_label="high",
+        reader_low_confidence=False,
+        summary_text="Follow-up prompt test summary.",
+        key_decisions=(),
+        key_actions=key_actions,
+        notable_topics=(),
+        published_at="2026-03-09T12:06:00Z",
+        claims=claims,
+        structured_relevance=structured_relevance,
+        additive_blocks=None,
+    )
+
+
+def _claim_with_v2_evidence(
+    *,
+    claim_id: str,
+    claim_text: str,
+    evidence_id: str,
+    excerpt: str,
+    artifact_id: str = "artifact-follow-up-1",
+    document_kind: str = "minutes",
+    section_path: str = "minutes.section.4",
+    char_start: int | None = 10,
+    char_end: int | None = 90,
+    precision: str = "offset",
+    confidence: str = "high",
+) -> MeetingDetailClaim:
+    return MeetingDetailClaim(
+        id=claim_id,
+        claim_order=1,
+        claim_text=claim_text,
+        evidence=(
+            MeetingDetailEvidencePointer(
+                id=evidence_id,
+                artifact_id=artifact_id,
+                source_document_url="https://example.org/minutes/follow-up-test.pdf",
+                section_ref=section_path,
+                char_start=char_start,
+                char_end=char_end,
+                excerpt=excerpt,
+                document_id=f"doc-{evidence_id}",
+                span_id=f"span-{evidence_id}",
+                document_kind=document_kind,
+                section_path=section_path,
+                precision=precision,
+                confidence=confidence,
+            ),
+        ),
+    )
+
+
 def test_meeting_detail_additive_blocks_include_full_source_item_evidence_v2_when_flag_enabled(monkeypatch) -> None:
     monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
     monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
@@ -922,6 +1228,321 @@ def test_meeting_detail_flag_off_remains_baseline_equivalent_when_publish_metada
     }
 
 
+def test_meeting_detail_flag_off_omits_resident_relevance_fields_when_additive_blocks_are_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    client = _client_with_configured_cities(monkeypatch, secret="resident-flag-off-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-resident-flag-off", secret="resident-flag-off-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-resident-flag-off",
+        meeting_uid="uid-detail-resident-flag-off",
+        title="Resident Relevance Flag Off Meeting",
+        created_at="2026-03-09 12:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-resident-flag-off",
+        run_id="run-detail-resident-flag-off",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-resident-flag-off",
+        metadata={
+            "structured_relevance": {
+                "subject": {"value": "North Gateway rezoning application", "confidence": "high"},
+                "impact_tags": [{"tag": "land_use", "confidence": "high"}],
+            },
+            "additive_blocks": {
+                "planned": {
+                    "items": [
+                        {
+                            "planned_id": "planned-resident-off-1",
+                            "title": "North Gateway rezoning application",
+                            "subject": {"value": "North Gateway rezoning application", "confidence": "high"},
+                            "impact_tags": [{"tag": "land_use", "confidence": "high"}],
+                        }
+                    ]
+                },
+                "outcomes": {
+                    "items": [
+                        {
+                            "outcome_id": "outcome-resident-off-1",
+                            "title": "North Gateway rezoning approved",
+                            "action": {"value": "approved", "confidence": "high"},
+                            "impact_tags": [{"tag": "housing", "confidence": "high"}],
+                        }
+                    ]
+                },
+                "planned_outcome_mismatches": {
+                    "summary": {"total": 0, "high": 0, "medium": 0, "low": 0},
+                    "items": [],
+                },
+            }
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-resident-flag-off",
+        meeting_id="meeting-detail-resident-flag-off",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Resident relevance should remain hidden while the ST-033 flag is off.",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-09T12:05:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-resident-flag-off",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-resident-flag-off", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "structured_relevance" not in payload
+    assert "subject" not in payload["planned"]["items"][0]
+    assert "impact_tags" not in payload["planned"]["items"][0]
+    assert "action" not in payload["outcomes"]["items"][0]
+    assert "impact_tags" not in payload["outcomes"]["items"][0]
+
+
+def test_meeting_detail_flag_on_exposes_normalized_resident_relevance_fields_from_additive_blocks(monkeypatch) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    monkeypatch.setenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED", "true")
+    client = _client_with_configured_cities(monkeypatch, secret="resident-flag-on-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-resident-flag-on", secret="resident-flag-on-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-resident-flag-on",
+        meeting_uid="uid-detail-resident-flag-on",
+        title="Resident Relevance Flag On Meeting",
+        created_at="2026-03-09 13:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-publish-detail-resident-flag-on",
+        run_id="run-detail-resident-flag-on",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-resident-flag-on",
+        metadata={
+            "structured_relevance": {
+                "subject": {
+                    "value": " Main Street paving contract ",
+                    "confidence": "HIGH",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-structured-2",
+                            "document_id": "doc-structured-1",
+                            "artifact_id": "artifact-structured-1",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.7",
+                            "page_start": 7,
+                            "page_end": 7,
+                            "char_start": 40,
+                            "char_end": 110,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "Council approved the Main Street paving contract.",
+                        },
+                        {
+                            "evidence_id": "ev-structured-1",
+                            "document_id": "doc-structured-2",
+                            "artifact_id": "artifact-structured-2",
+                            "document_kind": "agenda",
+                            "section_path": "agenda.items.4",
+                            "page_start": 2,
+                            "page_end": 2,
+                            "char_start": None,
+                            "char_end": None,
+                            "precision": "section",
+                            "confidence": "medium",
+                            "excerpt": "Consider award of the Main Street paving contract.",
+                        },
+                    ],
+                },
+                "impact_tags": [
+                    {"tag": "land_use", "confidence": "bad-value"},
+                    {
+                        "tag": "traffic",
+                        "confidence": "medium",
+                        "evidence_references_v2": [
+                            {
+                                "evidence_id": "ev-impact-2",
+                                "document_id": "doc-impact-2",
+                                "artifact_id": "artifact-impact-2",
+                                "document_kind": "minutes",
+                                "section_path": "minutes.section.7",
+                                "page_start": 7,
+                                "page_end": 7,
+                                "char_start": 40,
+                                "char_end": 110,
+                                "precision": "offset",
+                                "confidence": "high",
+                                "excerpt": "Council approved the Main Street paving contract.",
+                            },
+                            {
+                                "evidence_id": "ev-impact-1",
+                                "document_id": "doc-impact-1",
+                                "artifact_id": "artifact-impact-1",
+                                "document_kind": "agenda",
+                                "section_path": "agenda.items.4",
+                                "page_start": 2,
+                                "page_end": 2,
+                                "char_start": None,
+                                "char_end": None,
+                                "precision": "section",
+                                "confidence": "medium",
+                                "excerpt": "Consider award of the Main Street paving contract.",
+                            },
+                        ],
+                    },
+                ],
+            },
+            "additive_blocks": {
+                "planned": {
+                    "items": [
+                        {
+                            "planned_id": "planned-resident-on-1",
+                            "title": "Main Street paving contract",
+                            "subject": {"value": " Main Street paving contract ", "confidence": "HIGH"},
+                            "impact_tags": [
+                                {"tag": "traffic", "confidence": "medium"},
+                                {"tag": "unknown"},
+                            ],
+                        }
+                    ]
+                },
+                "outcomes": {
+                    "items": [
+                        {
+                            "outcome_id": "outcome-resident-on-1",
+                            "title": "Main Street paving contract approved",
+                            "action": {"value": "approved", "confidence": "HIGH"},
+                            "impact_tags": [
+                                {"tag": "land_use", "confidence": "bad-value"},
+                                {"tag": "housing", "confidence": "high"},
+                            ],
+                        }
+                    ]
+                },
+                "planned_outcome_mismatches": {
+                    "summary": {"total": 0, "high": 0, "medium": 0, "low": 0},
+                    "items": [],
+                },
+            }
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-resident-flag-on",
+        meeting_id="meeting-detail-resident-flag-on",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Resident relevance should be exposed only while the ST-033 flag is on.",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-09T13:05:00Z",
+        publish_stage_outcome_id="outcome-publish-detail-resident-flag-on",
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-resident-flag-on", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["structured_relevance"] == {
+        "subject": {
+            "value": "Main Street paving contract",
+            "confidence": "high",
+            "evidence_references_v2": [
+                {
+                    "evidence_id": "ev-structured-2",
+                    "document_id": "doc-structured-1",
+                    "artifact_id": "artifact-structured-1",
+                    "document_kind": "minutes",
+                    "section_path": "minutes.section.7",
+                    "page_start": 7,
+                    "page_end": 7,
+                    "char_start": 40,
+                    "char_end": 110,
+                    "precision": "offset",
+                    "confidence": "high",
+                    "excerpt": "Council approved the Main Street paving contract.",
+                },
+                {
+                    "evidence_id": "ev-structured-1",
+                    "document_id": "doc-structured-2",
+                    "artifact_id": "artifact-structured-2",
+                    "document_kind": "agenda",
+                    "section_path": "agenda.items.4",
+                    "page_start": 2,
+                    "page_end": 2,
+                    "char_start": None,
+                    "char_end": None,
+                    "precision": "section",
+                    "confidence": "medium",
+                    "excerpt": "Consider award of the Main Street paving contract.",
+                },
+            ],
+        },
+        "impact_tags": [
+            {
+                "tag": "traffic",
+                "confidence": "medium",
+                "evidence_references_v2": [
+                    {
+                        "evidence_id": "ev-impact-2",
+                        "document_id": "doc-impact-2",
+                        "artifact_id": "artifact-impact-2",
+                        "document_kind": "minutes",
+                        "section_path": "minutes.section.7",
+                        "page_start": 7,
+                        "page_end": 7,
+                        "char_start": 40,
+                        "char_end": 110,
+                        "precision": "offset",
+                        "confidence": "high",
+                        "excerpt": "Council approved the Main Street paving contract.",
+                    },
+                    {
+                        "evidence_id": "ev-impact-1",
+                        "document_id": "doc-impact-1",
+                        "artifact_id": "artifact-impact-1",
+                        "document_kind": "agenda",
+                        "section_path": "agenda.items.4",
+                        "page_start": 2,
+                        "page_end": 2,
+                        "char_start": None,
+                        "char_end": None,
+                        "precision": "section",
+                        "confidence": "medium",
+                        "excerpt": "Consider award of the Main Street paving contract.",
+                    },
+                ],
+            },
+            {"tag": "land_use"},
+        ],
+    }
+    assert payload["planned"]["items"][0]["subject"] == {
+        "value": "Main Street paving contract",
+        "confidence": "high",
+    }
+    assert payload["planned"]["items"][0]["impact_tags"] == [{"tag": "traffic", "confidence": "medium"}]
+    assert payload["outcomes"]["items"][0]["action"] == {
+        "value": "approved",
+        "confidence": "high",
+    }
+    assert payload["outcomes"]["items"][0]["impact_tags"] == [
+        {"tag": "housing", "confidence": "high"},
+        {"tag": "land_use"},
+    ]
+
+
 @pytest.mark.parametrize(
     "fixture_id",
     [
@@ -972,6 +1593,117 @@ def test_st027_flag_off_meeting_detail_matches_baseline_contract_fixture_even_wi
 
     assert response.status_code == 200
     assert response.json() == _with_reader_context(baseline_payload)
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    [
+        "st033-flag-on-full-structured-relevance",
+        "st033-flag-on-sparse-structured-relevance",
+        "st033-flag-on-legacy-structured-relevance-omitted",
+    ],
+)
+def test_st033_meeting_detail_projection_matches_contract_fixture_for_nominal_sparse_and_missing_data(
+    monkeypatch,
+    fixture_id: str,
+) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+    monkeypatch.setenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED", "true")
+
+    scenario = _load_st033_contract_scenario(fixture_id)
+    payload = cast(dict[str, Any], scenario["payload"])
+
+    client = _client_with_configured_cities(monkeypatch, secret=f"{fixture_id}-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token(f"user-{fixture_id}", secret=f"{fixture_id}-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _seed_st033_contract_scenario(
+        client,
+        scenario=scenario,
+        scramble_projection_ordering=True,
+    )
+
+    first_response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
+    second_response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json() == _with_reader_context(payload)
+    assert second_response.json() == _with_reader_context(payload)
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    [
+        "st033-flag-off-baseline-with-st027-blocks",
+        "st033-flag-on-full-structured-relevance",
+        "st033-flag-on-sparse-structured-relevance",
+        "st033-flag-on-legacy-structured-relevance-omitted",
+    ],
+)
+def test_st033_meeting_detail_flag_state_parity_matches_fixture_when_resident_relevance_is_ignored(
+    monkeypatch,
+    fixture_id: str,
+) -> None:
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_FIELDS_ENABLED", "true")
+    monkeypatch.setenv("ST022_API_ADDITIVE_V1_BLOCKS", "planned,outcomes,planned_outcome_mismatches")
+
+    scenario = _load_st033_contract_scenario(fixture_id)
+    payload = cast(dict[str, Any], scenario["payload"])
+
+    monkeypatch.setenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED", "true")
+    client_flag_on = _client_with_configured_cities(
+        monkeypatch,
+        secret=f"{fixture_id}-flag-on-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token_flag_on = _issue_token(
+        f"user-{fixture_id}-flag-on",
+        secret=f"{fixture_id}-flag-on-secret",
+        expires_in_seconds=300,
+    )
+    headers_flag_on = {"Authorization": f"Bearer {token_flag_on}"}
+    _set_home_city(client_flag_on, headers=headers_flag_on)
+    _seed_st033_contract_scenario(
+        client_flag_on,
+        scenario=scenario,
+        scramble_projection_ordering=True,
+    )
+
+    flag_on_response = client_flag_on.get(f"/v1/meetings/{payload['id']}", headers=headers_flag_on)
+
+    monkeypatch.setenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED", "false")
+    client_flag_off = _client_with_configured_cities(
+        monkeypatch,
+        secret=f"{fixture_id}-flag-off-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token_flag_off = _issue_token(
+        f"user-{fixture_id}-flag-off",
+        secret=f"{fixture_id}-flag-off-secret",
+        expires_in_seconds=300,
+    )
+    headers_flag_off = {"Authorization": f"Bearer {token_flag_off}"}
+    _set_home_city(client_flag_off, headers=headers_flag_off)
+    _seed_st033_contract_scenario(
+        client_flag_off,
+        scenario=scenario,
+        scramble_projection_ordering=True,
+    )
+
+    flag_off_response = client_flag_off.get(f"/v1/meetings/{payload['id']}", headers=headers_flag_off)
+
+    assert flag_on_response.status_code == 200
+    assert flag_off_response.status_code == 200
+
+    expected_flag_on = _with_reader_context(payload)
+    expected_flag_off = cast(dict[str, Any], _strip_st033_resident_relevance_fields(expected_flag_on))
+
+    assert flag_on_response.json() == expected_flag_on
+    assert flag_off_response.json() == expected_flag_off
+    assert _strip_st033_resident_relevance_fields(flag_on_response.json()) == flag_off_response.json()
 
 
 def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatch) -> None:
@@ -1738,3 +2470,642 @@ def test_meeting_detail_parity_guard_rejects_disallowed_additive_blocks_when_fla
                 enabled_blocks=("planned", "outcomes"),
             ),
         )
+
+
+def test_meeting_detail_resident_relevance_flag_off_scrubs_top_level_and_item_level_fields() -> None:
+    payload = _merge_resident_relevance_fields(
+        payload={
+            "id": "meeting-detail-resident-guard",
+            "structured_relevance": {
+                "subject": {"value": "North Gateway rezoning application", "confidence": "high"},
+                "impact_tags": [{"tag": "land_use", "confidence": "high"}],
+            },
+            "planned": {
+                "items": [
+                    {
+                        "planned_id": "planned-1",
+                        "subject": {"value": "North Gateway rezoning application", "confidence": "high"},
+                    }
+                ]
+            },
+            "outcomes": {
+                "items": [
+                    {
+                        "outcome_id": "outcome-1",
+                        "action": {"value": "approved", "confidence": "high"},
+                        "impact_tags": [{"tag": "housing", "confidence": "high"}],
+                    }
+                ]
+            },
+        },
+        resident_relevance_api_settings=MeetingDetailResidentRelevanceApiSettings(enabled=False),
+    )
+
+    assert "structured_relevance" not in payload
+    assert "subject" not in payload["planned"]["items"][0]
+    assert "action" not in payload["outcomes"]["items"][0]
+    assert "impact_tags" not in payload["outcomes"]["items"][0]
+
+
+def test_meeting_detail_resident_relevance_flag_on_keeps_only_normalized_supported_fields() -> None:
+    payload = _merge_resident_relevance_fields(
+        payload={
+            "id": "meeting-detail-resident-guard",
+            "structured_relevance": {
+                "subject": {
+                    "value": " Main Street paving contract ",
+                    "confidence": "HIGH",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-1",
+                            "document_id": "doc-1",
+                            "artifact_id": "artifact-1",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.2",
+                            "page_start": 2,
+                            "page_end": 2,
+                            "char_start": 10,
+                            "char_end": 40,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "Council approved the Main Street paving contract.",
+                        }
+                    ],
+                },
+                "impact_tags": [
+                    {"tag": "land_use", "confidence": "bad"},
+                    {"tag": "traffic", "confidence": "medium"},
+                ],
+            },
+            "planned": {
+                "items": [
+                    {
+                        "planned_id": "planned-1",
+                        "subject": {"value": "", "confidence": "high"},
+                        "impact_tags": [{"tag": "unsupported"}],
+                    }
+                ]
+            },
+        },
+        resident_relevance_api_settings=MeetingDetailResidentRelevanceApiSettings(enabled=True),
+    )
+
+    assert payload["structured_relevance"] == {
+        "subject": {
+            "value": "Main Street paving contract",
+            "confidence": "high",
+            "evidence_references_v2": [
+                {
+                    "evidence_id": "ev-1",
+                    "document_id": "doc-1",
+                    "artifact_id": "artifact-1",
+                    "document_kind": "minutes",
+                    "section_path": "minutes.section.2",
+                    "page_start": 2,
+                    "page_end": 2,
+                    "char_start": 10,
+                    "char_end": 40,
+                    "precision": "offset",
+                    "confidence": "high",
+                    "excerpt": "Council approved the Main Street paving contract.",
+                }
+            ],
+        },
+        "impact_tags": [
+            {"tag": "traffic", "confidence": "medium"},
+            {"tag": "land_use"},
+        ],
+    }
+    assert payload["planned"]["items"][0] == {"planned_id": "planned-1"}
+
+
+def test_follow_up_prompt_suggestions_omit_all_prompts_when_top_level_structured_relevance_is_missing() -> None:
+    detail = _meeting_detail_with_follow_up_prompt_inputs(
+        structured_relevance=None,
+        key_actions=("Staff will publish the ordinance by April 15, 2026.",),
+        claims=(
+            _claim_with_v2_evidence(
+                claim_id="claim-follow-up-omit-1",
+                claim_text="Staff will publish the ordinance by April 15, 2026.",
+                evidence_id="ev-follow-up-omit-1",
+                excerpt="Staff will publish the ordinance by April 15, 2026.",
+            ),
+        ),
+    )
+
+    assert _build_follow_up_prompt_suggestions(detail) == []
+
+
+def test_follow_up_prompt_suggestions_follow_split_rules_for_mixed_scale_phrase() -> None:
+    detail = _meeting_detail_with_follow_up_prompt_inputs(
+        structured_relevance={
+            "subject": {
+                "value": "North Gateway rezoning application",
+                "confidence": "high",
+                "evidence_references_v2": [
+                    {
+                        "evidence_id": "ev-follow-up-scale-subject",
+                        "document_id": "doc-follow-up-scale-subject",
+                        "artifact_id": "artifact-follow-up-scale-subject",
+                        "document_kind": "minutes",
+                        "section_path": "minutes.section.4",
+                        "page_start": None,
+                        "page_end": None,
+                        "char_start": 12,
+                        "char_end": 80,
+                        "precision": "offset",
+                        "confidence": "high",
+                        "excerpt": "North Gateway rezoning application covering 142 acres by June 2027.",
+                    }
+                ],
+            },
+            "scale": {
+                "value": "142 acres by June 2027",
+                "confidence": "high",
+                "evidence_references_v2": [
+                    {
+                        "evidence_id": "ev-follow-up-scale-1",
+                        "document_id": "doc-follow-up-scale-1",
+                        "artifact_id": "artifact-follow-up-scale-1",
+                        "document_kind": "minutes",
+                        "section_path": "minutes.section.4",
+                        "page_start": None,
+                        "page_end": None,
+                        "char_start": 12,
+                        "char_end": 80,
+                        "precision": "offset",
+                        "confidence": "high",
+                        "excerpt": "North Gateway rezoning application covering 142 acres by June 2027.",
+                    }
+                ],
+            },
+        },
+        key_actions=(),
+        claims=(),
+    )
+
+    prompts = _build_follow_up_prompt_suggestions(detail)
+
+    assert [prompt["prompt_id"] for prompt in prompts] == ["project_identity", "scale"]
+    assert prompts[1]["answer"] == "The scale in the record is 142 acres by June 2027."
+
+
+def test_meeting_detail_follow_up_prompt_flag_off_preserves_route_parity(monkeypatch) -> None:
+    payload = _merge_follow_up_prompt_suggestions(
+        payload={
+            "id": "meeting-follow-up-flag-off",
+            "suggested_prompts": [{"prompt_id": "project_identity"}],
+        },
+        detail=_meeting_detail_with_follow_up_prompt_inputs(
+            structured_relevance={
+                "subject": {
+                    "value": "North Gateway rezoning application",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-flag-off",
+                            "document_id": "doc-follow-up-flag-off",
+                            "artifact_id": "artifact-follow-up-flag-off",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.4",
+                            "page_start": None,
+                            "page_end": None,
+                            "char_start": 12,
+                            "char_end": 80,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "North Gateway rezoning application.",
+                        }
+                    ],
+                }
+            },
+            key_actions=(),
+            claims=(),
+        ),
+        follow_up_prompts_api_settings=MeetingDetailFollowUpPromptsApiSettings(enabled=False),
+    )
+
+    assert payload == {"id": "meeting-follow-up-flag-off"}
+
+
+def test_meeting_detail_follow_up_prompt_merge_drops_stale_prompt_shell_when_no_grounded_answers_exist() -> None:
+    payload = _merge_follow_up_prompt_suggestions(
+        payload={
+            "id": "meeting-follow-up-no-grounding",
+            "summary": "Discussion of future work with no grounded follow-up answers.",
+            "suggested_prompts": [
+                {
+                    "prompt_id": "project_identity",
+                    "prompt": "What project or item is this about?",
+                    "answer": "Placeholder answer.",
+                    "evidence_references_v2": [],
+                }
+            ],
+        },
+        detail=_meeting_detail_with_follow_up_prompt_inputs(
+            structured_relevance={
+                "scale": {
+                    "value": "next week",
+                    "confidence": "high",
+                }
+            },
+            key_actions=("Operator replay completed.",),
+            claims=(
+                _claim_with_v2_evidence(
+                    claim_id="claim-follow-up-no-grounding-1",
+                    claim_text="Operator replay completed.",
+                    evidence_id="ev-follow-up-no-grounding-1",
+                    excerpt="Operator replay completed.",
+                ),
+            ),
+        ),
+        follow_up_prompts_api_settings=MeetingDetailFollowUpPromptsApiSettings(enabled=True),
+    )
+
+    assert payload == {
+        "id": "meeting-follow-up-no-grounding",
+        "summary": "Discussion of future work with no grounded follow-up answers.",
+    }
+
+
+def test_meeting_detail_follow_up_prompts_are_present_deterministic_and_evidence_backed_when_flag_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "true")
+
+    client = _client_with_configured_cities(monkeypatch, secret="follow-up-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-follow-up", secret="follow-up-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-follow-up-enabled",
+        meeting_uid="uid-follow-up-enabled",
+        title="Follow Up Enabled Meeting",
+        created_at="2026-03-09 14:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-follow-up-enabled",
+        run_id="run-follow-up-enabled",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-follow-up-enabled",
+        metadata={
+            "structured_relevance": {
+                "subject": {
+                    "value": " North Gateway rezoning application ",
+                    "confidence": "HIGH",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-subject-2",
+                            "document_id": "doc-follow-up-subject-2",
+                            "artifact_id": "artifact-follow-up-subject-2",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.4",
+                            "page_start": None,
+                            "page_end": None,
+                            "char_start": 18,
+                            "char_end": 122,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District.",
+                        },
+                        {
+                            "evidence_id": "ev-follow-up-subject-1",
+                            "document_id": "doc-follow-up-subject-1",
+                            "artifact_id": "artifact-follow-up-subject-1",
+                            "document_kind": "agenda",
+                            "section_path": "agenda.items.7",
+                            "page_start": 5,
+                            "page_end": 5,
+                            "char_start": None,
+                            "char_end": None,
+                            "precision": "section",
+                            "confidence": "medium",
+                            "excerpt": "Public hearing and action on the North Gateway rezoning application.",
+                        },
+                    ],
+                },
+                "location": {
+                    "value": "North Gateway District",
+                    "confidence": "high",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-location-1",
+                            "document_id": "doc-follow-up-location-1",
+                            "artifact_id": "artifact-follow-up-location-1",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.4",
+                            "page_start": None,
+                            "page_end": None,
+                            "char_start": 60,
+                            "char_end": 122,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District.",
+                        }
+                    ],
+                },
+                "action": {
+                    "value": "approved",
+                    "confidence": "high",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-action-1",
+                            "document_id": "doc-follow-up-action-1",
+                            "artifact_id": "artifact-follow-up-action-1",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.4",
+                            "page_start": None,
+                            "page_end": None,
+                            "char_start": 18,
+                            "char_end": 40,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District.",
+                        }
+                    ],
+                },
+                "scale": {
+                    "value": "142 acres and 893 units",
+                    "confidence": "high",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-scale-1",
+                            "document_id": "doc-follow-up-scale-1",
+                            "artifact_id": "artifact-follow-up-scale-1",
+                            "document_kind": "minutes",
+                            "section_path": "minutes.section.5",
+                            "page_start": 6,
+                            "page_end": 6,
+                            "char_start": 10,
+                            "char_end": 62,
+                            "precision": "offset",
+                            "confidence": "high",
+                            "excerpt": "The ordinance covers 142 acres and 893 units.",
+                        }
+                    ],
+                },
+            }
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-follow-up-enabled",
+        meeting_id="meeting-follow-up-enabled",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Council approved the North Gateway rezoning application.",
+        key_decisions_json='["Approved the North Gateway rezoning application."]',
+        key_actions_json='["Staff will publish the ordinance by April 15, 2026.","Operator replay completed."]',
+        notable_topics_json='["Land use"]',
+        published_at="2026-03-09T14:05:00Z",
+        publish_stage_outcome_id="outcome-follow-up-enabled",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-follow-up-enabled-1",
+        publication_id="pub-follow-up-enabled",
+        claim_order=1,
+        claim_text="Staff will publish the ordinance by April 15, 2026.",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="pointer-follow-up-enabled-1",
+        claim_id="claim-follow-up-enabled-1",
+        artifact_id="artifact-follow-up-action-2",
+        section_ref="minutes.section.7",
+        char_start=40,
+        char_end=112,
+        excerpt="Staff will publish the ordinance by April 15, 2026.",
+        document_id="doc-follow-up-action-2",
+        span_id="span-follow-up-action-2",
+        document_kind="minutes",
+        section_path="minutes.section.7",
+        precision="offset",
+        confidence="high",
+    )
+
+    first_response = client.get("/v1/meetings/meeting-follow-up-enabled", headers=headers)
+    second_response = client.get("/v1/meetings/meeting-follow-up-enabled", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+
+    assert first_payload["suggested_prompts"] == second_payload["suggested_prompts"]
+    assert [prompt["prompt_id"] for prompt in first_payload["suggested_prompts"]] == [
+        "project_identity",
+        "location",
+        "disposition",
+        "scale",
+        "timeline",
+        "next_step",
+    ]
+    assert [prompt["prompt"] for prompt in first_payload["suggested_prompts"]] == [
+        "What project or item is this about?",
+        "Where does this apply?",
+        "What happened at this meeting?",
+        "How large is it?",
+        "What is the timeline?",
+        "What happens next?",
+    ]
+    assert [prompt["answer"] for prompt in first_payload["suggested_prompts"]] == [
+        "North Gateway rezoning application.",
+        "It applies to North Gateway District.",
+        "North Gateway rezoning application was approved.",
+        "The scale in the record is 142 acres and 893 units.",
+        "The timeline in the record is April 15, 2026.",
+        "Staff will publish the ordinance by April 15, 2026.",
+    ]
+    assert all(prompt["evidence_references_v2"] for prompt in first_payload["suggested_prompts"])
+    assert first_payload["suggested_prompts"][0]["evidence_references_v2"][0]["precision"] == "offset"
+    assert first_payload["suggested_prompts"][0]["evidence_references_v2"][1]["precision"] == "section"
+
+
+def test_meeting_detail_follow_up_prompts_omit_unsupported_answers_cleanly_when_flag_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "true")
+
+    client = _client_with_configured_cities(monkeypatch, secret="follow-up-omit-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-follow-up-omit", secret="follow-up-omit-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-follow-up-omit",
+        meeting_uid="uid-follow-up-omit",
+        title="Follow Up Omit Meeting",
+        created_at="2026-03-09 15:00:00",
+    )
+    _insert_publish_stage_outcome(
+        client,
+        outcome_id="outcome-follow-up-omit",
+        run_id="run-follow-up-omit",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-follow-up-omit",
+        metadata={
+            "structured_relevance": {
+                "location": {
+                    "value": "Main Street",
+                    "confidence": "medium",
+                    "evidence_references_v2": [
+                        {
+                            "evidence_id": "ev-follow-up-omit-location-1",
+                            "document_id": "doc-follow-up-omit-location-1",
+                            "artifact_id": "artifact-follow-up-omit-location-1",
+                            "document_kind": "agenda",
+                            "section_path": "agenda.items.4",
+                            "page_start": 3,
+                            "page_end": 3,
+                            "char_start": None,
+                            "char_end": None,
+                            "precision": "section",
+                            "confidence": "medium",
+                            "excerpt": "Discussion of work on Main Street.",
+                        }
+                    ],
+                },
+                "scale": {
+                    "value": "next week",
+                    "confidence": "high"
+                }
+            }
+        },
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-follow-up-omit",
+        meeting_id="meeting-follow-up-omit",
+        publication_status="processed",
+        confidence_label="medium",
+        summary_text="Discussion of future work on Main Street.",
+        key_decisions_json="[]",
+        key_actions_json='["Operator replay completed."]',
+        notable_topics_json='["Transportation"]',
+        published_at="2026-03-09T15:05:00Z",
+        publish_stage_outcome_id="outcome-follow-up-omit",
+    )
+    _insert_claim(
+        client,
+        claim_id="claim-follow-up-omit-1",
+        publication_id="pub-follow-up-omit",
+        claim_order=1,
+        claim_text="Operator replay completed.",
+    )
+    _insert_evidence_pointer(
+        client,
+        pointer_id="pointer-follow-up-omit-1",
+        claim_id="claim-follow-up-omit-1",
+        artifact_id="artifact-follow-up-omit-action-1",
+        section_ref="minutes.section.9",
+        char_start=5,
+        char_end=40,
+        excerpt="Operator replay completed.",
+        document_id="doc-follow-up-omit-action-1",
+        span_id="span-follow-up-omit-action-1",
+        document_kind="minutes",
+        section_path="minutes.section.9",
+        precision="offset",
+        confidence="high",
+    )
+
+    response = client.get("/v1/meetings/meeting-follow-up-omit", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["suggested_prompts"] == [
+        {
+            "prompt_id": "location",
+            "prompt": "Where does this apply?",
+            "answer": "It applies to Main Street.",
+            "evidence_references_v2": [
+                {
+                    "evidence_id": "ev-follow-up-omit-location-1",
+                    "document_id": "doc-follow-up-omit-location-1",
+                    "artifact_id": "artifact-follow-up-omit-location-1",
+                    "document_kind": "agenda",
+                    "section_path": "agenda.items.4",
+                    "page_start": 3,
+                    "page_end": 3,
+                    "char_start": None,
+                    "char_end": None,
+                    "precision": "section",
+                    "confidence": "medium",
+                    "excerpt": "Discussion of work on Main Street.",
+                }
+            ],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    [
+        "st035-flag-on-supported-prompts",
+        "st035-flag-on-unsupported-omits-prompt-block",
+    ],
+)
+def test_st035_meeting_detail_matches_contract_fixture_when_follow_up_prompt_flag_enabled(
+    monkeypatch,
+    fixture_id: str,
+) -> None:
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "true")
+
+    scenario = _load_st035_contract_scenario(fixture_id)
+    payload = cast(dict[str, Any], scenario["payload"])
+
+    client = _client_with_configured_cities(monkeypatch, secret=f"{fixture_id}-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token(f"user-{fixture_id}", secret=f"{fixture_id}-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _seed_st035_contract_scenario(client, scenario=scenario)
+
+    first_response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
+    second_response = client.get(f"/v1/meetings/{payload['id']}", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json() == _with_reader_context(payload)
+    assert second_response.json() == _with_reader_context(payload)
+
+
+def test_st035_meeting_detail_flag_state_parity_matches_fixture_when_follow_up_prompts_are_ignored(monkeypatch) -> None:
+    scenario = _load_st035_contract_scenario("st035-flag-on-supported-prompts")
+    payload = cast(dict[str, Any], scenario["payload"])
+
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "true")
+    client_flag_on = _client_with_configured_cities(
+        monkeypatch,
+        secret="st035-flag-on-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token_flag_on = _issue_token("user-st035-flag-on", secret="st035-flag-on-secret", expires_in_seconds=300)
+    headers_flag_on = {"Authorization": f"Bearer {token_flag_on}"}
+    _set_home_city(client_flag_on, headers=headers_flag_on)
+    _seed_st035_contract_scenario(client_flag_on, scenario=scenario)
+
+    flag_on_response = client_flag_on.get(f"/v1/meetings/{payload['id']}", headers=headers_flag_on)
+
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "false")
+    client_flag_off = _client_with_configured_cities(
+        monkeypatch,
+        secret="st035-flag-off-secret",
+        supported_city_ids=PILOT_CITY_ID,
+    )
+    token_flag_off = _issue_token("user-st035-flag-off", secret="st035-flag-off-secret", expires_in_seconds=300)
+    headers_flag_off = {"Authorization": f"Bearer {token_flag_off}"}
+    _set_home_city(client_flag_off, headers=headers_flag_off)
+    _seed_st035_contract_scenario(client_flag_off, scenario=scenario)
+
+    flag_off_response = client_flag_off.get(f"/v1/meetings/{payload['id']}", headers=headers_flag_off)
+
+    assert flag_on_response.status_code == 200
+    assert flag_off_response.status_code == 200
+
+    expected_flag_on = _with_reader_context(payload)
+    expected_flag_off = cast(dict[str, Any], _strip_st035_follow_up_prompt_fields(expected_flag_on))
+
+    assert flag_on_response.json() == expected_flag_on
+    assert flag_off_response.json() == expected_flag_off
+    assert _strip_st035_follow_up_prompt_fields(flag_on_response.json()) == flag_off_response.json()

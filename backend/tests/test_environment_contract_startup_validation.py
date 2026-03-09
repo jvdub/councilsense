@@ -7,6 +7,8 @@ from councilsense.app.notification_delivery_worker import validate_worker_startu
 from councilsense.app.settings import (
     DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED,
     DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED,
+    DEFAULT_ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED,
+    DEFAULT_ST035_API_FOLLOW_UP_PROMPTS_ENABLED,
     DEFAULT_SESSION_SECRET,
     MappingSecretSource,
     get_settings,
@@ -29,6 +31,14 @@ def test_local_runtime_uses_safe_defaults_for_api_startup(monkeypatch: pytest.Mo
     )
     assert settings.meeting_detail_additive_api.enabled == DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED
     assert settings.meeting_detail_additive_api.enabled_blocks == ()
+    assert (
+        settings.meeting_detail_resident_relevance_api.enabled
+        == DEFAULT_ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED
+    )
+    assert (
+        settings.meeting_detail_follow_up_prompts_api.enabled
+        == DEFAULT_ST035_API_FOLLOW_UP_PROMPTS_ENABLED
+    )
 
 
 def test_meeting_detail_legacy_evidence_flag_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -75,6 +85,22 @@ def test_st022_additive_api_mismatches_require_planned_and_outcomes(monkeypatch:
 
     with pytest.raises(ValueError, match="cannot enable planned_outcome_mismatches without planned and outcomes"):
         get_settings(service_name="api")
+
+
+def test_st033_resident_relevance_api_flag_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED", "true")
+
+    settings = get_settings(service_name="api")
+
+    assert settings.meeting_detail_resident_relevance_api.enabled is True
+
+
+def test_st035_follow_up_prompts_api_flag_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED", "true")
+
+    settings = get_settings(service_name="api")
+
+    assert settings.meeting_detail_follow_up_prompts_api.enabled is True
 
 
 def test_aws_runtime_requires_auth_session_secret_for_api(monkeypatch: pytest.MonkeyPatch) -> None:

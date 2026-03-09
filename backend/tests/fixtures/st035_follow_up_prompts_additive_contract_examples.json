@@ -1,0 +1,492 @@
+{
+  "schema_version": "st035-follow-up-prompts-additive-contract-examples-v1",
+  "contract_version": "st-035-reader-follow-up-prompts-v1",
+  "task_id": "TASK-ST-035-03",
+  "depends_on": ["TASK-ST-035-02", "TASK-ST-033-04"],
+  "flag_name": "ST035_API_FOLLOW_UP_PROMPTS_ENABLED",
+  "field_presence_matrix": [
+    {
+      "fixture_id": "st035-flag-on-supported-prompts",
+      "flag_state": "on",
+      "meeting_support_state": "supported",
+      "expected_present_top_level_fields": [
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+        "evidence_references",
+        "evidence_references_v2",
+        "suggested_prompts"
+      ],
+      "expected_absent_top_level_fields": [
+        "structured_relevance"
+      ],
+      "expected_present_prompt_paths": [
+        "$.suggested_prompts",
+        "$.suggested_prompts[0].evidence_references_v2",
+        "$.suggested_prompts[1].evidence_references_v2",
+        "$.suggested_prompts[2].evidence_references_v2",
+        "$.suggested_prompts[3].evidence_references_v2",
+        "$.suggested_prompts[4].evidence_references_v2",
+        "$.suggested_prompts[5].evidence_references_v2"
+      ],
+      "expected_omitted_prompt_paths": []
+    },
+    {
+      "fixture_id": "st035-flag-on-unsupported-omits-prompt-block",
+      "flag_state": "on",
+      "meeting_support_state": "unsupported",
+      "expected_present_top_level_fields": [
+        "id",
+        "city_id",
+        "meeting_uid",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "confidence_label",
+        "reader_low_confidence",
+        "publication_id",
+        "published_at",
+        "summary",
+        "key_decisions",
+        "key_actions",
+        "notable_topics",
+        "claims",
+        "evidence_references",
+        "evidence_references_v2"
+      ],
+      "expected_absent_top_level_fields": [
+        "structured_relevance",
+        "suggested_prompts"
+      ],
+      "expected_present_prompt_paths": [],
+      "expected_omitted_prompt_paths": [
+        "$.suggested_prompts"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "fixture_id": "st035-flag-on-supported-prompts",
+      "flag_state": "on",
+      "meeting_support_state": "supported",
+      "publish_metadata": {
+        "structured_relevance": {
+          "subject": {
+            "value": " North Gateway rezoning application ",
+            "confidence": "HIGH",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-subject-2",
+                "document_id": "doc-follow-up-subject-2",
+                "artifact_id": "artifact-follow-up-subject-2",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 18,
+                "char_end": 122,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              },
+              {
+                "evidence_id": "ev-follow-up-subject-1",
+                "document_id": "doc-follow-up-subject-1",
+                "artifact_id": "artifact-follow-up-subject-1",
+                "document_kind": "agenda",
+                "section_path": "agenda.items.7",
+                "page_start": 5,
+                "page_end": 5,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "medium",
+                "excerpt": "Public hearing and action on the North Gateway rezoning application."
+              }
+            ]
+          },
+          "location": {
+            "value": "North Gateway District",
+            "confidence": "high",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-location-1",
+                "document_id": "doc-follow-up-location-1",
+                "artifact_id": "artifact-follow-up-location-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 60,
+                "char_end": 122,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              }
+            ]
+          },
+          "action": {
+            "value": "approved",
+            "confidence": "high",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-action-1",
+                "document_id": "doc-follow-up-action-1",
+                "artifact_id": "artifact-follow-up-action-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 18,
+                "char_end": 40,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              }
+            ]
+          },
+          "scale": {
+            "value": "142 acres and 893 units",
+            "confidence": "high",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-scale-1",
+                "document_id": "doc-follow-up-scale-1",
+                "artifact_id": "artifact-follow-up-scale-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.5",
+                "page_start": 6,
+                "page_end": 6,
+                "char_start": 10,
+                "char_end": 62,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "The ordinance covers 142 acres and 893 units."
+              }
+            ]
+          }
+        }
+      },
+      "payload": {
+        "id": "meeting-follow-up-contract-supported",
+        "city_id": "city-eagle-mountain-ut",
+        "meeting_uid": "uid-follow-up-contract-supported",
+        "title": "Follow Up Contract Supported Meeting",
+        "created_at": "2026-03-09T14:00:00Z",
+        "updated_at": "2026-03-09T14:05:00Z",
+        "source_document_kind": "minutes",
+        "source_document_url": null,
+        "status": "processed",
+        "confidence_label": "high",
+        "reader_low_confidence": false,
+        "publication_id": "pub-follow-up-contract-supported",
+        "published_at": "2026-03-09T14:05:00Z",
+        "summary": "Council approved the North Gateway rezoning application.",
+        "key_decisions": [
+          "Approved the North Gateway rezoning application."
+        ],
+        "key_actions": [
+          "Staff will publish the ordinance by April 15, 2026.",
+          "Operator replay completed."
+        ],
+        "notable_topics": [
+          "Land use"
+        ],
+        "evidence_references_v2": [
+          {
+            "evidence_id": "pointer-follow-up-contract-supported-1",
+            "document_id": "doc-follow-up-contract-supported-1",
+            "artifact_id": "artifact-follow-up-contract-supported-1",
+            "document_kind": "minutes",
+            "section_path": "minutes.section.7",
+            "page_start": null,
+            "page_end": null,
+            "char_start": 40,
+            "char_end": 112,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Staff will publish the ordinance by April 15, 2026."
+          }
+        ],
+        "evidence_references": [
+          "Staff will publish the ordinance by April 15, 2026. | artifact-follow-up-contract-supported-1#minutes.section.7:40-112"
+        ],
+        "claims": [
+          {
+            "id": "claim-follow-up-contract-supported-1",
+            "claim_order": 1,
+            "claim_text": "Staff will publish the ordinance by April 15, 2026.",
+            "evidence": [
+              {
+                "id": "pointer-follow-up-contract-supported-1",
+                "artifact_id": "artifact-follow-up-contract-supported-1",
+                "source_document_url": null,
+                "section_ref": "minutes.section.7",
+                "char_start": 40,
+                "char_end": 112,
+                "excerpt": "Staff will publish the ordinance by April 15, 2026."
+              }
+            ]
+          }
+        ],
+        "suggested_prompts": [
+          {
+            "prompt_id": "project_identity",
+            "prompt": "What project or item is this about?",
+            "answer": "North Gateway rezoning application.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-subject-2",
+                "document_id": "doc-follow-up-subject-2",
+                "artifact_id": "artifact-follow-up-subject-2",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 18,
+                "char_end": 122,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              },
+              {
+                "evidence_id": "ev-follow-up-subject-1",
+                "document_id": "doc-follow-up-subject-1",
+                "artifact_id": "artifact-follow-up-subject-1",
+                "document_kind": "agenda",
+                "section_path": "agenda.items.7",
+                "page_start": 5,
+                "page_end": 5,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "medium",
+                "excerpt": "Public hearing and action on the North Gateway rezoning application."
+              }
+            ]
+          },
+          {
+            "prompt_id": "location",
+            "prompt": "Where does this apply?",
+            "answer": "It applies to North Gateway District.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-location-1",
+                "document_id": "doc-follow-up-location-1",
+                "artifact_id": "artifact-follow-up-location-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 60,
+                "char_end": 122,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              }
+            ]
+          },
+          {
+            "prompt_id": "disposition",
+            "prompt": "What happened at this meeting?",
+            "answer": "North Gateway rezoning application was approved.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-action-1",
+                "document_id": "doc-follow-up-action-1",
+                "artifact_id": "artifact-follow-up-action-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 18,
+                "char_end": 40,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              },
+              {
+                "evidence_id": "ev-follow-up-subject-2",
+                "document_id": "doc-follow-up-subject-2",
+                "artifact_id": "artifact-follow-up-subject-2",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.4",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 18,
+                "char_end": 122,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+              },
+              {
+                "evidence_id": "ev-follow-up-subject-1",
+                "document_id": "doc-follow-up-subject-1",
+                "artifact_id": "artifact-follow-up-subject-1",
+                "document_kind": "agenda",
+                "section_path": "agenda.items.7",
+                "page_start": 5,
+                "page_end": 5,
+                "char_start": null,
+                "char_end": null,
+                "precision": "section",
+                "confidence": "medium",
+                "excerpt": "Public hearing and action on the North Gateway rezoning application."
+              }
+            ]
+          },
+          {
+            "prompt_id": "scale",
+            "prompt": "How large is it?",
+            "answer": "The scale in the record is 142 acres and 893 units.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "ev-follow-up-scale-1",
+                "document_id": "doc-follow-up-scale-1",
+                "artifact_id": "artifact-follow-up-scale-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.5",
+                "page_start": 6,
+                "page_end": 6,
+                "char_start": 10,
+                "char_end": 62,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "The ordinance covers 142 acres and 893 units."
+              }
+            ]
+          },
+          {
+            "prompt_id": "timeline",
+            "prompt": "What is the timeline?",
+            "answer": "The timeline in the record is April 15, 2026.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "pointer-follow-up-contract-supported-1",
+                "document_id": "doc-follow-up-contract-supported-1",
+                "artifact_id": "artifact-follow-up-contract-supported-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.7",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 40,
+                "char_end": 112,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Staff will publish the ordinance by April 15, 2026."
+              }
+            ]
+          },
+          {
+            "prompt_id": "next_step",
+            "prompt": "What happens next?",
+            "answer": "Staff will publish the ordinance by April 15, 2026.",
+            "evidence_references_v2": [
+              {
+                "evidence_id": "pointer-follow-up-contract-supported-1",
+                "document_id": "doc-follow-up-contract-supported-1",
+                "artifact_id": "artifact-follow-up-contract-supported-1",
+                "document_kind": "minutes",
+                "section_path": "minutes.section.7",
+                "page_start": null,
+                "page_end": null,
+                "char_start": 40,
+                "char_end": 112,
+                "precision": "offset",
+                "confidence": "high",
+                "excerpt": "Staff will publish the ordinance by April 15, 2026."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fixture_id": "st035-flag-on-unsupported-omits-prompt-block",
+      "flag_state": "on",
+      "meeting_support_state": "unsupported",
+      "publish_metadata": {
+        "structured_relevance": {
+          "scale": {
+            "value": "next week",
+            "confidence": "high"
+          }
+        }
+      },
+      "payload": {
+        "id": "meeting-follow-up-contract-unsupported",
+        "city_id": "city-eagle-mountain-ut",
+        "meeting_uid": "uid-follow-up-contract-unsupported",
+        "title": "Follow Up Contract Unsupported Meeting",
+        "created_at": "2026-03-09T15:00:00Z",
+        "updated_at": "2026-03-09T15:05:00Z",
+        "source_document_kind": "minutes",
+        "source_document_url": null,
+        "status": "processed",
+        "confidence_label": "medium",
+        "reader_low_confidence": false,
+        "publication_id": "pub-follow-up-contract-unsupported",
+        "published_at": "2026-03-09T15:05:00Z",
+        "summary": "Discussion of future work with no evidence-backed follow-up answers.",
+        "key_decisions": [],
+        "key_actions": [
+          "Operator replay completed."
+        ],
+        "notable_topics": [
+          "Operations"
+        ],
+        "evidence_references_v2": [
+          {
+            "evidence_id": "pointer-follow-up-contract-unsupported-1",
+            "document_id": "doc-follow-up-contract-unsupported-1",
+            "artifact_id": "artifact-follow-up-contract-unsupported-1",
+            "document_kind": "minutes",
+            "section_path": "minutes.section.9",
+            "page_start": null,
+            "page_end": null,
+            "char_start": 5,
+            "char_end": 31,
+            "precision": "offset",
+            "confidence": "high",
+            "excerpt": "Operator replay completed."
+          }
+        ],
+        "evidence_references": [
+          "Operator replay completed. | artifact-follow-up-contract-unsupported-1#minutes.section.9:5-31"
+        ],
+        "claims": [
+          {
+            "id": "claim-follow-up-contract-unsupported-1",
+            "claim_order": 1,
+            "claim_text": "Operator replay completed.",
+            "evidence": [
+              {
+                "id": "pointer-follow-up-contract-unsupported-1",
+                "artifact_id": "artifact-follow-up-contract-unsupported-1",
+                "source_document_url": null,
+                "section_ref": "minutes.section.9",
+                "char_start": 5,
+                "char_end": 31,
+                "excerpt": "Operator replay completed."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

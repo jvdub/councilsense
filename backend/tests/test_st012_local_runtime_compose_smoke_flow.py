@@ -212,7 +212,7 @@ def test_seed_processing_fixture_exposes_recent_eagle_mountain_history_in_meetin
         "meeting-local-runtime-smoke-003",
     ]
     assert [item.meeting_date for item in page.items] == [
-        "2026-02-18",
+        "2026-02-17",
         "2026-01-21",
         "2025-12-16",
     ]

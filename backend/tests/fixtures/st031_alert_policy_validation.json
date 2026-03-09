@@ -78,13 +78,8 @@
         "coverage_ratio": 0.6667,
         "coverage_floor": 0.6667,
         "expected_missing_source_type": "minutes",
-        "available_source_types": [
-          "agenda",
-          "packet"
-        ],
-        "missing_source_types": [
-          "minutes"
-        ],
+        "available_source_types": ["agenda", "packet"],
+        "missing_source_types": ["minutes"],
         "authority_reason_codes": [
           "agenda_preview_only",
           "missing_authoritative_minutes"

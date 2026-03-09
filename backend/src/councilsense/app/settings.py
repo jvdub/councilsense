@@ -43,6 +43,16 @@ class MeetingDetailAdditiveApiSettings:
 
 
 @dataclass(frozen=True)
+class MeetingDetailResidentRelevanceApiSettings:
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class MeetingDetailFollowUpPromptsApiSettings:
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class Settings:
     runtime_env: RuntimeEnvironment
     secret_source: SecretSourceKind
@@ -57,6 +67,8 @@ class Settings:
     notification_replay_allow_permanent_invalid_override: bool
     meeting_detail_legacy_evidence_references_enabled: bool
     meeting_detail_additive_api: MeetingDetailAdditiveApiSettings
+    meeting_detail_resident_relevance_api: MeetingDetailResidentRelevanceApiSettings
+    meeting_detail_follow_up_prompts_api: MeetingDetailFollowUpPromptsApiSettings
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -72,6 +84,8 @@ DEFAULT_NOTIFICATION_RETRY_BACKOFF_SECONDS = (15, 60, 300, 900, 3600)
 DEFAULT_NOTIFICATION_RETRY_JITTER_FACTOR = 0.0
 DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED = True
 DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED = False
+DEFAULT_ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED = False
+DEFAULT_ST035_API_FOLLOW_UP_PROMPTS_ENABLED = False
 SUPPORTED_ST022_API_ADDITIVE_BLOCKS = ("planned", "outcomes", "planned_outcome_mismatches")
 
 
@@ -256,6 +270,26 @@ def _parse_st022_api_additive_blocks() -> MeetingDetailAdditiveApiSettings:
     return MeetingDetailAdditiveApiSettings(enabled=True, enabled_blocks=enabled_blocks)
 
 
+def _parse_st033_api_resident_relevance() -> MeetingDetailResidentRelevanceApiSettings:
+    return MeetingDetailResidentRelevanceApiSettings(
+        enabled=_parse_bool(
+            raw=os.getenv("ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED"),
+            default=DEFAULT_ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED,
+            env_name="ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED",
+        )
+    )
+
+
+def _parse_st035_api_follow_up_prompts() -> MeetingDetailFollowUpPromptsApiSettings:
+    return MeetingDetailFollowUpPromptsApiSettings(
+        enabled=_parse_bool(
+            raw=os.getenv("ST035_API_FOLLOW_UP_PROMPTS_ENABLED"),
+            default=DEFAULT_ST035_API_FOLLOW_UP_PROMPTS_ENABLED,
+            env_name="ST035_API_FOLLOW_UP_PROMPTS_ENABLED",
+        )
+    )
+
+
 def _parse_runtime_env(raw: str | None) -> RuntimeEnvironment:
     runtime_env = (raw or DEFAULT_RUNTIME_ENV).strip().lower()
     if runtime_env not in SUPPORTED_RUNTIME_ENVS:
@@ -340,6 +374,8 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
             env_name="MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED",
         ),
         meeting_detail_additive_api=_parse_st022_api_additive_blocks(),
+        meeting_detail_resident_relevance_api=_parse_st033_api_resident_relevance(),
+        meeting_detail_follow_up_prompts_api=_parse_st035_api_follow_up_prompts(),
         disable_auth_guard=_parse_bool(
             raw=os.getenv("COUNCILSENSE_DISABLE_AUTH_GUARD"),
             default=False,

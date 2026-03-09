@@ -10,8 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
 from councilsense.app.settings import MeetingDetailAdditiveApiSettings
+from councilsense.app.settings import MeetingDetailFollowUpPromptsApiSettings
+from councilsense.app.settings import MeetingDetailResidentRelevanceApiSettings
 from councilsense.app.settings import Settings
 from councilsense.db import InvalidMeetingListCursorError, MeetingListCursor, MeetingReadRepository
+from councilsense.db.meetings import MeetingDetail
+from councilsense.db.meetings import MeetingDetailClaim
+from councilsense.db.meetings import MeetingDetailEvidencePointer
 
 
 router = APIRouter(prefix="/v1", tags=["meetings"])
@@ -134,6 +139,71 @@ _PRECISION_RANKS = {
     "file": 3,
 }
 _ADDITIVE_BLOCK_FIELD_NAMES = ("planned", "outcomes", "planned_outcome_mismatches")
+_RESIDENT_RELEVANCE_FIELD_NAMES = ("subject", "location", "action", "scale")
+_RESIDENT_RELEVANCE_IMPACT_TAG_ORDER = {
+    "housing": 0,
+    "traffic": 1,
+    "utilities": 2,
+    "parks": 3,
+    "fees": 4,
+    "land_use": 5,
+}
+_FOLLOW_UP_PROMPT_ORDER = (
+    ("project_identity", "What project or item is this about?"),
+    ("location", "Where does this apply?"),
+    ("disposition", "What happened at this meeting?"),
+    ("scale", "How large is it?"),
+    ("timeline", "What is the timeline?"),
+    ("next_step", "What happens next?"),
+)
+_TEMPORAL_KEYWORDS = (
+    "today",
+    "tomorrow",
+    "tonight",
+    "next week",
+    "next month",
+    "next year",
+    "this week",
+    "this month",
+    "this year",
+    "deadline",
+    "schedule",
+    "scheduled",
+    "timeline",
+    "by ",
+    "within ",
+    "through ",
+    "before ",
+    "after ",
+    "starting ",
+    "beginning ",
+    "ending ",
+)
+_INTERNAL_ONLY_KEY_ACTION_PATTERNS = (
+    "operator",
+    "workflow",
+    "queue",
+    "retry",
+    "replay",
+    "triage",
+    "audit",
+    "backfill",
+    "telemetry",
+    "instrumentation",
+)
+
+
+class MeetingSuggestedPromptResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_id: str = Field(description="Stable prompt identifier from the bounded ST-035 prompt set.")
+    prompt: str = Field(description="Exact frozen prompt text for the prompt identifier.")
+    answer: str = Field(description="Single-sentence grounded answer for the prompt.")
+    evidence_references_v2: list[MeetingEvidenceReferenceV2Response] = Field(
+        description="One or more evidence-v2 references that substantiate the emitted answer text."
+    )
+
+
 _EVIDENCE_REFERENCE_V2_REQUIRED_STRING_FIELDS = (
     "evidence_id",
     "artifact_id",
@@ -334,6 +404,334 @@ def _normalize_additive_evidence_references_v2(value: object) -> list[dict[str, 
     return None
 
 
+def _normalize_sentence_text(value: str) -> str:
+    return " ".join(value.strip().lower().rstrip(".?!;").split())
+
+
+def _normalize_output_sentence(value: str) -> str:
+    normalized = " ".join(value.split()).strip().rstrip(".?!;")
+    if not normalized:
+        return ""
+    return f"{normalized}."
+
+
+def _normalize_prompt_field_with_evidence(value: object) -> dict[str, Any] | None:
+    normalized = _normalize_resident_relevance_field(value)
+    if normalized is None:
+        return None
+    if not normalized.get("evidence_references_v2"):
+        return None
+    return normalized
+
+
+def _meeting_evidence_pointer_to_v2(evidence: MeetingDetailEvidencePointer) -> MeetingEvidenceReferenceV2Response | None:
+    if not _supports_v2_projection(
+        MeetingEvidencePointerResponse(
+            id=evidence.id,
+            artifact_id=evidence.artifact_id,
+            source_document_url=evidence.source_document_url,
+            section_ref=evidence.section_ref,
+            char_start=evidence.char_start,
+            char_end=evidence.char_end,
+            excerpt=evidence.excerpt,
+            document_id=evidence.document_id,
+            span_id=evidence.span_id,
+            document_kind=evidence.document_kind,
+            section_path=evidence.section_path,
+            precision=evidence.precision,
+            confidence=evidence.confidence,
+        )
+    ):
+        return None
+
+    return MeetingEvidenceReferenceV2Response(
+        evidence_id=evidence.id,
+        document_id=evidence.document_id,
+        artifact_id=evidence.artifact_id,
+        document_kind=evidence.document_kind or "",
+        section_path=evidence.section_path or "",
+        char_start=evidence.char_start,
+        char_end=evidence.char_end,
+        precision=evidence.precision or "",
+        confidence=evidence.confidence,
+        excerpt=evidence.excerpt,
+    )
+
+
+def _dedupe_and_sort_prompt_evidence(
+    *reference_groups: list[MeetingEvidenceReferenceV2Response],
+) -> list[MeetingEvidenceReferenceV2Response]:
+    deduped: dict[tuple[str, str], MeetingEvidenceReferenceV2Response] = {}
+    for group in reference_groups:
+        for reference in group:
+            key = (reference.artifact_id, _normalize_reference_text(reference.excerpt))
+            seen = deduped.get(key)
+            if seen is None or _additive_evidence_v2_order_key(reference.model_dump()) < _additive_evidence_v2_order_key(
+                seen.model_dump()
+            ):
+                deduped[key] = reference
+    return sorted(deduped.values(), key=lambda item: _additive_evidence_v2_order_key(item.model_dump()))
+
+
+def _claim_evidence_v2(claim: MeetingDetailClaim) -> list[MeetingEvidenceReferenceV2Response]:
+    references = [
+        reference
+        for evidence in claim.evidence
+        if (reference := _meeting_evidence_pointer_to_v2(evidence)) is not None
+    ]
+    return _dedupe_and_sort_prompt_evidence(references)
+
+
+def _find_grounded_claim_for_action(
+    *,
+    key_action: str,
+    claims: tuple[MeetingDetailClaim, ...],
+) -> tuple[MeetingDetailClaim, list[MeetingEvidenceReferenceV2Response]] | None:
+    normalized_action = _normalize_sentence_text(key_action)
+    if not normalized_action:
+        return None
+
+    for claim in claims:
+        claim_references = _claim_evidence_v2(claim)
+        if not claim_references:
+            continue
+
+        if _normalize_sentence_text(claim.claim_text) == normalized_action:
+            return claim, claim_references
+
+        for reference in claim_references:
+            if _normalize_sentence_text(reference.excerpt) == normalized_action:
+                return claim, claim_references
+
+    return None
+
+
+def _looks_like_magnitude_scale(value: str) -> bool:
+    normalized = value.lower()
+    magnitude_patterns = (
+        r"\$\s*\d",
+        r"\b\d+[\d,]*\s+(acres?|acreage|units?|homes?|dollars?|million|billion|square feet|sq\.?\s*ft\.?|miles?)\b",
+        r"\b\d{1,2}\s*-\s*\d{1,2}\b",
+    )
+    return any(__import__("re").search(pattern, normalized) for pattern in magnitude_patterns)
+
+
+def _looks_like_temporal_scale(value: str) -> bool:
+    normalized = value.lower()
+    if any(keyword in normalized for keyword in _TEMPORAL_KEYWORDS):
+        return True
+
+    temporal_patterns = (
+        r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\b",
+        r"\b\d{4}-\d{2}-\d{2}\b",
+        r"\bq[1-4]\s+\d{4}\b",
+        r"\b(?:within|in|for|over)\s+\d+\s+(?:day|days|week|weeks|month|months|year|years)\b",
+        r"\bby\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+    )
+    return any(__import__("re").search(pattern, normalized) for pattern in temporal_patterns)
+
+
+def _extract_timeline_phrase_from_text(*, text: str, meeting_date: str | None) -> str | None:
+    import re
+
+    normalized = " ".join(text.split()).strip()
+    if not normalized:
+        return None
+
+    candidates = (
+        r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\b",
+        r"\b\d{4}-\d{2}-\d{2}\b",
+        r"\bq[1-4]\s+\d{4}\b",
+        r"\bnext\s+(?:week|month|year)\b",
+        r"\bthis\s+(?:week|month|year)\b",
+        r"\bwithin\s+\d+\s+(?:day|days|week|weeks|month|months|year|years)\b",
+        r"\bby\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        r"\bby\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\b",
+    )
+    for pattern in candidates:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match is None:
+            continue
+        phrase = " ".join(match.group(0).split())
+        if meeting_date is not None and phrase == meeting_date:
+            continue
+        return phrase
+    return None
+
+
+def _is_resident_facing_future_oriented_key_action(value: str) -> bool:
+    normalized = _normalize_sentence_text(value)
+    if not normalized:
+        return False
+    if any(pattern in normalized for pattern in _INTERNAL_ONLY_KEY_ACTION_PATTERNS):
+        return False
+    future_markers = (
+        " will ",
+        " to publish",
+        " to return",
+        " to issue",
+        " to schedule",
+        " to release",
+        " to provide",
+        " to finalize",
+        " to prepare",
+    )
+    if any(marker in f" {normalized} " for marker in future_markers):
+        return True
+    return normalized.startswith(("staff to ", "planning ", "city manager to ", "public works to "))
+
+
+def _build_follow_up_prompt_payload(
+    *,
+    prompt_id: str,
+    prompt: str,
+    answer: str,
+    evidence_references_v2: list[MeetingEvidenceReferenceV2Response],
+) -> dict[str, Any] | None:
+    normalized_answer = _normalize_output_sentence(answer)
+    if not normalized_answer or not evidence_references_v2:
+        return None
+    return MeetingSuggestedPromptResponse(
+        prompt_id=prompt_id,
+        prompt=prompt,
+        answer=normalized_answer,
+        evidence_references_v2=evidence_references_v2,
+    ).model_dump()
+
+
+def _build_follow_up_prompt_suggestions(detail: MeetingDetail) -> list[dict[str, Any]]:
+    normalized_relevance = _normalize_resident_relevance_mapping(detail.structured_relevance)
+    if normalized_relevance is None:
+        return []
+
+    subject = _normalize_prompt_field_with_evidence(normalized_relevance.get("subject"))
+    location = _normalize_prompt_field_with_evidence(normalized_relevance.get("location"))
+    action = _normalize_prompt_field_with_evidence(normalized_relevance.get("action"))
+    scale = _normalize_prompt_field_with_evidence(normalized_relevance.get("scale"))
+
+    subject_refs = [MeetingEvidenceReferenceV2Response(**reference) for reference in subject.get("evidence_references_v2", [])] if subject else []
+    location_refs = [MeetingEvidenceReferenceV2Response(**reference) for reference in location.get("evidence_references_v2", [])] if location else []
+    action_refs = [MeetingEvidenceReferenceV2Response(**reference) for reference in action.get("evidence_references_v2", [])] if action else []
+    scale_refs = [MeetingEvidenceReferenceV2Response(**reference) for reference in scale.get("evidence_references_v2", [])] if scale else []
+
+    selected_future_action: tuple[str, list[MeetingEvidenceReferenceV2Response]] | None = None
+    selected_timeline_action: tuple[str, str, list[MeetingEvidenceReferenceV2Response]] | None = None
+    for key_action in detail.key_actions:
+        grounded_claim = _find_grounded_claim_for_action(key_action=key_action, claims=detail.claims)
+        if grounded_claim is None:
+            continue
+        if not _is_resident_facing_future_oriented_key_action(key_action):
+            continue
+        _, claim_references = grounded_claim
+        if selected_future_action is None:
+            selected_future_action = (key_action, claim_references)
+        timeline_phrase = _extract_timeline_phrase_from_text(text=key_action, meeting_date=detail.meeting_date)
+        if timeline_phrase is not None and selected_timeline_action is None:
+            selected_timeline_action = (key_action, timeline_phrase, claim_references)
+        if selected_future_action is not None and selected_timeline_action is not None:
+            break
+
+    prompt_entries: dict[str, dict[str, Any]] = {}
+
+    if subject is not None:
+        entry = _build_follow_up_prompt_payload(
+            prompt_id="project_identity",
+            prompt="What project or item is this about?",
+            answer=str(subject["value"]),
+            evidence_references_v2=subject_refs,
+        )
+        if entry is not None:
+            prompt_entries["project_identity"] = entry
+
+    if location is not None:
+        entry = _build_follow_up_prompt_payload(
+            prompt_id="location",
+            prompt="Where does this apply?",
+            answer=f"It applies to {location['value']}",
+            evidence_references_v2=location_refs,
+        )
+        if entry is not None:
+            prompt_entries["location"] = entry
+
+    if subject is not None and action is not None:
+        entry = _build_follow_up_prompt_payload(
+            prompt_id="disposition",
+            prompt="What happened at this meeting?",
+            answer=f"{subject['value']} was {action['value']}",
+            evidence_references_v2=_dedupe_and_sort_prompt_evidence(subject_refs, action_refs),
+        )
+        if entry is not None:
+            prompt_entries["disposition"] = entry
+
+    if scale is not None:
+        scale_value = str(scale["value"])
+        is_magnitude = _looks_like_magnitude_scale(scale_value)
+        is_temporal = _looks_like_temporal_scale(scale_value)
+        if is_magnitude:
+            entry = _build_follow_up_prompt_payload(
+                prompt_id="scale",
+                prompt="How large is it?",
+                answer=f"The scale in the record is {scale_value}",
+                evidence_references_v2=scale_refs,
+            )
+            if entry is not None:
+                prompt_entries["scale"] = entry
+        if is_temporal and not is_magnitude:
+            entry = _build_follow_up_prompt_payload(
+                prompt_id="timeline",
+                prompt="What is the timeline?",
+                answer=f"The timeline in the record is {scale_value}",
+                evidence_references_v2=scale_refs,
+            )
+            if entry is not None:
+                prompt_entries["timeline"] = entry
+
+    if "timeline" not in prompt_entries and selected_timeline_action is not None:
+        _, timeline_phrase, claim_references = selected_timeline_action
+        entry = _build_follow_up_prompt_payload(
+            prompt_id="timeline",
+            prompt="What is the timeline?",
+            answer=f"The timeline in the record is {timeline_phrase}",
+            evidence_references_v2=claim_references,
+        )
+        if entry is not None:
+            prompt_entries["timeline"] = entry
+
+    if selected_future_action is not None:
+        key_action_text, claim_references = selected_future_action
+        entry = _build_follow_up_prompt_payload(
+            prompt_id="next_step",
+            prompt="What happens next?",
+            answer=key_action_text,
+            evidence_references_v2=claim_references,
+        )
+        if entry is not None:
+            prompt_entries["next_step"] = entry
+
+    return [
+        prompt_entries[prompt_id]
+        for prompt_id, _ in _FOLLOW_UP_PROMPT_ORDER
+        if prompt_id in prompt_entries
+    ]
+
+
+def _merge_follow_up_prompt_suggestions(
+    *,
+    payload: dict[str, Any],
+    detail: MeetingDetail,
+    follow_up_prompts_api_settings: MeetingDetailFollowUpPromptsApiSettings,
+) -> dict[str, Any]:
+    sanitized_payload = dict(payload)
+    sanitized_payload.pop("suggested_prompts", None)
+    if not follow_up_prompts_api_settings.enabled:
+        return sanitized_payload
+
+    suggested_prompts = _build_follow_up_prompt_suggestions(detail)
+    if suggested_prompts:
+        sanitized_payload["suggested_prompts"] = suggested_prompts
+    return sanitized_payload
+
+
 def _normalize_additive_item(value: object) -> dict[str, Any] | None:
     if not isinstance(value, Mapping):
         return None
@@ -363,6 +761,150 @@ def _normalize_additive_block(*, block_name: str, block_value: object) -> dict[s
         if (item := _normalize_additive_item(raw_item)) is not None
     ]
     return normalized_block
+
+
+def _normalize_resident_relevance_field(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    raw_value = value.get("value")
+    if not isinstance(raw_value, str):
+        return None
+
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return None
+
+    normalized: dict[str, Any] = {"value": normalized_value}
+    raw_confidence = value.get("confidence")
+    if isinstance(raw_confidence, str):
+        normalized_confidence = raw_confidence.strip().lower()
+        if normalized_confidence in {"high", "medium", "low"}:
+            normalized["confidence"] = normalized_confidence
+
+    normalized_evidence = _normalize_additive_evidence_references_v2(value.get("evidence_references_v2"))
+    if normalized_evidence:
+        normalized["evidence_references_v2"] = normalized_evidence
+
+    return normalized
+
+
+def _resident_impact_tag_order_key(tag: Mapping[str, Any]) -> tuple[int, str]:
+    normalized_tag = str(tag["tag"]).strip().lower()
+    return (_RESIDENT_RELEVANCE_IMPACT_TAG_ORDER[normalized_tag], normalized_tag)
+
+
+def _normalize_resident_relevance_impact_tags(value: object) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+
+    normalized_tags: dict[str, dict[str, Any]] = {}
+    for raw_tag in value:
+        if not isinstance(raw_tag, Mapping):
+            continue
+
+        raw_value = raw_tag.get("tag")
+        if not isinstance(raw_value, str):
+            continue
+
+        normalized_value = raw_value.strip().lower()
+        if normalized_value not in _RESIDENT_RELEVANCE_IMPACT_TAG_ORDER:
+            continue
+
+        normalized: dict[str, Any] = {"tag": normalized_value}
+        raw_confidence = raw_tag.get("confidence")
+        if isinstance(raw_confidence, str):
+            normalized_confidence = raw_confidence.strip().lower()
+            if normalized_confidence in {"high", "medium", "low"}:
+                normalized["confidence"] = normalized_confidence
+
+        normalized_evidence = _normalize_additive_evidence_references_v2(raw_tag.get("evidence_references_v2"))
+        if normalized_evidence:
+            normalized["evidence_references_v2"] = normalized_evidence
+
+        normalized_tags[normalized_value] = normalized
+
+    if not normalized_tags:
+        return None
+
+    return sorted(normalized_tags.values(), key=_resident_impact_tag_order_key)
+
+
+def _normalize_resident_relevance_mapping(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    normalized: dict[str, Any] = {}
+    for field_name in _RESIDENT_RELEVANCE_FIELD_NAMES:
+        normalized_field = _normalize_resident_relevance_field(value.get(field_name))
+        if normalized_field is not None:
+            normalized[field_name] = normalized_field
+
+    normalized_tags = _normalize_resident_relevance_impact_tags(value.get("impact_tags"))
+    if normalized_tags:
+        normalized["impact_tags"] = normalized_tags
+
+    return normalized or None
+
+
+def _sanitize_resident_relevance_block(
+    block_value: object,
+    *,
+    enabled: bool,
+) -> tuple[object, bool]:
+    if not isinstance(block_value, Mapping):
+        return block_value, False
+
+    raw_items = block_value.get("items")
+    if not isinstance(raw_items, list):
+        return dict(block_value), False
+
+    found_resident_relevance = False
+    normalized_items: list[object] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, Mapping):
+            normalized_items.append(raw_item)
+            continue
+
+        normalized_item = {
+            key: item_value
+            for key, item_value in raw_item.items()
+            if key not in {*_RESIDENT_RELEVANCE_FIELD_NAMES, "impact_tags"}
+        }
+        normalized_resident_relevance = _normalize_resident_relevance_mapping(raw_item)
+        if normalized_resident_relevance is not None:
+            found_resident_relevance = True
+            if enabled:
+                normalized_item.update(normalized_resident_relevance)
+        normalized_items.append(normalized_item)
+
+    normalized_block = dict(block_value)
+    normalized_block["items"] = normalized_items
+    return normalized_block, found_resident_relevance
+
+
+def _merge_resident_relevance_fields(
+    *,
+    payload: dict[str, Any],
+    resident_relevance_api_settings: MeetingDetailResidentRelevanceApiSettings,
+) -> dict[str, Any]:
+    sanitized_payload = dict(payload)
+
+    normalized_top_level = _normalize_resident_relevance_mapping(payload.get("structured_relevance"))
+    sanitized_payload.pop("structured_relevance", None)
+    if resident_relevance_api_settings.enabled and normalized_top_level is not None:
+        sanitized_payload["structured_relevance"] = normalized_top_level
+
+    for block_name in ("planned", "outcomes"):
+        if block_name not in sanitized_payload:
+            continue
+        sanitized_block, _ = _sanitize_resident_relevance_block(
+            sanitized_payload[block_name],
+            enabled=resident_relevance_api_settings.enabled,
+        )
+        sanitized_payload[block_name] = sanitized_block
+
+    return sanitized_payload
 
 
 def _extract_additive_blocks(*, detail: object) -> dict[str, object]:
@@ -582,8 +1124,19 @@ def get_meeting_detail(
         ),
         claims=claims,
     ).model_dump()
-    return _merge_additive_blocks(
+    if detail.structured_relevance is not None:
+        payload["structured_relevance"] = dict(detail.structured_relevance)
+    payload = _merge_additive_blocks(
         payload=payload,
         detail=detail,
         additive_api_settings=settings.meeting_detail_additive_api,
+    )
+    payload = _merge_resident_relevance_fields(
+        payload=payload,
+        resident_relevance_api_settings=settings.meeting_detail_resident_relevance_api,
+    )
+    return _merge_follow_up_prompt_suggestions(
+        payload=payload,
+        detail=detail,
+        follow_up_prompts_api_settings=settings.meeting_detail_follow_up_prompts_api,
     )

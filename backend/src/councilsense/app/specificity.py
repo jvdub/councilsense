@@ -33,6 +33,28 @@ _LONG_DATE_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _ENTITY_PATTERN = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}\b")
+_CURRENCY_PATTERN = re.compile(
+    r"\$\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand))?\b",
+    flags=re.IGNORECASE,
+)
+_VOTE_COUNT_PATTERN = re.compile(r"\b\d{1,2}\s*-\s*\d{1,2}\b(?:\s+vote)?", flags=re.IGNORECASE)
+_ACTION_PATTERN = re.compile(
+    r"\b(?:approved?|adopted?|authorized?|awarded?|directed?|scheduled?|continued?|denied|rejected|"
+    r"ratified?|accepted?|amended?|reviewed|consider(?:ed)?|hearing)\b",
+    flags=re.IGNORECASE,
+)
+_SUBJECT_REFERENCE_PATTERN = re.compile(
+    r"\b(?:Ordinance|Resolution)\s+\d{4}-\d+\b",
+    flags=re.IGNORECASE,
+)
+_LOCATION_PATTERN = re.compile(
+    r"\b(?:"
+    r"Utah County Parcel Number\s+\d{2}:\d{3}:\d{4}"
+    r"|[A-Z][A-Za-z0-9'&./-]+(?:\s+[A-Z][A-Za-z0-9'&./-]+){0,4}\s+"
+    r"(?:Street|Road|Avenue|Boulevard|Drive|Lane|Way|Trail|Highway|Corridor|District|Neighborhood|"
+    r"Subdivision|Zone|Overlay|Parcel)"
+    r")\b",
+)
 
 _ENTITY_STOPWORDS = frozenset(
     {
@@ -110,6 +132,42 @@ def harvest_specificity_anchors(text: str, *, max_anchors: int = 24) -> tuple[Sp
         ),
     )
     return tuple(prioritized[:max_anchors])
+
+
+def harvest_relevance_anchors(text: str, *, max_anchors: int = 32) -> tuple[SpecificityAnchor, ...]:
+    if not text.strip():
+        return ()
+
+    collected = [
+        *_collect_matches(pattern=_SUBJECT_REFERENCE_PATTERN, text=text, kind="subject"),
+        *_collect_matches(pattern=_LOCATION_PATTERN, text=text, kind="location"),
+        *_collect_matches(pattern=_CURRENCY_PATTERN, text=text, kind="scale"),
+        *_collect_matches(pattern=_VOTE_COUNT_PATTERN, text=text, kind="scale"),
+        *_collect_matches(pattern=_QUANTITATIVE_PATTERN, text=text, kind="scale"),
+        *_collect_matches(pattern=_ISO_DATE_PATTERN, text=text, kind="date"),
+        *_collect_matches(pattern=_LONG_DATE_PATTERN, text=text, kind="date"),
+        *_collect_matches(pattern=_ACTION_PATTERN, text=text, kind="action"),
+    ]
+
+    deduped: dict[tuple[str, str], SpecificityAnchor] = {}
+    for anchor in sorted(collected, key=lambda item: (item.position, item.kind, item.normalized)):
+        key = (anchor.kind, anchor.normalized)
+        existing = deduped.get(key)
+        if existing is None or anchor.position < existing.position:
+            deduped[key] = anchor
+
+    priority = {
+        "subject": 0,
+        "location": 1,
+        "scale": 2,
+        "date": 3,
+        "action": 4,
+    }
+    ordered = sorted(
+        deduped.values(),
+        key=lambda item: (priority.get(item.kind, 9), item.position, item.normalized),
+    )
+    return tuple(ordered[:max_anchors])
 
 
 def anchor_present_in_projection(anchor: SpecificityAnchor, projection_text: str) -> bool:

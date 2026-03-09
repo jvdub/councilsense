@@ -37,11 +37,7 @@
       "dashboard_path",
       "dashboard_panel_id"
     ],
-    "required_for_escalation": [
-      "city_id",
-      "source_id",
-      "run_id"
-    ],
+    "required_for_escalation": ["city_id", "source_id", "run_id"],
     "field_mapping": {
       "city_id": "$labels.city_id",
       "source_id": "$labels.source_id",
@@ -71,11 +67,7 @@
       "signal_source": {
         "dataset": "parser_drift_events",
         "filters": {
-          "source_type": [
-            "minutes",
-            "agenda",
-            "packet"
-          ]
+          "source_type": ["minutes", "agenda", "packet"]
         },
         "group_by": [
           "city_id",
@@ -113,9 +105,7 @@
         ],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 2,
-        "suppression_conditions": [
-          "planned_parser_rollout_window"
-        ]
+        "suppression_conditions": ["planned_parser_rollout_window"]
       },
       "payload_context_fields": [
         "parser_drift_event_id",
@@ -146,11 +136,7 @@
       "signal_source": {
         "dataset": "parser_drift_events",
         "filters": {
-          "source_type": [
-            "minutes",
-            "agenda",
-            "packet"
-          ]
+          "source_type": ["minutes", "agenda", "packet"]
         },
         "group_by": [
           "city_id",
@@ -188,9 +174,7 @@
         ],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 4,
-        "suppression_conditions": [
-          "planned_parser_rollout_window"
-        ]
+        "suppression_conditions": ["planned_parser_rollout_window"]
       },
       "payload_context_fields": [
         "parser_drift_event_id",
@@ -249,16 +233,10 @@
         "escalation_sla": "PT45M"
       },
       "noise_controls": {
-        "dedupe_key_fields": [
-          "alert_id",
-          "environment",
-          "city_id"
-        ],
+        "dedupe_key_fields": ["alert_id", "environment", "city_id"],
         "dedupe_window": "PT90M",
         "minimum_sample_count": 2,
-        "suppression_conditions": [
-          "planned_source_maintenance_window"
-        ]
+        "suppression_conditions": ["planned_source_maintenance_window"]
       },
       "payload_context_fields": [
         "coverage_ratio",
@@ -316,16 +294,10 @@
         "escalation_sla": "PT45M"
       },
       "noise_controls": {
-        "dedupe_key_fields": [
-          "alert_id",
-          "environment",
-          "city_id"
-        ],
+        "dedupe_key_fields": ["alert_id", "environment", "city_id"],
         "dedupe_window": "PT90M",
         "minimum_sample_count": 4,
-        "suppression_conditions": [
-          "planned_source_maintenance_window"
-        ]
+        "suppression_conditions": ["planned_source_maintenance_window"]
       },
       "payload_context_fields": [
         "coverage_ratio",
@@ -358,14 +330,8 @@
           "stage": "summarize"
         },
         "calculation": {
-          "numerator_outcomes": [
-            "failure"
-          ],
-          "denominator_outcomes": [
-            "success",
-            "failure",
-            "retry"
-          ],
+          "numerator_outcomes": ["failure"],
+          "denominator_outcomes": ["success", "failure", "retry"],
           "minimum_denominator": 8
         }
       },
@@ -383,12 +349,7 @@
         "escalation_sla": "PT30M"
       },
       "noise_controls": {
-        "dedupe_key_fields": [
-          "alert_id",
-          "environment",
-          "city_id",
-          "stage"
-        ],
+        "dedupe_key_fields": ["alert_id", "environment", "city_id", "stage"],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 8,
         "suppression_conditions": []
@@ -407,9 +368,7 @@
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
         "dashboard_panel_id": "pipeline-stage-outcomes",
-        "supporting_paths": [
-          "docs/runbooks/st-031-source-aware-dashboard.json"
-        ]
+        "supporting_paths": ["docs/runbooks/st-031-source-aware-dashboard.json"]
       }
     },
     {
@@ -423,14 +382,8 @@
           "stage": "summarize"
         },
         "calculation": {
-          "numerator_outcomes": [
-            "failure"
-          ],
-          "denominator_outcomes": [
-            "success",
-            "failure",
-            "retry"
-          ],
+          "numerator_outcomes": ["failure"],
+          "denominator_outcomes": ["success", "failure", "retry"],
           "minimum_denominator": 8
         }
       },
@@ -448,12 +401,7 @@
         "escalation_sla": "PT30M"
       },
       "noise_controls": {
-        "dedupe_key_fields": [
-          "alert_id",
-          "environment",
-          "city_id",
-          "stage"
-        ],
+        "dedupe_key_fields": ["alert_id", "environment", "city_id", "stage"],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 8,
         "suppression_conditions": []
@@ -472,9 +420,7 @@
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-011-baseline-dashboards.json",
         "dashboard_panel_id": "pipeline-stage-outcomes",
-        "supporting_paths": [
-          "docs/runbooks/st-031-source-aware-dashboard.json"
-        ]
+        "supporting_paths": ["docs/runbooks/st-031-source-aware-dashboard.json"]
       }
     },
     {
@@ -536,9 +482,7 @@
         ],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 1,
-        "suppression_conditions": [
-          "active_dlq_replay_batch"
-        ]
+        "suppression_conditions": ["active_dlq_replay_batch"]
       },
       "payload_context_fields": [
         "dlq_key",
@@ -555,9 +499,7 @@
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
-        "supporting_paths": [
-          "docs/runbooks/st-029-pipeline-dlq-contract.md"
-        ]
+        "supporting_paths": ["docs/runbooks/st-029-pipeline-dlq-contract.md"]
       }
     },
     {
@@ -619,9 +561,7 @@
         ],
         "dedupe_window": "PT2H",
         "minimum_sample_count": 1,
-        "suppression_conditions": [
-          "active_dlq_replay_batch"
-        ]
+        "suppression_conditions": ["active_dlq_replay_batch"]
       },
       "payload_context_fields": [
         "dlq_key",
@@ -638,9 +578,7 @@
       "diagnostic_links": {
         "dashboard_path": "docs/runbooks/st-031-source-aware-dashboard.json",
         "dashboard_panel_id": "st031-pipeline-dlq-oldest-age-by-source",
-        "supporting_paths": [
-          "docs/runbooks/st-029-pipeline-dlq-contract.md"
-        ]
+        "supporting_paths": ["docs/runbooks/st-029-pipeline-dlq-contract.md"]
       }
     }
   ]

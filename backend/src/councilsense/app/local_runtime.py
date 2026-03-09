@@ -36,8 +36,8 @@ _FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_NUMBER = 2
-_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/146/media"
-_FIXTURE_MEETING_DATE = "2026-02-18"
+_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/722/media"
+_FIXTURE_MEETING_DATE = "2026-02-17"
 _FIXTURE_SUMMARY = (
     "The council reviewed major residential development proposals totaling 893 units across 208 acres, "
     "approved the Old Airport Road right-of-way acquisition and a school-district boundary property title "
@@ -103,8 +103,8 @@ def _fixture_history() -> tuple[dict[str, Any], ...]:
             "meeting_id": _FIXTURE_MEETING_ID,
             "meeting_uid": _FIXTURE_MEETING_UID,
             "title": _FIXTURE_TITLE,
-            "created_at": "2026-02-18 18:30:00",
-            "updated_at": "2026-02-18 19:12:00",
+            "created_at": "2026-02-17 18:30:00",
+            "updated_at": "2026-02-17 19:12:00",
             "meeting_date": _FIXTURE_MEETING_DATE,
             "body_name": "Eagle Mountain City Council",
             "publication_id": _FIXTURE_PUBLICATION_ID,

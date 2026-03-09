@@ -16,23 +16,17 @@
     {
       "gate_id": "gate_a_contract_safety",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     },
     {
       "gate_id": "gate_b_quality_parity",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     },
     {
       "gate_id": "gate_c_operational_reliability",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     }
   ],
   "document_aware_report": {
@@ -51,10 +45,7 @@
       "document_coverage_balance": {
         "min_score": 1.0,
         "partial_status_credit": 0.5,
-        "supporting_source_types": [
-          "agenda",
-          "packet"
-        ]
+        "supporting_source_types": ["agenda", "packet"]
       },
       "citation_precision": {
         "min_score": 0.5
@@ -67,9 +58,7 @@
         "score": 1.0,
         "threshold": 1.0,
         "passed": true,
-        "reason_codes": [
-          "document_aware_gate_pass"
-        ],
+        "reason_codes": ["document_aware_gate_pass"],
         "details": {
           "authority_outcome": "minutes_authoritative",
           "authoritative_source_status": "present",
@@ -83,19 +72,14 @@
         "score": 0.5,
         "threshold": 1.0,
         "passed": false,
-        "reason_codes": [
-          "document_coverage_balance_below_threshold"
-        ],
+        "reason_codes": ["document_coverage_balance_below_threshold"],
         "details": {
           "source_statuses": {
             "agenda": "present",
             "packet": "missing"
           },
           "partial_status_credit": 0.5,
-          "supporting_source_types": [
-            "agenda",
-            "packet"
-          ]
+          "supporting_source_types": ["agenda", "packet"]
         }
       },
       {
@@ -104,9 +88,7 @@
         "score": 1.0,
         "threshold": 0.5,
         "passed": true,
-        "reason_codes": [
-          "document_aware_gate_pass"
-        ],
+        "reason_codes": ["document_aware_gate_pass"],
         "details": {
           "citation_pointer_count": 2,
           "citation_precision_ratio": 1.0,

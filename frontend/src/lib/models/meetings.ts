@@ -51,6 +51,51 @@ export type MeetingEvidenceReferenceV2 = {
   excerpt: string;
 };
 
+export type MeetingStructuredRelevanceConfidence = "high" | "medium" | "low";
+
+export type MeetingStructuredRelevanceField = {
+  value: string;
+  confidence?: MeetingStructuredRelevanceConfidence;
+  evidence_references_v2?: MeetingEvidenceReferenceV2[];
+};
+
+export type MeetingStructuredRelevanceImpactTagName =
+  | "housing"
+  | "traffic"
+  | "utilities"
+  | "parks"
+  | "fees"
+  | "land_use";
+
+export type MeetingStructuredRelevanceImpactTag = {
+  tag: MeetingStructuredRelevanceImpactTagName;
+  confidence?: MeetingStructuredRelevanceConfidence;
+  evidence_references_v2?: MeetingEvidenceReferenceV2[];
+};
+
+export type MeetingStructuredRelevance = {
+  subject?: MeetingStructuredRelevanceField;
+  location?: MeetingStructuredRelevanceField;
+  action?: MeetingStructuredRelevanceField;
+  scale?: MeetingStructuredRelevanceField;
+  impact_tags?: MeetingStructuredRelevanceImpactTag[];
+};
+
+export type MeetingSuggestedPromptId =
+  | "project_identity"
+  | "location"
+  | "disposition"
+  | "scale"
+  | "timeline"
+  | "next_step";
+
+export type MeetingSuggestedPrompt = {
+  prompt_id: MeetingSuggestedPromptId;
+  prompt: string;
+  answer: string;
+  evidence_references_v2: MeetingEvidenceReferenceV2[];
+};
+
 export type MeetingPlannedItem = {
   planned_id: string;
   title: string;
@@ -58,6 +103,11 @@ export type MeetingPlannedItem = {
   status: string;
   confidence: "high" | "medium" | "low";
   evidence_references_v2: MeetingEvidenceReferenceV2[];
+  subject?: MeetingStructuredRelevanceField;
+  location?: MeetingStructuredRelevanceField;
+  action?: MeetingStructuredRelevanceField;
+  scale?: MeetingStructuredRelevanceField;
+  impact_tags?: MeetingStructuredRelevanceImpactTag[];
 };
 
 export type MeetingPlannedBlock = {
@@ -76,6 +126,11 @@ export type MeetingOutcomeItem = {
   result: string;
   confidence: "high" | "medium" | "low";
   evidence_references_v2: MeetingEvidenceReferenceV2[];
+  subject?: MeetingStructuredRelevanceField;
+  location?: MeetingStructuredRelevanceField;
+  action?: MeetingStructuredRelevanceField;
+  scale?: MeetingStructuredRelevanceField;
+  impact_tags?: MeetingStructuredRelevanceImpactTag[];
 };
 
 export type MeetingOutcomesBlock = {
@@ -128,6 +183,8 @@ export type MeetingDetailResponse = {
   notable_topics: string[];
   claims: MeetingClaim[];
   evidence_references_v2?: MeetingEvidenceReferenceV2[];
+  structured_relevance?: MeetingStructuredRelevance;
+  suggested_prompts?: MeetingSuggestedPrompt[];
   planned?: MeetingPlannedBlock;
   outcomes?: MeetingOutcomesBlock;
   planned_outcome_mismatches?: MeetingPlannedOutcomeMismatchesBlock;

@@ -8,13 +8,13 @@ The scope for this task is limited to stage outcomes, coverage ratio, citation p
 
 ## Stable Metrics
 
-| Metric name | Type | Unit | Required labels | Description |
-| --- | --- | --- | --- | --- |
-| `councilsense_source_stage_outcomes_total` | counter | events | `stage`, `outcome`, `city_id`, `source_type`, `status` | Source-aware ingest, extract, compose, summarize, and publish outcome counts. |
-| `councilsense_source_coverage_ratio` | gauge | ratio | `stage`, `outcome`, `city_id`, `source_type` | Bundle composition coverage ratio for expected source types. |
-| `councilsense_source_citation_precision_ratio` | gauge | ratio | `stage`, `outcome`, `city_id`, `source_type` | Citation precision ratio for summarization evidence pointers. |
-| `councilsense_pipeline_dlq_backlog_count` | gauge | entries | `stage`, `outcome`, `city_id`, `source_id`, `source_type` | Open pipeline DLQ backlog grouped by city, stage, and source registration. |
-| `councilsense_pipeline_dlq_oldest_age_seconds` | gauge | seconds | `stage`, `outcome`, `city_id`, `source_id`, `source_type` | Oldest open pipeline DLQ age grouped by city, stage, and source registration. |
+| Metric name                                    | Type    | Unit    | Required labels                                           | Description                                                                   |
+| ---------------------------------------------- | ------- | ------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `councilsense_source_stage_outcomes_total`     | counter | events  | `stage`, `outcome`, `city_id`, `source_type`, `status`    | Source-aware ingest, extract, compose, summarize, and publish outcome counts. |
+| `councilsense_source_coverage_ratio`           | gauge   | ratio   | `stage`, `outcome`, `city_id`, `source_type`              | Bundle composition coverage ratio for expected source types.                  |
+| `councilsense_source_citation_precision_ratio` | gauge   | ratio   | `stage`, `outcome`, `city_id`, `source_type`              | Citation precision ratio for summarization evidence pointers.                 |
+| `councilsense_pipeline_dlq_backlog_count`      | gauge   | entries | `stage`, `outcome`, `city_id`, `source_id`, `source_type` | Open pipeline DLQ backlog grouped by city, stage, and source registration.    |
+| `councilsense_pipeline_dlq_oldest_age_seconds` | gauge   | seconds | `stage`, `outcome`, `city_id`, `source_id`, `source_type` | Oldest open pipeline DLQ age grouped by city, stage, and source registration. |
 
 ## Label Semantics
 

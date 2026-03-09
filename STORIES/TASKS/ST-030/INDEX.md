@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-030-01](TASK-ST-030-01-document-aware-gate-dimensions-and-threshold-contract.md) — Document-Aware Gate Dimensions and Threshold Contract
-- [ ] [TASK-ST-030-02](TASK-ST-030-02-report-only-gate-diagnostics-and-artifacts.md) — Report-Only Gate Diagnostics and Artifacts
-- [ ] [TASK-ST-030-03](TASK-ST-030-03-enforced-publish-decisioning-for-document-aware-gates.md) — Enforced Publish Decisioning for Document-Aware Gates
-- [ ] [TASK-ST-030-04](TASK-ST-030-04-promotion-controller-for-consecutive-green-report-only-runs.md) — Promotion Controller for Consecutive Green Report-Only Runs
-- [ ] [TASK-ST-030-05](TASK-ST-030-05-reversible-rollback-controls-and-operations-drill-evidence.md) — Reversible Rollback Controls and Operations Drill Evidence
+- [x] [TASK-ST-030-01](TASK-ST-030-01-document-aware-gate-dimensions-and-threshold-contract.md) — Document-Aware Gate Dimensions and Threshold Contract
+- [x] [TASK-ST-030-02](TASK-ST-030-02-report-only-gate-diagnostics-and-artifacts.md) — Report-Only Gate Diagnostics and Artifacts
+- [x] [TASK-ST-030-03](TASK-ST-030-03-enforced-publish-decisioning-for-document-aware-gates.md) — Enforced Publish Decisioning for Document-Aware Gates
+- [x] [TASK-ST-030-04](TASK-ST-030-04-promotion-controller-for-consecutive-green-report-only-runs.md) — Promotion Controller for Consecutive Green Report-Only Runs
+- [x] [TASK-ST-030-05](TASK-ST-030-05-reversible-rollback-controls-and-operations-drill-evidence.md) — Reversible Rollback Controls and Operations Drill Evidence
 
 ## Dependency Chain
 

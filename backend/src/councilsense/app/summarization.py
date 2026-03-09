@@ -24,6 +24,7 @@ EMPTY_SUMMARY_TEXT = "No summary available."
 _LINKAGE_DOCUMENT_KINDS = frozenset({"minutes", "agenda", "packet"})
 _LINKAGE_PRECISIONS = frozenset({"offset", "span", "section", "file"})
 _LINKAGE_CONFIDENCES = frozenset({"high", "medium", "low"})
+_STRUCTURED_RELEVANCE_CONFIDENCES = frozenset({"high", "medium", "low"})
 
 
 def _normalize_summary(summary: str) -> str:
@@ -62,6 +63,21 @@ def _normalize_excerpt(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return value.strip()
+
+
+def _normalize_structured_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split()).strip()
+
+
+def _normalize_structured_confidence(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return normalized
 
 
 class ClaimEvidenceValidationError(ValueError):
@@ -197,12 +213,201 @@ class SummaryClaim:
 
 
 @dataclass(frozen=True)
+class StructuredRelevanceField:
+    value: str
+    evidence: tuple[ClaimEvidencePointer, ...] = ()
+    confidence: str | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> StructuredRelevanceField:
+        value = _normalize_structured_text(payload.get("value"))
+        confidence = _normalize_structured_confidence(payload.get("confidence"))
+
+        evidence: list[ClaimEvidencePointer] = []
+        evidence_payload = payload.get("evidence")
+        if isinstance(evidence_payload, list):
+            for raw_pointer in evidence_payload:
+                if isinstance(raw_pointer, Mapping):
+                    evidence.append(ClaimEvidencePointer.from_payload(raw_pointer))
+
+        field = cls(value=value, evidence=tuple(evidence), confidence=confidence)
+        field.validate()
+        return field
+
+    def validate(self) -> None:
+        if not self.value:
+            raise ClaimEvidenceValidationError("structured relevance field value is required")
+        if self.confidence is not None and self.confidence not in _STRUCTURED_RELEVANCE_CONFIDENCES:
+            raise ClaimEvidenceValidationError("structured relevance confidence must be high, medium, or low")
+        for pointer in self.evidence:
+            pointer.validate()
+
+    @property
+    def is_low_confidence(self) -> bool:
+        return self.confidence == "low"
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"value": self.value}
+        if self.confidence is not None:
+            payload["confidence"] = self.confidence
+        if self.evidence:
+            payload["evidence"] = [pointer.to_payload() for pointer in self.evidence]
+        return payload
+
+
+@dataclass(frozen=True)
+class StructuredImpactTag:
+    tag: str
+    evidence: tuple[ClaimEvidencePointer, ...] = ()
+    confidence: str | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> StructuredImpactTag:
+        tag = _normalize_structured_text(payload.get("tag"))
+        confidence = _normalize_structured_confidence(payload.get("confidence"))
+
+        evidence: list[ClaimEvidencePointer] = []
+        evidence_payload = payload.get("evidence")
+        if isinstance(evidence_payload, list):
+            for raw_pointer in evidence_payload:
+                if isinstance(raw_pointer, Mapping):
+                    evidence.append(ClaimEvidencePointer.from_payload(raw_pointer))
+
+        impact_tag = cls(tag=tag, evidence=tuple(evidence), confidence=confidence)
+        impact_tag.validate()
+        return impact_tag
+
+    def validate(self) -> None:
+        if not self.tag:
+            raise ClaimEvidenceValidationError("impact tag is required")
+        if self.confidence is not None and self.confidence not in _STRUCTURED_RELEVANCE_CONFIDENCES:
+            raise ClaimEvidenceValidationError("impact tag confidence must be high, medium, or low")
+        for pointer in self.evidence:
+            pointer.validate()
+
+    @property
+    def is_low_confidence(self) -> bool:
+        return self.confidence == "low"
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"tag": self.tag}
+        if self.confidence is not None:
+            payload["confidence"] = self.confidence
+        if self.evidence:
+            payload["evidence"] = [pointer.to_payload() for pointer in self.evidence]
+        return payload
+
+
+@dataclass(frozen=True)
+class StructuredRelevanceItem:
+    item_id: str
+    subject: StructuredRelevanceField | None = None
+    location: StructuredRelevanceField | None = None
+    action: StructuredRelevanceField | None = None
+    scale: StructuredRelevanceField | None = None
+    impact_tags: tuple[StructuredImpactTag, ...] = ()
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> StructuredRelevanceItem:
+        item = cls(
+            item_id=_normalize_structured_text(payload.get("item_id")),
+            subject=_read_structured_relevance_field(payload, field="subject"),
+            location=_read_structured_relevance_field(payload, field="location"),
+            action=_read_structured_relevance_field(payload, field="action"),
+            scale=_read_structured_relevance_field(payload, field="scale"),
+            impact_tags=_read_structured_impact_tags(payload),
+        )
+        item.validate()
+        return item
+
+    def validate(self) -> None:
+        if not self.item_id:
+            raise ClaimEvidenceValidationError("structured relevance item_id is required")
+        if self.is_empty:
+            raise ClaimEvidenceValidationError("structured relevance item requires at least one field or impact tag")
+
+    @property
+    def is_empty(self) -> bool:
+        return (
+            self.subject is None
+            and self.location is None
+            and self.action is None
+            and self.scale is None
+            and not self.impact_tags
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"item_id": self.item_id}
+        if self.subject is not None:
+            payload["subject"] = self.subject.to_payload()
+        if self.location is not None:
+            payload["location"] = self.location.to_payload()
+        if self.action is not None:
+            payload["action"] = self.action.to_payload()
+        if self.scale is not None:
+            payload["scale"] = self.scale.to_payload()
+        if self.impact_tags:
+            payload["impact_tags"] = [impact_tag.to_payload() for impact_tag in self.impact_tags]
+        return payload
+
+
+@dataclass(frozen=True)
+class StructuredRelevance:
+    subject: StructuredRelevanceField | None = None
+    location: StructuredRelevanceField | None = None
+    action: StructuredRelevanceField | None = None
+    scale: StructuredRelevanceField | None = None
+    impact_tags: tuple[StructuredImpactTag, ...] = ()
+    items: tuple[StructuredRelevanceItem, ...] = ()
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> StructuredRelevance:
+        relevance = cls(
+            subject=_read_structured_relevance_field(payload, field="subject"),
+            location=_read_structured_relevance_field(payload, field="location"),
+            action=_read_structured_relevance_field(payload, field="action"),
+            scale=_read_structured_relevance_field(payload, field="scale"),
+            impact_tags=_read_structured_impact_tags(payload),
+            items=_read_structured_relevance_items(payload),
+        )
+        return relevance
+
+    @property
+    def is_empty(self) -> bool:
+        return (
+            self.subject is None
+            and self.location is None
+            and self.action is None
+            and self.scale is None
+            and not self.impact_tags
+            and not self.items
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if self.subject is not None:
+            payload["subject"] = self.subject.to_payload()
+        if self.location is not None:
+            payload["location"] = self.location.to_payload()
+        if self.action is not None:
+            payload["action"] = self.action.to_payload()
+        if self.scale is not None:
+            payload["scale"] = self.scale.to_payload()
+        if self.impact_tags:
+            payload["impact_tags"] = [impact_tag.to_payload() for impact_tag in self.impact_tags]
+        if self.items:
+            payload["items"] = [item.to_payload() for item in self.items]
+        return payload
+
+
+@dataclass(frozen=True)
 class SummarizationOutput:
     summary: str
     key_decisions: tuple[str, ...]
     key_actions: tuple[str, ...]
     notable_topics: tuple[str, ...]
     claims: tuple[SummaryClaim, ...] = ()
+    structured_relevance: StructuredRelevance | None = None
     contract_version: str = SUMMARIZATION_CONTRACT_VERSION
 
     @classmethod
@@ -214,6 +419,7 @@ class SummarizationOutput:
         key_actions: Sequence[str] | None,
         notable_topics: Sequence[str] | None,
         claims: Sequence[SummaryClaim] | None = None,
+        structured_relevance: StructuredRelevance | None = None,
     ) -> SummarizationOutput:
         return cls(
             summary=_normalize_summary(summary),
@@ -221,6 +427,7 @@ class SummarizationOutput:
             key_actions=_normalize_section_items(key_actions),
             notable_topics=_normalize_section_items(notable_topics),
             claims=tuple(claims or ()),
+            structured_relevance=structured_relevance,
         )
 
     @classmethod
@@ -235,10 +442,11 @@ class SummarizationOutput:
             key_actions=_read_string_list(payload, field="key_actions"),
             notable_topics=_read_string_list(payload, field="notable_topics"),
             claims=_read_claims(payload),
+            structured_relevance=_read_structured_relevance(payload),
         )
 
     def to_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "contract_version": self.contract_version,
             "summary": self.summary,
             "key_decisions": list(self.key_decisions),
@@ -246,6 +454,11 @@ class SummarizationOutput:
             "notable_topics": list(self.notable_topics),
             "claims": [claim.to_payload() for claim in self.claims],
         }
+        if self.structured_relevance is not None:
+            structured_relevance_payload = self.structured_relevance.to_payload()
+            if structured_relevance_payload:
+                payload["structured_relevance"] = structured_relevance_payload
+        return payload
 
     @property
     def claim_evidence_gaps(self) -> tuple[str, ...]:
@@ -276,6 +489,54 @@ def _read_claims(payload: Mapping[str, object]) -> tuple[SummaryClaim, ...]:
         if isinstance(raw_claim, Mapping):
             claims.append(SummaryClaim.from_payload(raw_claim))
     return tuple(claims)
+
+
+def _read_structured_relevance_field(
+    payload: Mapping[str, object],
+    *,
+    field: str,
+) -> StructuredRelevanceField | None:
+    raw_field = payload.get(field)
+    if not isinstance(raw_field, Mapping):
+        return None
+
+    field_value = StructuredRelevanceField.from_payload(raw_field)
+    return field_value
+
+
+def _read_structured_impact_tags(payload: Mapping[str, object]) -> tuple[StructuredImpactTag, ...]:
+    raw_tags = payload.get("impact_tags")
+    if not isinstance(raw_tags, list):
+        return ()
+
+    tags: list[StructuredImpactTag] = []
+    for raw_tag in raw_tags:
+        if isinstance(raw_tag, Mapping):
+            tags.append(StructuredImpactTag.from_payload(raw_tag))
+    return tuple(tags)
+
+
+def _read_structured_relevance_items(payload: Mapping[str, object]) -> tuple[StructuredRelevanceItem, ...]:
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list):
+        return ()
+
+    items: list[StructuredRelevanceItem] = []
+    for raw_item in raw_items:
+        if isinstance(raw_item, Mapping):
+            items.append(StructuredRelevanceItem.from_payload(raw_item))
+    return tuple(items)
+
+
+def _read_structured_relevance(payload: Mapping[str, object]) -> StructuredRelevance | None:
+    raw_relevance = payload.get("structured_relevance")
+    if not isinstance(raw_relevance, Mapping):
+        return None
+
+    relevance = StructuredRelevance.from_payload(raw_relevance)
+    if relevance.is_empty:
+        return None
+    return relevance
 
 
 @dataclass(frozen=True)
@@ -579,6 +840,7 @@ def publish_summarization_output(
                 repository=repository,
                 publish_stage_outcome_id=publish_stage_outcome_id,
                 quality_gate=quality_gate,
+                output=output,
             )
         notification_enqueue = (
             enqueue_publish_notifications_to_outbox(
@@ -628,6 +890,7 @@ def _annotate_publish_stage_outcome_metadata(
     repository: MeetingSummaryRepository,
     publish_stage_outcome_id: str,
     quality_gate: QualityGateDecision,
+    output: SummarizationOutput,
 ) -> None:
     existing_row = repository.connection.execute(
         """
@@ -655,6 +918,10 @@ def _annotate_publish_stage_outcome_metadata(
     metadata["calibration_min_confidence_score"] = quality_gate.min_confidence_score
     metadata["calibration_confidence_score"] = quality_gate.confidence_score
     metadata["quality_gate_reason_codes"] = list(quality_gate.reason_codes)
+    if output.structured_relevance is not None:
+        structured_relevance_payload = output.structured_relevance.to_payload()
+        if structured_relevance_payload:
+            metadata["structured_relevance"] = structured_relevance_payload
 
     repository.connection.execute(
         """

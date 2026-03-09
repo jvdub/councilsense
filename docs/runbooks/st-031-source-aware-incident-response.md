@@ -18,12 +18,12 @@ Supporting references:
 
 ## Owner Routing And Alert-to-Action Matrix
 
-| Alert class | Primary owner | Secondary owner | Escalate to | Escalation SLA | Primary remediation action |
-| --- | --- | --- | --- | --- | --- |
-| `parser_drift_spike` | `ops-ingestion-oncall` | `backend-oncall` | `platform-owner` | `PT45M` | Validate parser drift context, stop unplanned parser rollout, and route affected outputs to limited-confidence handling if source integrity is uncertain. |
-| `missing_minutes_surge` | `ops-ingestion-oncall` | `source-operations-owner` | `platform-owner` | `PT45M` | Restore authoritative minutes coverage or explicitly hold the affected bundle in limited-confidence status until the source gap is resolved. |
-| `summarize_failure_spike` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` | Stabilize summarize execution, choose limited-confidence versus rollback using the decision tree below, and replay only after the root cause is fixed. |
-| `stale_pipeline_dlq_backlog` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` | Drain the source-scoped DLQ backlog with auditable replay batches after the failure cause is corrected. |
+| Alert class                  | Primary owner          | Secondary owner           | Escalate to      | Escalation SLA | Primary remediation action                                                                                                                                |
+| ---------------------------- | ---------------------- | ------------------------- | ---------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parser_drift_spike`         | `ops-ingestion-oncall` | `backend-oncall`          | `platform-owner` | `PT45M`        | Validate parser drift context, stop unplanned parser rollout, and route affected outputs to limited-confidence handling if source integrity is uncertain. |
+| `missing_minutes_surge`      | `ops-ingestion-oncall` | `source-operations-owner` | `platform-owner` | `PT45M`        | Restore authoritative minutes coverage or explicitly hold the affected bundle in limited-confidence status until the source gap is resolved.              |
+| `summarize_failure_spike`    | `ops-pipeline-oncall`  | `backend-oncall`          | `platform-owner` | `PT30M`        | Stabilize summarize execution, choose limited-confidence versus rollback using the decision tree below, and replay only after the root cause is fixed.    |
+| `stale_pipeline_dlq_backlog` | `ops-pipeline-oncall`  | `backend-oncall`          | `platform-owner` | `PT30M`        | Drain the source-scoped DLQ backlog with auditable replay batches after the failure cause is corrected.                                                   |
 
 Every handoff must preserve `alert_id`, `alert_class`, `severity`, `environment`, `city_id`, `source_id`, `run_id`, `meeting_id`, and `stage`.
 

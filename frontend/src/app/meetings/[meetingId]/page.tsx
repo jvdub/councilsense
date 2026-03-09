@@ -10,6 +10,12 @@ import {
   resolveMeetingDetailRenderState,
 } from "../../../lib/meetings/detailRenderMode";
 import {
+  getMeetingResidentScanFeatureFlags,
+  resolveMeetingResidentScanRenderState,
+  type MeetingResidentScanCardModel,
+  type MeetingResidentScanFieldModel,
+} from "../../../lib/meetings/residentScanMode";
+import {
   formatCalendarDate,
   formatCityLabel,
   formatSourceKindLabel,
@@ -19,11 +25,17 @@ import {
 import {
   type MeetingOutcomeItem,
   type MeetingPlannedItem,
+  type MeetingSuggestedPrompt,
 } from "../../../lib/models/meetings";
 import { getOnboardingRedirectPath } from "../../../lib/onboarding/guard";
 import { ConfidenceBanner } from "./ConfidenceBanner";
-import { EvidenceReferences } from "./EvidenceReferences";
+import {
+  EvidenceReferences,
+  type ResidentScanEvidenceGroup,
+  type SuggestedPromptEvidenceGroup,
+} from "./EvidenceReferences";
 import { MismatchIndicators } from "./MismatchIndicators";
+import { SuggestedPrompts } from "./SuggestedPrompts";
 
 type MeetingDetailPageProps = {
   params: Promise<{ meetingId: string }>;
@@ -83,6 +95,7 @@ function renderPlannedItems(items: MeetingPlannedItem[]) {
       {items.map((item) => (
         <li
           key={item.planned_id}
+          id={`planned-item-${item.planned_id}`}
           className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
         >
           <p className="text-base font-semibold tracking-tight text-slate-950">
@@ -134,6 +147,7 @@ function renderOutcomeItems(items: MeetingOutcomeItem[]) {
       {items.map((item) => (
         <li
           key={item.outcome_id}
+          id={`outcome-item-${item.outcome_id}`}
           className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
         >
           <p className="text-base font-semibold tracking-tight text-slate-950">
@@ -160,6 +174,211 @@ function renderOutcomeItems(items: MeetingOutcomeItem[]) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function renderResidentScanField(field: MeetingResidentScanFieldModel) {
+  return (
+    <div
+      key={field.key}
+      className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm"
+    >
+      <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {field.label}
+      </dt>
+      <dd className="mt-2 text-sm text-slate-700">
+        {field.state === "present" ? field.value : "Not specified"}
+      </dd>
+    </div>
+  );
+}
+
+function buildResidentScanEvidenceAnchorId(cardId: string) {
+  return `resident-scan-evidence-${cardId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+function buildSuggestedPromptEvidenceAnchorId(promptId: string) {
+  return `suggested-prompt-evidence-${promptId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+function getResidentScanSourceLabel(card: MeetingResidentScanCardModel) {
+  if (card.source === "outcome") {
+    return "Recorded outcome";
+  }
+
+  if (card.source === "planned") {
+    return "Planned item";
+  }
+
+  return "Meeting overview";
+}
+
+function hasResidentScanEvidence(card: MeetingResidentScanCardModel) {
+  return (
+    Object.values(card.fields).some((field) => field.evidenceReferences.length > 0) ||
+    card.impactTags.some((tag) => tag.evidenceReferences.length > 0)
+  );
+}
+
+function buildResidentScanEvidenceGroups(
+  cards: MeetingResidentScanCardModel[],
+): ResidentScanEvidenceGroup[] {
+  return cards
+    .map((card) => {
+      const entries: ResidentScanEvidenceGroup["entries"] = [
+        ...Object.values(card.fields)
+          .filter((field) => field.evidenceReferences.length > 0)
+          .map((field) => ({
+            label: field.label,
+            references: field.evidenceReferences,
+          })),
+        ...card.impactTags
+          .filter((tag) => tag.evidenceReferences.length > 0)
+          .map((tag) => ({
+            label: `Impact tag: ${humanizeIdentifier(tag.tag, tag.tag)}`,
+            references: tag.evidenceReferences,
+          })),
+      ];
+
+      if (entries.length === 0) {
+        return null;
+      }
+
+      return {
+        id: buildResidentScanEvidenceAnchorId(card.id),
+        cardTitle: card.title,
+        sourceLabel: getResidentScanSourceLabel(card),
+        entries,
+      };
+    })
+    .filter((group): group is ResidentScanEvidenceGroup => group !== null);
+}
+
+function buildSuggestedPromptEvidenceGroups(
+  prompts: MeetingSuggestedPrompt[],
+): SuggestedPromptEvidenceGroup[] {
+  return prompts
+    .filter((prompt) => prompt.evidence_references_v2.length > 0)
+    .map((prompt) => ({
+      id: buildSuggestedPromptEvidenceAnchorId(prompt.prompt_id),
+      prompt: prompt.prompt,
+      answer: prompt.answer,
+      references: prompt.evidence_references_v2,
+    }));
+}
+
+function getResidentScanSupportingDetailHref(
+  card: MeetingResidentScanCardModel,
+  options: {
+    showPlannedSection: boolean;
+    showOutcomesSection: boolean;
+  },
+) {
+  if (card.source === "meeting") {
+    return "#summary-section";
+  }
+
+  if (card.source === "planned" && options.showPlannedSection && card.sourceItemId) {
+    return `#planned-item-${card.sourceItemId}`;
+  }
+
+  if (card.source === "outcome" && options.showOutcomesSection && card.sourceItemId) {
+    return `#outcome-item-${card.sourceItemId}`;
+  }
+
+  return null;
+}
+
+function renderResidentScanCard(
+  card: MeetingResidentScanCardModel,
+  navigation: {
+    supportingDetailHref: string | null;
+    evidenceHref: string | null;
+  },
+) {
+  const impactTags = card.impactTags;
+  const hasNavigation =
+    navigation.supportingDetailHref !== null || navigation.evidenceHref !== null;
+
+  return (
+    <li
+      key={card.id}
+      className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-base font-semibold tracking-tight text-slate-950">
+            {card.title}
+          </p>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            {getResidentScanSourceLabel(card)}
+          </p>
+        </div>
+        <span className="inline-flex w-fit rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+          {card.state === "complete" ? "Complete" : "Partial"}
+        </span>
+      </div>
+
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {renderResidentScanField(card.fields.subject)}
+        {renderResidentScanField(card.fields.location)}
+        {renderResidentScanField(card.fields.action)}
+        {renderResidentScanField(card.fields.scale)}
+      </dl>
+
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          Impact tags
+        </p>
+        {impactTags.length > 0 ? (
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {impactTags.map((tag) => (
+              <li
+                key={`${card.id}:${tag.tag}`}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800"
+              >
+                {humanizeIdentifier(tag.tag, tag.tag)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-slate-600">
+            No specific impact tags were identified for this scan.
+          </p>
+        )}
+      </div>
+
+      {card.state === "partial" ? (
+        <p className="mt-4 text-sm text-slate-600">
+          Some structured details were not available for this item.
+        </p>
+      ) : null}
+
+      {hasNavigation ? (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {navigation.supportingDetailHref ? (
+            <a
+              href={navigation.supportingDetailHref}
+              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+            >
+              {card.source === "meeting" ? "View summary" : "View supporting detail"}
+            </a>
+          ) : null}
+          {navigation.evidenceHref ? (
+            <a
+              href={navigation.evidenceHref}
+              className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
+            >
+              View evidence
+            </a>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-slate-600">
+          Supporting links are not available for this scan yet.
+        </p>
+      )}
+    </li>
   );
 }
 
@@ -225,6 +444,10 @@ export default async function MeetingDetailPage({
     detailResponse,
     getMeetingDetailFeatureFlags(),
   );
+  const residentScanState = resolveMeetingResidentScanRenderState(
+    detailResponse,
+    getMeetingResidentScanFeatureFlags(),
+  );
   const showPlannedSection =
     renderState.mode === "additive" &&
     renderState.contract.planned === "present";
@@ -246,12 +469,34 @@ export default async function MeetingDetailPage({
   );
   const bodyLabel = detailResponse.body_name?.trim() || detailResponse.title;
   const publishedLabel = formatTimestamp(detailResponse.published_at, "Pending");
+  const showResidentScanCards =
+    residentScanState.mode === "resident_scan" && residentScanState.cards.length > 0;
+  const residentScanEvidenceGroups = buildResidentScanEvidenceGroups(
+    residentScanState.cards,
+  );
+  const suggestedPrompts = detailResponse.suggested_prompts ?? [];
+  const promptEvidenceGroups = buildSuggestedPromptEvidenceGroups(suggestedPrompts);
+  const residentScanEvidenceHrefByCardId = new Map(
+    residentScanState.cards
+      .filter((card) => hasResidentScanEvidence(card))
+      .map((card) => [card.id, `#${buildResidentScanEvidenceAnchorId(card.id)}`]),
+  );
+  const promptEvidenceHrefByPromptId = new Map(
+    promptEvidenceGroups.map((group) => [
+      group.id.replace(/^suggested-prompt-evidence-/, ""),
+      `#${group.id}`,
+    ]),
+  );
 
   return (
     <main
       className="mx-auto flex w-full max-w-5xl flex-col gap-6"
       data-render-mode={renderState.mode}
       data-render-fallback={renderState.modeFallbackReason ?? undefined}
+      data-resident-scan-mode={residentScanState.mode}
+      data-resident-scan-fallback={
+        residentScanState.modeFallbackReason ?? undefined
+      }
       data-mismatch-signals={
         renderState.mismatchSignalsEnabled ? "enabled" : "disabled"
       }
@@ -321,7 +566,33 @@ export default async function MeetingDetailPage({
         readerLowConfidence={detailResponse.reader_low_confidence}
       />
 
+      {showResidentScanCards ? (
+        <section
+          aria-label="Resident impact scan"
+          className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
+        >
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+            Resident impact scan
+          </h2>
+          <p className="mt-4 text-sm leading-6 text-slate-600">
+            Scan the structured highlights first, then use the full meeting detail below.
+          </p>
+          <ul className="mt-6 space-y-4">
+            {residentScanState.cards.map((card) =>
+              renderResidentScanCard(card, {
+                supportingDetailHref: getResidentScanSupportingDetailHref(card, {
+                  showPlannedSection,
+                  showOutcomesSection,
+                }),
+                evidenceHref: residentScanEvidenceHrefByCardId.get(card.id) ?? null,
+              }),
+            )}
+          </ul>
+        </section>
+      ) : null}
+
       <section
+        id="summary-section"
         aria-label="Summary"
         className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
       >
@@ -333,8 +604,19 @@ export default async function MeetingDetailPage({
         </p>
       </section>
 
+      <SuggestedPrompts
+        prompts={suggestedPrompts.map((prompt) => ({
+          promptId: prompt.prompt_id,
+          prompt: prompt.prompt,
+          answer: prompt.answer,
+          evidenceHref: promptEvidenceHrefByPromptId.get(prompt.prompt_id) ?? null,
+          evidenceCount: prompt.evidence_references_v2.length,
+        }))}
+      />
+
       {additivePlanned ? (
         <section
+          id="planned-section"
           aria-label="Planned"
           className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
         >
@@ -400,6 +682,7 @@ export default async function MeetingDetailPage({
 
       {additiveOutcomes ? (
         <section
+          id="outcomes-section"
           aria-label="Outcomes"
           className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
         >
@@ -483,6 +766,7 @@ export default async function MeetingDetailPage({
       </section>
 
       <section
+        id="evidence-references-section"
         aria-label="Evidence references"
         className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/60"
       >
@@ -493,6 +777,8 @@ export default async function MeetingDetailPage({
           <EvidenceReferences
             claims={detailResponse.claims}
             evidenceReferencesV2={detailResponse.evidence_references_v2 ?? []}
+            residentScanEvidenceGroups={residentScanEvidenceGroups}
+            promptEvidenceGroups={promptEvidenceGroups}
             sourceDocumentKind={detailResponse.source_document_kind}
             sourceDocumentUrl={detailResponse.source_document_url}
           />

@@ -51,11 +51,15 @@ from councilsense.app.st030_document_aware_gates import DocumentAwareGateInput
 from councilsense.app.summarization import (
     ClaimEvidencePointer,
     QualityGateEnforcementOverride,
+    StructuredImpactTag,
+    StructuredRelevance,
+    StructuredRelevanceField,
+    StructuredRelevanceItem,
     SummaryClaim,
     SummarizationOutput,
     publish_summarization_output,
 )
-from councilsense.app.specificity import anchor_present_in_projection, harvest_specificity_anchors
+from councilsense.app.specificity import anchor_present_in_projection, harvest_relevance_anchors, harvest_specificity_anchors
 from councilsense.db import MeetingSummaryRepository, ProcessingLifecycleService, ProcessingRunRepository, RunLifecycleStatus
 
 
@@ -162,6 +166,107 @@ _MEETING_OPERATIONS_MARKERS: tuple[str, ...] = (
     "city recorder",
     "attendance",
 )
+_STRUCTURED_ACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:approved?|authorize[sd]?|adopt(?:ed)?|ratif(?:ied|y)|accepted?|awarded?)\b", flags=re.IGNORECASE), "approved"),
+    (re.compile(r"\b(?:direct(?:ed)?|instruct(?:ed)?)\b", flags=re.IGNORECASE), "directed"),
+    (re.compile(r"\b(?:schedule[sd]?|public hearing)\b", flags=re.IGNORECASE), "scheduled"),
+    (re.compile(r"\b(?:continue[sd]?|deferred?|postponed|tabled)\b", flags=re.IGNORECASE), "continued"),
+    (re.compile(r"\b(?:denied|deny|rejected|reject)\b", flags=re.IGNORECASE), "denied"),
+    (re.compile(r"\breview(?:ed)?\b", flags=re.IGNORECASE), "reviewed"),
+)
+_STRUCTURED_SUBJECT_ENDINGS = (
+    "right-of-way acquisition",
+    "paving contract",
+    "purchase agreement",
+    "development agreement",
+    "road closure permit",
+    "rezoning application",
+    "rezoning",
+    "capital improvement plan",
+    "improvement plan",
+    "master plan",
+    "general plan",
+    "site plan",
+    "bond documents",
+    "budget transfer",
+    "fee schedule",
+    "ordinance",
+    "resolution",
+    "contract",
+    "agreement",
+    "permit",
+    "acquisition",
+    "project",
+    "plan",
+    "annexation",
+    "subdivision",
+    "application",
+    "amendment",
+)
+_STRUCTURED_SUBJECT_PATTERN = re.compile(
+    r"\b[A-Z][A-Za-z0-9&'./-]+(?:\s+[A-Z][A-Za-z0-9&'./-]+){0,5}\s+(?:"
+    + "|".join(re.escape(item) for item in _STRUCTURED_SUBJECT_ENDINGS)
+    + r")\b",
+)
+_STRUCTURED_GENERIC_SUBJECTS = frozenset(
+    {
+        "agenda item",
+        "item",
+        "proposal",
+        "amendment",
+        "resolution",
+        "ordinance",
+        "contract",
+        "agreement",
+        "permit",
+        "plan",
+        "project",
+        "application",
+    }
+)
+_GENERIC_CARRY_THROUGH_PATTERN = re.compile(
+    r"\b(?:approved?|authorize[sd]?|adopt(?:ed)?|ratif(?:ied|y)|accepted?|awarded?|continue[sd]?|denied|reject(?:ed)?|review(?:ed)?|schedule[sd]?|direct(?:ed)?)\b"
+    r"(?:\s+(?:the|a|an))?\s+(?:agenda item|item|items|proposal|project|plan|request|application|amendment|resolution|ordinance|contract|agreement|measure)\b",
+    flags=re.IGNORECASE,
+)
+_APPROVED_IMPACT_TAGS: tuple[str, ...] = (
+    "housing",
+    "traffic",
+    "utilities",
+    "parks",
+    "fees",
+    "land_use",
+)
+_HOUSING_TERMS_PATTERN = re.compile(
+    r"\b(?:housing|residential|apartment(?:s)?|dwelling(?:s)?|home(?:s)?|townhome(?:s)?|condo(?:minium)?s?|multifamily|single-family|affordable housing|subdivision)\b",
+    flags=re.IGNORECASE,
+)
+_HOUSING_UNITS_PATTERN = re.compile(r"\b\d{1,5}\s+units\b", flags=re.IGNORECASE)
+_HOUSING_PROJECT_PATTERN = re.compile(
+    r"\b(?:development|rezoning|zoning|site plan|annexation|plat|planned community)\b",
+    flags=re.IGNORECASE,
+)
+_TRAFFIC_TERMS_PATTERN = re.compile(
+    r"\b(?:traffic|transportation|paving|right-of-way|road closure|intersection|signal(?:ization)?|sidewalk|crosswalk|parking|lane|corridor|transit|traffic control)\b",
+    flags=re.IGNORECASE,
+)
+_UTILITIES_TERMS_PATTERN = re.compile(
+    r"\b(?:utility|utilities|water|wastewater|stormwater|sewer|drainage|power|electric|broadband)\b",
+    flags=re.IGNORECASE,
+)
+_PARKS_TERMS_PATTERN = re.compile(
+    r"\b(?:park|parks|playground|recreation|trail|open space)\b",
+    flags=re.IGNORECASE,
+)
+_FEES_TERMS_PATTERN = re.compile(
+    r"\b(?:fee(?:s)?|rate(?:s)?|ratepayer(?:s)?|tariff|assessment(?:s)?)\b",
+    flags=re.IGNORECASE,
+)
+_LAND_USE_TERMS_PATTERN = re.compile(
+    r"\b(?:rezoning|rezone|zoning|land use|annexation|subdivision|plat|overlay|site plan|general plan|master plan|development agreement)\b",
+    flags=re.IGNORECASE,
+)
+
 
 
 logger = logging.getLogger(__name__)
@@ -354,6 +459,27 @@ class _AuthorityOutcomeSignal:
     action_class: str
 
 
+@dataclass(frozen=True)
+class _RelevanceSnippet:
+    text: str
+    source: ComposedSourceDocument | None
+    span: ComposedSourceSpan | None
+    sentence_index: int | None
+    char_start: int | None
+    char_end: int | None
+
+
+@dataclass(frozen=True)
+class _StructuredRelevanceCandidate:
+    subject: str | None
+    location: str | None
+    action: str | None
+    scale: str | None
+    evidence: ClaimEvidencePointer
+    source_type: str | None
+    rank: tuple[int, int, int, int, str]
+
+
 class _TextCollector(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -468,6 +594,10 @@ class LocalPipelineOrchestrator:
                 "claim_count": len(summarize_payload.output.claims),
                 "authority_policy": summarize_payload.authority_policy.to_metadata_payload(),
             }
+            if summarize_payload.output.structured_relevance is not None:
+                structured_relevance_payload = summarize_payload.output.structured_relevance.to_payload()
+                if structured_relevance_payload:
+                    summarize_metadata["structured_relevance"] = structured_relevance_payload
             if summarize_payload.fallback_reason is not None:
                 fallback_used = True
                 summarize_metadata["fallback_reason"] = summarize_payload.fallback_reason
@@ -925,6 +1055,10 @@ class LocalPipelineOrchestrator:
             "compose": compose_input.to_stage_metadata_payload(),
             "authority_policy": authority_policy.to_metadata_payload(),
         }
+        if output.structured_relevance is not None:
+            structured_relevance_payload = output.structured_relevance.to_payload()
+            if structured_relevance_payload:
+                metadata["structured_relevance"] = structured_relevance_payload
         if fallback_reason is not None:
             metadata["fallback_reason"] = fallback_reason
 
@@ -1172,6 +1306,14 @@ class LocalPipelineOrchestrator:
                 "quality_gate_reason_codes": list(publication_result.quality_gate.reason_codes),
                 "quality_gate_rollout": rollout_metadata,
                 "authority_policy": authority_policy.to_metadata_payload(),
+                **(
+                    {"structured_relevance": structured_relevance_payload}
+                    if (
+                        output.structured_relevance is not None
+                        and (structured_relevance_payload := output.structured_relevance.to_payload())
+                    )
+                    else {}
+                ),
             },
             started_at=started_at,
             finished_at=finished_at,
@@ -1201,6 +1343,14 @@ class LocalPipelineOrchestrator:
                 "quality_gate_reason_codes": list(publication_result.quality_gate.reason_codes),
                 "quality_gate_rollout": rollout_metadata,
                 "authority_policy": authority_policy.to_metadata_payload(),
+                **(
+                    {"structured_relevance": structured_relevance_payload}
+                    if (
+                        output.structured_relevance is not None
+                        and (structured_relevance_payload := output.structured_relevance.to_payload())
+                    )
+                    else {}
+                ),
             },
         }
 
@@ -1431,6 +1581,20 @@ def _deterministic_summarize(
         fallback_claim=claim_text,
         evidence_projection_enabled=evidence_projection_enabled,
     )
+    structured_relevance = _synthesize_structured_relevance(
+        source_text=excerpt_source,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+        compose_input=compose_input,
+        authority_policy=authority_policy,
+    )
+    summary, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary=summary,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        structured_relevance=structured_relevance,
+        authority_policy=authority_policy,
+    )
 
     return SummarizationOutput.from_sections(
         summary=summary,
@@ -1438,6 +1602,7 @@ def _deterministic_summarize(
         key_actions=key_actions,
         notable_topics=notable_topics,
         claims=claims,
+        structured_relevance=structured_relevance,
     )
 
 
@@ -1552,6 +1717,20 @@ def _summarize_with_ollama(
         fallback_claim=claim_text,
         evidence_projection_enabled=evidence_projection_enabled,
     )
+    structured_relevance = _synthesize_structured_relevance(
+        source_text=excerpt_source,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+        compose_input=compose_input,
+        authority_policy=authority_policy,
+    )
+    summary_text, key_decisions, key_actions = _apply_structured_relevance_carry_through(
+        summary=summary_text,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        structured_relevance=structured_relevance,
+        authority_policy=authority_policy,
+    )
 
     return SummarizationOutput.from_sections(
         summary=summary_text,
@@ -1559,6 +1738,7 @@ def _summarize_with_ollama(
         key_actions=key_actions,
         notable_topics=notable_topics,
         claims=claims,
+        structured_relevance=structured_relevance,
     )
 
 
@@ -2425,6 +2605,541 @@ def _build_claims_from_findings(
             )
         )
     return tuple(claims)
+
+
+def _synthesize_structured_relevance(
+    *,
+    source_text: str,
+    artifact_id: str,
+    section_ref: str,
+    compose_input: SummarizeComposeInput | None,
+    authority_policy: _AuthorityPolicyResult,
+) -> StructuredRelevance | None:
+    snippets = _collect_relevance_snippets(
+        source_text=source_text,
+        compose_input=compose_input,
+        authority_policy=authority_policy,
+    )
+    candidates: list[_StructuredRelevanceCandidate] = []
+    seen_keys: set[tuple[str, str, str, str]] = set()
+    for snippet_index, snippet in enumerate(snippets):
+        candidate = _build_structured_relevance_candidate(
+            snippet=snippet,
+            artifact_id=artifact_id,
+            section_ref=section_ref,
+            source_rank=snippet_index,
+            preview_only=authority_policy.preview_only,
+        )
+        if candidate is None:
+            continue
+        dedupe_key = (
+            _normalize_generated_text(candidate.subject or "").lower(),
+            _normalize_generated_text(candidate.location or "").lower(),
+            _normalize_generated_text(candidate.action or "").lower(),
+            _normalize_generated_text(candidate.scale or "").lower(),
+        )
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        candidates.append(candidate)
+        if len(candidates) >= 3:
+            break
+
+    if authority_policy.authority_outcome == "unresolved_conflict":
+        candidates = [
+            _StructuredRelevanceCandidate(
+                subject=item.subject,
+                location=item.location,
+                action=None,
+                scale=item.scale,
+                evidence=item.evidence,
+                source_type=item.source_type,
+                rank=item.rank,
+            )
+            for item in candidates
+        ]
+
+    items: list[StructuredRelevanceItem] = []
+    for index, candidate in enumerate(candidates, start=1):
+        subject_field = _build_structured_relevance_field(candidate.subject, candidate.evidence, authority_policy.preview_only)
+        location_field = _build_structured_relevance_field(candidate.location, candidate.evidence, authority_policy.preview_only)
+        action_field = _build_structured_relevance_field(candidate.action, candidate.evidence, authority_policy.preview_only)
+        scale_field = _build_structured_relevance_field(candidate.scale, candidate.evidence, authority_policy.preview_only)
+        impact_tags = _classify_structured_impact_tags(candidate, preview_only=authority_policy.preview_only)
+        if all(field is None for field in (subject_field, location_field, action_field, scale_field)) and not impact_tags:
+            continue
+        items.append(
+            StructuredRelevanceItem(
+                item_id=f"outcome-{index}",
+                subject=subject_field,
+                location=location_field,
+                action=action_field,
+                scale=scale_field,
+                impact_tags=impact_tags,
+            )
+        )
+
+    if not items:
+        return None
+
+    primary = items[0]
+    relevance = StructuredRelevance(
+        subject=primary.subject,
+        location=primary.location,
+        action=primary.action,
+        scale=primary.scale,
+        impact_tags=_merge_structured_impact_tags(items),
+        items=tuple(items),
+    )
+    if relevance.is_empty:
+        return None
+    return relevance
+
+
+def _apply_structured_relevance_carry_through(
+    *,
+    summary: str,
+    key_decisions: tuple[str, ...],
+    key_actions: tuple[str, ...],
+    structured_relevance: StructuredRelevance | None,
+    authority_policy: _AuthorityPolicyResult,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    if structured_relevance is None:
+        return summary, key_decisions, key_actions
+
+    carry_sentence = _build_structured_relevance_carry_sentence(
+        structured_relevance=structured_relevance,
+        authority_policy=authority_policy,
+    )
+    if carry_sentence is None:
+        return summary, key_decisions, key_actions
+
+    projection = " ".join((summary, *key_decisions, *key_actions))
+    if not _text_needs_structured_carry_through(projection, structured_relevance=structured_relevance):
+        return summary, key_decisions, key_actions
+
+    updated_summary = summary
+    if _text_needs_structured_carry_through(summary, structured_relevance=structured_relevance):
+        updated_summary = carry_sentence[:520]
+
+    updated_decisions = key_decisions
+    if key_decisions and _text_needs_structured_carry_through(key_decisions[0], structured_relevance=structured_relevance):
+        updated_decisions = (carry_sentence, *key_decisions[1:])
+
+    updated_actions = key_actions
+    if not updated_decisions and key_actions and _text_needs_structured_carry_through(
+        key_actions[0], structured_relevance=structured_relevance
+    ):
+        updated_actions = (carry_sentence, *key_actions[1:])
+
+    return updated_summary, updated_decisions, updated_actions
+
+
+def _build_structured_relevance_carry_sentence(
+    *,
+    structured_relevance: StructuredRelevance,
+    authority_policy: _AuthorityPolicyResult,
+) -> str | None:
+    focus = _build_structured_focus_phrase(structured_relevance=structured_relevance)
+    if focus is None:
+        return None
+
+    action = None
+    if structured_relevance.action is not None:
+        normalized_action = _normalize_generated_text(structured_relevance.action.value).lower()
+        if normalized_action in {"approved", "continued", "denied", "reviewed", "scheduled"}:
+            action = normalized_action
+
+    if authority_policy.authority_outcome == "unresolved_conflict":
+        return (
+            f"Available materials describe {focus}, but the final action remains uncertain because published minutes are unavailable and sources conflict. "
+            "No decisions or completed actions are recorded yet."
+        )[:520]
+
+    if authority_policy.preview_only:
+        return (
+            f"Agenda materials preview scheduled consideration of {focus}. "
+            "No decisions or completed actions are recorded yet because published minutes are not available."
+        )[:520]
+
+    if "weak_evidence_precision" in authority_policy.reason_codes:
+        if action is not None:
+            return f"Minutes indicate the Council {action} {focus}, but the evidence locators remain weak."[:520]
+        return f"Minutes describe {focus}, but the evidence locators remain weak."[:520]
+
+    if "supplemental_sources_missing" in authority_policy.reason_codes:
+        if action is not None:
+            return (
+                f"Minutes show the Council {action} {focus}, though supporting agenda or packet materials are missing."
+            )[:520]
+        return f"Minutes describe {focus}, though supporting agenda or packet materials are missing."[:520]
+
+    if action is not None:
+        return f"The Council {action} {focus}."[:520]
+    return f"The meeting focused on {focus}."[:520]
+
+
+def _build_structured_focus_phrase(*, structured_relevance: StructuredRelevance) -> str | None:
+    subject = _normalize_generated_text(structured_relevance.subject.value) if structured_relevance.subject is not None else ""
+    location = _normalize_generated_text(structured_relevance.location.value) if structured_relevance.location is not None else ""
+    scale = _normalize_generated_text(structured_relevance.scale.value) if structured_relevance.scale is not None else ""
+
+    if subject:
+        if re.match(r"^(?:the|a|an)\s+", subject, flags=re.IGNORECASE):
+            focus = subject
+        else:
+            focus = f"the {subject}"
+    elif location:
+        focus = location
+    elif scale:
+        focus = scale
+    else:
+        return None
+
+    if location and location.lower() not in focus.lower():
+        focus = f"{focus} in {location}"
+    if scale and scale.lower() not in focus.lower():
+        connector = " for " if "$" in scale else " covering "
+        focus = f"{focus}{connector}{scale}"
+    return focus
+
+
+def _text_needs_structured_carry_through(text: str, *, structured_relevance: StructuredRelevance) -> bool:
+    normalized = _normalize_generated_text(text)
+    if not normalized:
+        return True
+
+    lower_text = normalized.lower()
+    subject = _normalize_generated_text(structured_relevance.subject.value).lower() if structured_relevance.subject is not None else ""
+    location = _normalize_generated_text(structured_relevance.location.value).lower() if structured_relevance.location is not None else ""
+    scale = _normalize_generated_text(structured_relevance.scale.value).lower() if structured_relevance.scale is not None else ""
+
+    if subject and subject in lower_text:
+        return False
+    if location and location in lower_text and not subject:
+        return False
+    if scale and scale in lower_text and not subject and not location:
+        return False
+    if _GENERIC_CARRY_THROUGH_PATTERN.search(normalized):
+        return True
+    if any(re.search(rf"\b{re.escape(candidate)}\b", lower_text) for candidate in _STRUCTURED_GENERIC_SUBJECTS):
+        return True
+    return bool(subject or location or scale)
+
+
+def _collect_relevance_snippets(
+    *,
+    source_text: str,
+    compose_input: SummarizeComposeInput | None,
+    authority_policy: _AuthorityPolicyResult,
+) -> tuple[_RelevanceSnippet, ...]:
+    snippets: list[_RelevanceSnippet] = []
+    if compose_input is None:
+        for sentence, sentence_index, char_start, char_end in _split_sentences_with_offsets(source_text):
+            if _is_low_signal_sentence(sentence):
+                continue
+            snippets.append(
+                _RelevanceSnippet(
+                    text=sentence,
+                    source=None,
+                    span=None,
+                    sentence_index=sentence_index,
+                    char_start=char_start,
+                    char_end=char_end,
+                )
+            )
+        return tuple(snippets)
+
+    source_rank = {source_type: index for index, source_type in enumerate(compose_input.source_order)}
+    ordered_sources = sorted(
+        (source for source in compose_input.sources if source.text.strip()),
+        key=lambda source: (
+            0 if authority_policy.authoritative_source_type == source.source_type else 1,
+            source_rank.get(source.source_type, 10**9),
+            source.source_type,
+        ),
+    )
+    for source in ordered_sources:
+        if source.spans:
+            for span in source.spans:
+                normalized = _normalize_generated_text(span.span_text)
+                if not normalized or _is_low_signal_sentence(normalized):
+                    continue
+                snippets.append(
+                    _RelevanceSnippet(
+                        text=normalized,
+                        source=source,
+                        span=span,
+                        sentence_index=None,
+                        char_start=span.start_char_offset,
+                        char_end=span.end_char_offset,
+                    )
+                )
+            continue
+
+        for sentence, sentence_index, char_start, char_end in _split_sentences_with_offsets(source.text):
+            if _is_low_signal_sentence(sentence):
+                continue
+            snippets.append(
+                _RelevanceSnippet(
+                    text=sentence,
+                    source=source,
+                    span=None,
+                    sentence_index=sentence_index,
+                    char_start=char_start,
+                    char_end=char_end,
+                )
+            )
+    return tuple(snippets)
+
+
+def _build_structured_relevance_candidate(
+    *,
+    snippet: _RelevanceSnippet,
+    artifact_id: str,
+    section_ref: str,
+    source_rank: int,
+    preview_only: bool,
+) -> _StructuredRelevanceCandidate | None:
+    anchors = harvest_relevance_anchors(snippet.text)
+    subject = _extract_structured_subject(snippet.text, anchors=anchors)
+    location = _extract_structured_location(anchors=anchors)
+    action = _extract_structured_action(snippet.text)
+    scale = _extract_structured_scale(snippet.text, anchors=anchors)
+
+    if subject is None and location is None and scale is None:
+        return None
+
+    evidence = _build_relevance_evidence_pointer(
+        snippet=snippet,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+    )
+    richness = sum(value is not None for value in (subject, location, action, scale))
+    decisive_action = 0 if action in {"approved", "directed", "continued", "denied"} else 1
+    source_priority = 0 if snippet.source is not None and snippet.source.source_type == "minutes" else 1
+    if preview_only and action == "approved":
+        action = None
+    return _StructuredRelevanceCandidate(
+        subject=subject,
+        location=location,
+        action=action,
+        scale=scale,
+        evidence=evidence,
+        source_type=(snippet.source.source_type if snippet.source is not None else None),
+        rank=(source_priority, decisive_action, -richness, source_rank, (subject or location or scale or "")),
+    )
+
+
+def _build_relevance_evidence_pointer(
+    *,
+    snippet: _RelevanceSnippet,
+    artifact_id: str,
+    section_ref: str,
+) -> ClaimEvidencePointer:
+    if snippet.source is not None:
+        evidence_match = _compose_evidence_match(
+            source=snippet.source,
+            span=snippet.span,
+            fallback_artifact_id=artifact_id,
+            fallback_section_ref=section_ref,
+            include_offsets=True,
+        )
+        sentence_section_ref = evidence_match.section_ref
+        if snippet.span is None and snippet.sentence_index is not None and snippet.source.source_type:
+            sentence_section_ref = f"{snippet.source.source_type}.sentence.{snippet.sentence_index + 1}"
+        return ClaimEvidencePointer(
+            artifact_id=evidence_match.artifact_id,
+            section_ref=sentence_section_ref,
+            char_start=evidence_match.char_start,
+            char_end=evidence_match.char_end,
+            excerpt=_normalize_generated_text(snippet.text)[:280],
+            document_id=evidence_match.document_id,
+            span_id=evidence_match.span_id,
+            document_kind=evidence_match.document_kind,
+            section_path=evidence_match.section_path,
+            precision=evidence_match.precision,
+            confidence=evidence_match.confidence,
+        )
+
+    sentence_section_ref = section_ref
+    if snippet.sentence_index is not None:
+        sentence_section_ref = f"{section_ref}.sentence.{snippet.sentence_index + 1}"
+    return ClaimEvidencePointer(
+        artifact_id=artifact_id,
+        section_ref=sentence_section_ref,
+        char_start=snippet.char_start,
+        char_end=snippet.char_end,
+        excerpt=_normalize_generated_text(snippet.text)[:280],
+    )
+
+
+def _build_structured_relevance_field(
+    value: str | None,
+    evidence: ClaimEvidencePointer,
+    preview_only: bool,
+) -> StructuredRelevanceField | None:
+    normalized = _normalize_generated_text(value or "")
+    if not normalized:
+        return None
+    confidence = evidence.confidence or ("low" if preview_only else "medium")
+    if preview_only and confidence == "high":
+        confidence = "medium"
+    return StructuredRelevanceField(value=normalized, evidence=(evidence,), confidence=confidence)
+
+
+def _classify_structured_impact_tags(
+    candidate: _StructuredRelevanceCandidate,
+    *,
+    preview_only: bool,
+) -> tuple[StructuredImpactTag, ...]:
+    support_text = _normalize_generated_text(
+        " ".join(
+            value
+            for value in (
+                candidate.subject,
+                candidate.action,
+                candidate.scale,
+                candidate.evidence.excerpt,
+            )
+            if value
+        )
+    ).lower()
+    if not support_text:
+        return ()
+
+    confidence = candidate.evidence.confidence or ("low" if preview_only else "medium")
+    if preview_only and confidence == "high":
+        confidence = "medium"
+
+    tags: list[StructuredImpactTag] = []
+    for tag in _APPROVED_IMPACT_TAGS:
+        if _impact_tag_supported(tag=tag, support_text=support_text):
+            tags.append(
+                StructuredImpactTag(
+                    tag=tag,
+                    evidence=(candidate.evidence,),
+                    confidence=confidence,
+                )
+            )
+    return tuple(tags)
+
+
+def _impact_tag_supported(*, tag: str, support_text: str) -> bool:
+    if tag == "housing":
+        return bool(
+            _HOUSING_TERMS_PATTERN.search(support_text)
+            or (
+                _HOUSING_UNITS_PATTERN.search(support_text)
+                and (_HOUSING_PROJECT_PATTERN.search(support_text) or _LAND_USE_TERMS_PATTERN.search(support_text))
+            )
+        )
+    if tag == "traffic":
+        return bool(_TRAFFIC_TERMS_PATTERN.search(support_text))
+    if tag == "utilities":
+        return bool(_UTILITIES_TERMS_PATTERN.search(support_text))
+    if tag == "parks":
+        return bool(_PARKS_TERMS_PATTERN.search(support_text))
+    if tag == "fees":
+        return bool(_FEES_TERMS_PATTERN.search(support_text))
+    if tag == "land_use":
+        return bool(_LAND_USE_TERMS_PATTERN.search(support_text))
+    return False
+
+
+def _merge_structured_impact_tags(items: Sequence[StructuredRelevanceItem]) -> tuple[StructuredImpactTag, ...]:
+    merged: dict[str, StructuredImpactTag] = {}
+    for item in items:
+        for impact_tag in item.impact_tags:
+            if impact_tag.tag not in merged:
+                merged[impact_tag.tag] = impact_tag
+    return tuple(merged[tag] for tag in _APPROVED_IMPACT_TAGS if tag in merged)
+
+
+def _extract_structured_action(text: str) -> str | None:
+    normalized = _normalize_generated_text(text)
+    for pattern, label in _STRUCTURED_ACTION_PATTERNS:
+        if pattern.search(normalized):
+            return label
+    return None
+
+
+def _extract_structured_location(*, anchors: tuple[Any, ...]) -> str | None:
+    for anchor in anchors:
+        if anchor.kind != "location":
+            continue
+        normalized = _normalize_generated_text(anchor.text)
+        if normalized:
+            return normalized
+    return None
+
+
+def _extract_structured_scale(text: str, *, anchors: tuple[Any, ...]) -> str | None:
+    scale_anchors = [anchor for anchor in anchors if anchor.kind in {"scale", "date"}]
+    if not scale_anchors:
+        return None
+    first = scale_anchors[0]
+    if len(scale_anchors) >= 2:
+        second = scale_anchors[1]
+        gap = second.position - (first.position + len(first.text))
+        if 0 <= gap <= 24:
+            combined = _normalize_generated_text(text[first.position : second.position + len(second.text)])
+            if combined:
+                return combined
+    return _normalize_generated_text(first.text)
+
+
+def _extract_structured_subject(text: str, *, anchors: tuple[Any, ...]) -> str | None:
+    normalized = _normalize_generated_text(text)
+    subject_reference = next((anchor.text for anchor in anchors if anchor.kind == "subject"), None)
+    action_match = re.search(
+        r"\b(?:approved?|adopted?|authorized?|awarded?|directed?|scheduled?|continued?|denied|rejected|reviewed|consider(?:ed)?|"
+        r"motion carried to authorize)\b\s+(?:the\s+|a\s+|an\s+)?(?P<subject>[^.;]+)",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    candidates: list[str] = []
+    proper_phrase_match = _STRUCTURED_SUBJECT_PATTERN.search(normalized)
+    if proper_phrase_match is not None:
+        candidates.append(proper_phrase_match.group(0))
+    if subject_reference is not None:
+        candidates.append(subject_reference)
+    if action_match is not None:
+        candidates.append(action_match.group("subject"))
+
+    for candidate in candidates:
+        cleaned = _trim_structured_subject(candidate)
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _trim_structured_subject(value: str) -> str | None:
+    cleaned = _normalize_generated_text(value)
+    cleaned = re.sub(r"^(?:of|for|regarding)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\s+for\s+[A-Z][A-Za-z0-9'&./-]+(?:\s+[A-Z][A-Za-z0-9'&./-]+){0,4}\s+(?:Street|Road|Avenue|Boulevard|Drive|Lane|Way|Trail|Highway|Corridor|District|Neighborhood|Subdivision|Zone|Overlay|Parcel).*$",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(r"\s+covering\s+.+$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\s+(?:on|at|in|within|near|along|before|after|by)\s+(?:\$|\d|january|february|march|april|may|june|july|august|september|october|november|december).*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s+(?:at|in|within|near|along)\s+[A-Z][A-Za-z0-9'&./-]+(?:\s+[A-Z][A-Za-z0-9'&./-]+){0,4}\s+(?:Street|Road|Avenue|Boulevard|Drive|Lane|Way|Trail|Highway|Corridor|District|Neighborhood|Subdivision|Zone|Overlay|Parcel).*$",
+        "",
+        cleaned,
+    )
+    cleaned = cleaned.strip(" .,:;-")
+    if not cleaned:
+        return None
+    if cleaned.lower() in _STRUCTURED_GENERIC_SUBJECTS:
+        return None
+    return cleaned
 
 
 @dataclass(frozen=True)

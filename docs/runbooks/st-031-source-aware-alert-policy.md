@@ -10,30 +10,30 @@ Machine-readable source of truth: `config/ops/st-031-source-aware-alert-rules.js
 
 ## Threshold Matrix
 
-| Alert class | Signal source | Warning threshold | Critical threshold | Evaluation window | Sustained condition |
-| --- | --- | --- | --- | --- | --- |
-| `parser_drift_spike` | `parser_drift_events` count grouped by city/source/parser version | `>= 2` drift events per `PT1H` (`local`: `>= 1`) | `>= 4` drift events per `PT1H` (`local`: `>= 2`) | `PT1H` | `PT15M` |
-| `missing_minutes_surge` | `councilsense_source_coverage_ratio` observations `<= 0.6667` on `compose` bundle coverage | `>= 2` low-coverage observations per `PT30M` (`local`: `>= 1`) | `>= 4` low-coverage observations per `PT30M` (`local`: `>= 2`) | `PT30M` | `PT20M` |
-| `summarize_failure_spike` | `councilsense_pipeline_stage_events_total` summarize failure rate | `>= 0.10` failure rate with denominator `>= 8` | `>= 0.20` failure rate with denominator `>= 8` | `PT15M` | `PT15M` |
-| `stale_pipeline_dlq_backlog` | `councilsense_pipeline_dlq_oldest_age_seconds` gated by `councilsense_pipeline_dlq_backlog_count` | oldest age `>= 3600s` and backlog `>= 2` (`local`: `1800s` and backlog `>= 1`) | oldest age `>= 10800s` and backlog `>= 3` (`local`: `3600s` and backlog `>= 2`) | `PT30M` | `PT30M` |
+| Alert class                  | Signal source                                                                                     | Warning threshold                                                              | Critical threshold                                                              | Evaluation window | Sustained condition |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ----------------- | ------------------- |
+| `parser_drift_spike`         | `parser_drift_events` count grouped by city/source/parser version                                 | `>= 2` drift events per `PT1H` (`local`: `>= 1`)                               | `>= 4` drift events per `PT1H` (`local`: `>= 2`)                                | `PT1H`            | `PT15M`             |
+| `missing_minutes_surge`      | `councilsense_source_coverage_ratio` observations `<= 0.6667` on `compose` bundle coverage        | `>= 2` low-coverage observations per `PT30M` (`local`: `>= 1`)                 | `>= 4` low-coverage observations per `PT30M` (`local`: `>= 2`)                  | `PT30M`           | `PT20M`             |
+| `summarize_failure_spike`    | `councilsense_pipeline_stage_events_total` summarize failure rate                                 | `>= 0.10` failure rate with denominator `>= 8`                                 | `>= 0.20` failure rate with denominator `>= 8`                                  | `PT15M`           | `PT15M`             |
+| `stale_pipeline_dlq_backlog` | `councilsense_pipeline_dlq_oldest_age_seconds` gated by `councilsense_pipeline_dlq_backlog_count` | oldest age `>= 3600s` and backlog `>= 2` (`local`: `1800s` and backlog `>= 1`) | oldest age `>= 10800s` and backlog `>= 3` (`local`: `3600s` and backlog `>= 2`) | `PT30M`           | `PT30M`             |
 
 ## Severity Routing And Ownership
 
-| Alert class | Primary role | Secondary role | Escalate to | Escalation SLA |
-| --- | --- | --- | --- | --- |
-| `parser_drift_spike` | `ops-ingestion-oncall` | `backend-oncall` | `platform-owner` | `PT45M` |
-| `missing_minutes_surge` | `ops-ingestion-oncall` | `source-operations-owner` | `platform-owner` | `PT45M` |
-| `summarize_failure_spike` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` |
-| `stale_pipeline_dlq_backlog` | `ops-pipeline-oncall` | `backend-oncall` | `platform-owner` | `PT30M` |
+| Alert class                  | Primary role           | Secondary role            | Escalate to      | Escalation SLA |
+| ---------------------------- | ---------------------- | ------------------------- | ---------------- | -------------- |
+| `parser_drift_spike`         | `ops-ingestion-oncall` | `backend-oncall`          | `platform-owner` | `PT45M`        |
+| `missing_minutes_surge`      | `ops-ingestion-oncall` | `source-operations-owner` | `platform-owner` | `PT45M`        |
+| `summarize_failure_spike`    | `ops-pipeline-oncall`  | `backend-oncall`          | `platform-owner` | `PT30M`        |
+| `stale_pipeline_dlq_backlog` | `ops-pipeline-oncall`  | `backend-oncall`          | `platform-owner` | `PT30M`        |
 
 ## Alert Class To Runbook Mapping
 
-| Alert class | Primary runbook entry | Primary remediation action |
-| --- | --- | --- |
-| `parser_drift_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | Validate drift context, stop unplanned parser rollout, and route affected output to limited-confidence handling when source integrity is uncertain. |
-| `missing_minutes_surge` | `docs/runbooks/st-031-source-aware-incident-response.md` | Restore authoritative minutes coverage or keep the bundle in limited-confidence status until the source gap is resolved. |
-| `summarize_failure_spike` | `docs/runbooks/st-031-source-aware-incident-response.md` | Stabilize summarize execution, use confidence-policy versus rollback decisioning, and replay only after mitigation. |
-| `stale_pipeline_dlq_backlog` | `docs/runbooks/st-031-source-aware-incident-response.md` | Drain the source-scoped DLQ backlog with audited replay batches after the root cause is fixed. |
+| Alert class                  | Primary runbook entry                                    | Primary remediation action                                                                                                                          |
+| ---------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parser_drift_spike`         | `docs/runbooks/st-031-source-aware-incident-response.md` | Validate drift context, stop unplanned parser rollout, and route affected output to limited-confidence handling when source integrity is uncertain. |
+| `missing_minutes_surge`      | `docs/runbooks/st-031-source-aware-incident-response.md` | Restore authoritative minutes coverage or keep the bundle in limited-confidence status until the source gap is resolved.                            |
+| `summarize_failure_spike`    | `docs/runbooks/st-031-source-aware-incident-response.md` | Stabilize summarize execution, use confidence-policy versus rollback decisioning, and replay only after mitigation.                                 |
+| `stale_pipeline_dlq_backlog` | `docs/runbooks/st-031-source-aware-incident-response.md` | Drain the source-scoped DLQ backlog with audited replay batches after the root cause is fixed.                                                      |
 
 ## Payload Contract
 

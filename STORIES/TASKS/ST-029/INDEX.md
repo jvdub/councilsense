@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-029-01](TASK-ST-029-01-retry-policy-matrix-and-bounded-attempts-by-stage-source.md) — Retry Policy Matrix and Bounded Attempts by Stage/Source
-- [ ] [TASK-ST-029-02](TASK-ST-029-02-pipeline-dlq-persistence-and-triage-context-contract.md) — Pipeline DLQ Persistence and Triage Context Contract
-- [ ] [TASK-ST-029-03](TASK-ST-029-03-replay-command-flow-with-actor-reason-and-audit-history.md) — Replay Command Flow with Actor/Reason and Audit History
-- [ ] [TASK-ST-029-04](TASK-ST-029-04-idempotent-replay-guards-and-publication-side-effect-protection.md) — Idempotent Replay Guards and Publication Side-Effect Protection
-- [ ] [TASK-ST-029-05](TASK-ST-029-05-integration-tests-observability-and-runbook-recovery-evidence.md) — Integration Tests, Observability, and Runbook Recovery Evidence
+- [x] [TASK-ST-029-01](TASK-ST-029-01-retry-policy-matrix-and-bounded-attempts-by-stage-source.md) — Retry Policy Matrix and Bounded Attempts by Stage/Source
+- [x] [TASK-ST-029-02](TASK-ST-029-02-pipeline-dlq-persistence-and-triage-context-contract.md) — Pipeline DLQ Persistence and Triage Context Contract
+- [x] [TASK-ST-029-03](TASK-ST-029-03-replay-command-flow-with-actor-reason-and-audit-history.md) — Replay Command Flow with Actor/Reason and Audit History
+- [x] [TASK-ST-029-04](TASK-ST-029-04-idempotent-replay-guards-and-publication-side-effect-protection.md) — Idempotent Replay Guards and Publication Side-Effect Protection
+- [x] [TASK-ST-029-05](TASK-ST-029-05-integration-tests-observability-and-runbook-recovery-evidence.md) — Integration Tests, Observability, and Runbook Recovery Evidence
 
 ## Dependency Chain
 

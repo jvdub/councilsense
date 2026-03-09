@@ -19,12 +19,12 @@ Environment: staging
 
 ## Simulation Matrix
 
-| Scenario | Alert class | Trigger result | Route and acknowledgment | Walkthrough result | Outcome |
-| --- | --- | --- | --- | --- | --- |
-| `st031-parser-drift-staging-critical` | `parser_drift_spike` | warning + critical fired | Routed to `ops-ingestion-oncall` and `backend-oncall`; acknowledged by `ops-ingestion-oncall`; escalated to `platform-owner` | Completed against `docs/runbooks/st-031-source-aware-incident-response.md` and parser drift support docs | PASS |
-| `st031-missing-minutes-staging-critical` | `missing_minutes_surge` | warning + critical fired | Routed to `ops-ingestion-oncall` and `source-operations-owner`; acknowledged by `ops-ingestion-oncall`; escalation not required | Completed against `docs/runbooks/st-031-source-aware-incident-response.md` and confidence-policy guidance | PASS |
-| `st031-summarize-failure-staging-critical` | `summarize_failure_spike` | warning + critical fired | Routed to `ops-pipeline-oncall` and `backend-oncall`; acknowledged by `ops-pipeline-oncall`; escalated to `platform-owner` | Completed against replay, confidence, and rollback branches of the primary runbook | PASS |
-| `st031-stale-dlq-staging-critical` | `stale_pipeline_dlq_backlog` | warning + critical fired | Routed to `ops-pipeline-oncall` and `backend-oncall`; acknowledged by `backend-oncall`; escalation not required | Completed against DLQ replay and closure steps in the primary runbook | PASS |
+| Scenario                                   | Alert class                  | Trigger result           | Route and acknowledgment                                                                                                        | Walkthrough result                                                                                        | Outcome |
+| ------------------------------------------ | ---------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------- |
+| `st031-parser-drift-staging-critical`      | `parser_drift_spike`         | warning + critical fired | Routed to `ops-ingestion-oncall` and `backend-oncall`; acknowledged by `ops-ingestion-oncall`; escalated to `platform-owner`    | Completed against `docs/runbooks/st-031-source-aware-incident-response.md` and parser drift support docs  | PASS    |
+| `st031-missing-minutes-staging-critical`   | `missing_minutes_surge`      | warning + critical fired | Routed to `ops-ingestion-oncall` and `source-operations-owner`; acknowledged by `ops-ingestion-oncall`; escalation not required | Completed against `docs/runbooks/st-031-source-aware-incident-response.md` and confidence-policy guidance | PASS    |
+| `st031-summarize-failure-staging-critical` | `summarize_failure_spike`    | warning + critical fired | Routed to `ops-pipeline-oncall` and `backend-oncall`; acknowledged by `ops-pipeline-oncall`; escalated to `platform-owner`      | Completed against replay, confidence, and rollback branches of the primary runbook                        | PASS    |
+| `st031-stale-dlq-staging-critical`         | `stale_pipeline_dlq_backlog` | warning + critical fired | Routed to `ops-pipeline-oncall` and `backend-oncall`; acknowledged by `backend-oncall`; escalation not required                 | Completed against DLQ replay and closure steps in the primary runbook                                     | PASS    |
 
 ## Walkthrough Results
 
@@ -35,12 +35,12 @@ Environment: staging
 
 ## Follow-Up Action Register
 
-| Action ID | Owner | Priority | Target date | Summary |
-| --- | --- | --- | --- | --- |
-| `st031-follow-up-001` | `backend-oncall` | high | 2026-03-12 | Automate planned parser rollout-window annotation for staging source overrides. |
-| `st031-follow-up-002` | `source-operations-owner` | medium | 2026-03-14 | Add a staging source-silence probe for authoritative minutes feeds. |
-| `st031-follow-up-003` | `platform-owner` | high | 2026-03-10 | Document summarize fallback readiness gates in the release checklist. |
-| `st031-follow-up-004` | `ops-pipeline-oncall` | medium | 2026-03-11 | Add oldest-age delta verification to replay closure checks. |
+| Action ID             | Owner                     | Priority | Target date | Summary                                                                         |
+| --------------------- | ------------------------- | -------- | ----------- | ------------------------------------------------------------------------------- |
+| `st031-follow-up-001` | `backend-oncall`          | high     | 2026-03-12  | Automate planned parser rollout-window annotation for staging source overrides. |
+| `st031-follow-up-002` | `source-operations-owner` | medium   | 2026-03-14  | Add a staging source-silence probe for authoritative minutes feeds.             |
+| `st031-follow-up-003` | `platform-owner`          | high     | 2026-03-10  | Document summarize fallback readiness gates in the release checklist.           |
+| `st031-follow-up-004` | `ops-pipeline-oncall`     | medium   | 2026-03-11  | Add oldest-age delta verification to replay closure checks.                     |
 
 ## Release Readiness
 

@@ -67,6 +67,7 @@ class MeetingDetail:
     notable_topics: tuple[str, ...]
     published_at: str | None
     claims: tuple[MeetingDetailClaim, ...]
+    structured_relevance: Mapping[str, object] | None = None
     additive_blocks: Mapping[str, object] | None = None
 
 
@@ -475,11 +476,19 @@ class MeetingReadRepository:
                 )
             claims = tuple(claim_items)
 
-        additive_blocks = None
-        if include_additive_blocks and publish_stage_outcome_id is not None:
-            additive_blocks = self._lookup_additive_blocks(
+        publish_stage_metadata = None
+        if publish_stage_outcome_id is not None:
+            publish_stage_metadata = self._lookup_publish_stage_metadata(
                 publish_stage_outcome_id=publish_stage_outcome_id,
             )
+
+        additive_blocks = None
+        if include_additive_blocks and publish_stage_metadata is not None:
+            additive_blocks = self._extract_additive_blocks_from_publish_metadata(publish_stage_metadata)
+
+        structured_relevance = None
+        if publish_stage_metadata is not None:
+            structured_relevance = self._extract_structured_relevance_from_publish_metadata(publish_stage_metadata)
 
         return MeetingDetail(
             id=str(meeting_row[0]),
@@ -506,6 +515,7 @@ class MeetingReadRepository:
             notable_topics=self._parse_string_list(meeting_row[14]),
             published_at=str(meeting_row[15]) if meeting_row[15] is not None else None,
             claims=claims,
+            structured_relevance=structured_relevance,
             additive_blocks=additive_blocks,
         )
 
@@ -593,7 +603,7 @@ class MeetingReadRepository:
             return created_value[:10]
         return None
 
-    def _lookup_additive_blocks(self, *, publish_stage_outcome_id: str) -> Mapping[str, object] | None:
+    def _lookup_publish_stage_metadata(self, *, publish_stage_outcome_id: str) -> Mapping[str, object] | None:
         row = self._connection.execute(
             """
             SELECT metadata_json
@@ -612,8 +622,14 @@ class MeetingReadRepository:
         if not isinstance(parsed, dict):
             return None
 
+        return parsed
+
+    def _extract_additive_blocks_from_publish_metadata(
+        self,
+        publish_stage_metadata: Mapping[str, object],
+    ) -> Mapping[str, object] | None:
         candidate_blocks: dict[str, object] = {}
-        root_mapping = parsed if isinstance(parsed, Mapping) else {}
+        root_mapping = publish_stage_metadata if isinstance(publish_stage_metadata, Mapping) else {}
         nested_blocks = root_mapping.get("additive_blocks")
         if isinstance(nested_blocks, Mapping):
             for block_name in ("planned", "outcomes", "planned_outcome_mismatches"):
@@ -627,6 +643,25 @@ class MeetingReadRepository:
                 candidate_blocks[block_name] = dict(block_value)
 
         return candidate_blocks or None
+
+    def _extract_structured_relevance_from_publish_metadata(
+        self,
+        publish_stage_metadata: Mapping[str, object],
+    ) -> Mapping[str, object] | None:
+        structured_relevance = publish_stage_metadata.get("structured_relevance")
+        if not isinstance(structured_relevance, Mapping):
+            return None
+
+        return dict(structured_relevance)
+
+    def _lookup_additive_blocks(self, *, publish_stage_outcome_id: str) -> Mapping[str, object] | None:
+        publish_stage_metadata = self._lookup_publish_stage_metadata(
+            publish_stage_outcome_id=publish_stage_outcome_id,
+        )
+        if publish_stage_metadata is None:
+            return None
+
+        return self._extract_additive_blocks_from_publish_metadata(publish_stage_metadata)
 
     def _lookup_source_document_url(self, *, meeting_id: str) -> str | None:
         source_context = self._lookup_source_context(
