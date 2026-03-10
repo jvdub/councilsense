@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections.abc import Iterator
+from typing import cast
 
 import pytest
 
 from councilsense.app.local_latest_fetch import fetch_latest_meeting
-from councilsense.app.local_pipeline import LocalPipelineOrchestrator
+from councilsense.app.local_pipeline import LlmProviderConfig, LocalPipelineOrchestrator
 from councilsense.app.multi_document_observability import (
     MULTI_DOCUMENT_LOG_FIELD_COVERAGE,
     MULTI_DOCUMENT_PIPELINE_STAGES,
@@ -72,16 +73,14 @@ def test_st031_success_path_emits_required_correlation_fields_for_all_multi_docu
         artifact_root=str(tmp_path / "artifacts"),
         fetch_url=_stub_fetch,
     )
+    ingest_metadata = cast(dict[str, object], fetch_result.stage_outcomes[0]["metadata"])
     orchestrator = LocalPipelineOrchestrator(connection)
     result = orchestrator.process_latest(
         run_id="run-st031-success",
         city_id=PILOT_CITY_ID,
         meeting_id=fetch_result.meeting_id,
-        ingest_stage_metadata=fetch_result.stage_outcomes[0]["metadata"],
-        llm_provider="none",
-        ollama_endpoint=None,
-        ollama_model=None,
-        ollama_timeout_seconds=20.0,
+        ingest_stage_metadata=ingest_metadata,
+        llm_config=LlmProviderConfig(provider="none"),
     )
 
     assert result.status in {"processed", "limited_confidence"}
@@ -123,6 +122,7 @@ def test_st031_publish_failure_path_emits_required_correlation_fields(
         artifact_root=str(tmp_path / "artifacts"),
         fetch_url=_stub_fetch,
     )
+    ingest_metadata = cast(dict[str, object], fetch_result.stage_outcomes[0]["metadata"])
 
     def _raise_publish(*args, **kwargs):
         raise RuntimeError("publish exploded")
@@ -134,11 +134,8 @@ def test_st031_publish_failure_path_emits_required_correlation_fields(
         run_id="run-st031-publish-failure",
         city_id=PILOT_CITY_ID,
         meeting_id=fetch_result.meeting_id,
-        ingest_stage_metadata=fetch_result.stage_outcomes[0]["metadata"],
-        llm_provider="none",
-        ollama_endpoint=None,
-        ollama_model=None,
-        ollama_timeout_seconds=20.0,
+        ingest_stage_metadata=ingest_metadata,
+        llm_config=LlmProviderConfig(provider="none"),
     )
 
     assert result.status == "failed"

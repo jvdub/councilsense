@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from councilsense.app.local_pipeline import LocalPipelineOrchestrator
+from councilsense.app.local_pipeline import LlmProviderConfig, LocalPipelineOrchestrator
 from councilsense.app.specificity import anchor_present_in_projection, harvest_specificity_anchors
 from councilsense.app.summarization import ClaimEvidencePointer, SummarizationOutput, SummaryClaim
 from councilsense.db import MeetingWriteRepository
@@ -261,10 +261,7 @@ def run_fixture_via_local_pipeline(
             "artifact_path": str(artifact_path),
             "fixture_id": entry.fixture_id,
         },
-        llm_provider="none",
-        ollama_endpoint=None,
-        ollama_model=None,
-        ollama_timeout_seconds=20.0,
+        llm_config=LlmProviderConfig(provider="none", timeout_seconds=20.0),
     )
 
     publication_row = connection.execute(

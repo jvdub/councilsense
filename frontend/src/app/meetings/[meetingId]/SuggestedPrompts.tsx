@@ -26,8 +26,8 @@ export function SuggestedPrompts({ prompts }: SuggestedPromptsProps) {
         Suggested follow-up prompts
       </h2>
       <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600">
-        Quick answers to a fixed set of common follow-up questions from this meeting
-        record.
+        Quick answers to a fixed set of common follow-up questions from this
+        meeting record.
       </p>
       <ol className="mt-6 space-y-4">
         {prompts.map((prompt) => (
@@ -44,7 +44,9 @@ export function SuggestedPrompts({ prompts }: SuggestedPromptsProps) {
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Answer
             </p>
-            <p className="mt-2 text-sm leading-7 text-slate-700">{prompt.answer}</p>
+            <p className="mt-2 text-sm leading-7 text-slate-700">
+              {prompt.answer}
+            </p>
             {prompt.evidenceHref ? (
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
@@ -55,7 +57,8 @@ export function SuggestedPrompts({ prompts }: SuggestedPromptsProps) {
                   View evidence
                 </a>
                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                  {prompt.evidenceCount} source {prompt.evidenceCount === 1 ? "excerpt" : "excerpts"}
+                  {prompt.evidenceCount} source{" "}
+                  {prompt.evidenceCount === 1 ? "excerpt" : "excerpts"}
                 </span>
               </div>
             ) : null}

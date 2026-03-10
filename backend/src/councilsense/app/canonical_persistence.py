@@ -92,6 +92,9 @@ def persist_pipeline_canonical_records(
     meeting_id: str,
     source_id: str | None,
     source_url: str | None,
+    source_type_override: str | None = None,
+    parser_name_override: str | None = None,
+    parser_version_override: str | None = None,
     extracted_text: str,
     extraction_status: ExtractionStatus,
     extraction_confidence: float | None,
@@ -106,6 +109,9 @@ def persist_pipeline_canonical_records(
         connection=connection,
         source_id=source_id,
         source_url=source_url,
+        source_type_override=source_type_override,
+        parser_name_override=parser_name_override,
+        parser_version_override=parser_version_override,
     )
     document_kind = _map_source_type_to_document_kind(source_type)
 
@@ -434,9 +440,21 @@ def _resolve_source_metadata(
     connection: sqlite3.Connection,
     source_id: str | None,
     source_url: str | None,
+    source_type_override: str | None,
+    parser_name_override: str | None,
+    parser_version_override: str | None,
 ) -> tuple[str, str | None, str, str]:
+    normalized_override = _normalize_source_type(source_type_override)
+    resolved_parser_name = (parser_name_override or "local-runtime").strip() or "local-runtime"
+    resolved_parser_version = (parser_version_override or "st024-v1").strip() or "st024-v1"
+
     if source_id is None:
-        return ("minutes", source_url, "local-runtime", "st024-v1")
+        return (
+            normalized_override or "minutes",
+            source_url,
+            resolved_parser_name,
+            resolved_parser_version,
+        )
 
     row = connection.execute(
         """
@@ -448,19 +466,41 @@ def _resolve_source_metadata(
         (source_id,),
     ).fetchone()
     if row is None:
-        return ("minutes", source_url, "local-runtime", "st024-v1")
+        return (
+            normalized_override or "minutes",
+            source_url,
+            resolved_parser_name,
+            resolved_parser_version,
+        )
     return (
-        str(row[0]).strip().lower(),
-        str(row[1]) if row[1] is not None else source_url,
-        str(row[2]) if row[2] is not None else "local-runtime",
-        str(row[3]) if row[3] is not None else "st024-v1",
+        normalized_override or _normalize_source_type(str(row[0])) or "minutes",
+        source_url if source_url is not None else (str(row[1]) if row[1] is not None else None),
+        resolved_parser_name if parser_name_override is not None else (str(row[2]) if row[2] is not None else resolved_parser_name),
+        resolved_parser_version if parser_version_override is not None else (str(row[3]) if row[3] is not None else resolved_parser_version),
     )
+
+
+def _normalize_source_type(source_type: str | None) -> str | None:
+    if source_type is None:
+        return None
+    normalized = source_type.strip().lower()
+    if normalized == "minutes":
+        return "minutes"
+    if normalized == "agenda":
+        return "agenda"
+    if normalized == "packet":
+        return "packet"
+    return None
 
 
 def _map_source_type_to_document_kind(source_type: str) -> DocumentKind:
     normalized = source_type.strip().lower()
-    if normalized in {"minutes", "agenda", "packet"}:
-        return normalized
+    if normalized == "minutes":
+        return "minutes"
+    if normalized == "agenda":
+        return "agenda"
+    if normalized == "packet":
+        return "packet"
     return "minutes"
 
 

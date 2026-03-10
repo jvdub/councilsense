@@ -35,6 +35,7 @@ type EvidenceReferencesProps = {
   residentScanEvidenceGroups?: ResidentScanEvidenceGroup[];
   promptEvidenceGroups?: SuggestedPromptEvidenceGroup[];
   sourceDocumentKind?: string | null;
+  sourceMeetingUrl?: string | null;
   sourceDocumentUrl?: string | null;
 };
 
@@ -44,8 +45,11 @@ export function EvidenceReferences({
   residentScanEvidenceGroups = [],
   promptEvidenceGroups = [],
   sourceDocumentKind,
+  sourceMeetingUrl,
   sourceDocumentUrl,
 }: EvidenceReferencesProps) {
+  const sourceRecordUrl = sourceMeetingUrl ?? sourceDocumentUrl;
+
   if (
     claims.length === 0 &&
     evidenceReferencesV2.length === 0 &&
@@ -72,11 +76,13 @@ export function EvidenceReferences({
                 key={reference.evidence_id}
                 className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
               >
-                <p className="text-sm leading-6 text-slate-700">{reference.excerpt}</p>
+                <p className="text-sm leading-6 text-slate-700">
+                  {reference.excerpt}
+                </p>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  {sourceDocumentUrl ? (
+                  {sourceRecordUrl ? (
                     <a
-                      href={sourceDocumentUrl}
+                      href={sourceRecordUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
@@ -94,25 +100,35 @@ export function EvidenceReferences({
                 </div>
                 <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
                   <div>
-                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
+                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Where to verify
+                    </dt>
                     <dd className="mt-1 text-sm text-slate-700">
                       {buildEvidenceReferenceV2Locator(reference)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
+                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Technical reference
+                    </dt>
                     <dd className="mt-1 text-sm text-slate-700">
                       {buildTechnicalEvidenceReferenceV2Locator(reference)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Confidence</dt>
+                    <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Confidence
+                    </dt>
                     <dd className="mt-1 text-sm text-slate-700">
-                      {reference.confidence ? reference.confidence : "Unavailable"}
+                      {reference.confidence
+                        ? reference.confidence
+                        : "Unavailable"}
                     </dd>
                   </div>
                 </dl>
-                <p className="mt-3 text-xs text-slate-500">Source ID: {reference.artifact_id}</p>
+                <p className="mt-3 text-xs text-slate-500">
+                  Source ID: {reference.artifact_id}
+                </p>
               </li>
             ))}
           </ul>
@@ -132,7 +148,9 @@ export function EvidenceReferences({
                 className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <p className="text-base font-medium text-slate-900">{group.cardTitle}</p>
+                  <p className="text-base font-medium text-slate-900">
+                    {group.cardTitle}
+                  </p>
                   <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     {group.sourceLabel}
                   </span>
@@ -150,11 +168,13 @@ export function EvidenceReferences({
                             key={reference.evidence_id}
                             className="rounded-2xl border border-white bg-white p-4 shadow-sm"
                           >
-                            <p className="text-sm leading-6 text-slate-700">{reference.excerpt}</p>
+                            <p className="text-sm leading-6 text-slate-700">
+                              {reference.excerpt}
+                            </p>
                             <div className="mt-4 flex flex-wrap gap-3">
-                              {sourceDocumentUrl ? (
+                              {sourceRecordUrl ? (
                                 <a
-                                  href={sourceDocumentUrl}
+                                  href={sourceRecordUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
@@ -172,25 +192,37 @@ export function EvidenceReferences({
                             </div>
                             <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
                               <div>
-                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
+                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                  Where to verify
+                                </dt>
                                 <dd className="mt-1 text-sm text-slate-700">
                                   {buildEvidenceReferenceV2Locator(reference)}
                                 </dd>
                               </div>
                               <div>
-                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
+                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                  Technical reference
+                                </dt>
                                 <dd className="mt-1 text-sm text-slate-700">
-                                  {buildTechnicalEvidenceReferenceV2Locator(reference)}
+                                  {buildTechnicalEvidenceReferenceV2Locator(
+                                    reference,
+                                  )}
                                 </dd>
                               </div>
                               <div>
-                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Confidence</dt>
+                                <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                  Confidence
+                                </dt>
                                 <dd className="mt-1 text-sm text-slate-700">
-                                  {reference.confidence ? reference.confidence : "Unavailable"}
+                                  {reference.confidence
+                                    ? reference.confidence
+                                    : "Unavailable"}
                                 </dd>
                               </div>
                             </dl>
-                            <p className="mt-3 text-xs text-slate-500">Source ID: {reference.artifact_id}</p>
+                            <p className="mt-3 text-xs text-slate-500">
+                              Source ID: {reference.artifact_id}
+                            </p>
                           </li>
                         ))}
                       </ul>
@@ -216,13 +248,17 @@ export function EvidenceReferences({
                 className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <p className="text-base font-medium text-slate-900">{group.prompt}</p>
+                  <p className="text-base font-medium text-slate-900">
+                    {group.prompt}
+                  </p>
                   <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     Suggested prompt
                   </span>
                 </div>
 
-                <p className="mt-4 text-sm leading-6 text-slate-700">{group.answer}</p>
+                <p className="mt-4 text-sm leading-6 text-slate-700">
+                  {group.answer}
+                </p>
 
                 <ul className="mt-4 space-y-3">
                   {group.references.map((reference) => (
@@ -230,11 +266,13 @@ export function EvidenceReferences({
                       key={reference.evidence_id}
                       className="rounded-2xl border border-white bg-white p-4 shadow-sm"
                     >
-                      <p className="text-sm leading-6 text-slate-700">{reference.excerpt}</p>
+                      <p className="text-sm leading-6 text-slate-700">
+                        {reference.excerpt}
+                      </p>
                       <div className="mt-4 flex flex-wrap gap-3">
-                        {sourceDocumentUrl ? (
+                        {sourceRecordUrl ? (
                           <a
-                            href={sourceDocumentUrl}
+                            href={sourceRecordUrl}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
@@ -252,25 +290,37 @@ export function EvidenceReferences({
                       </div>
                       <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
                         <div>
-                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
+                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                            Where to verify
+                          </dt>
                           <dd className="mt-1 text-sm text-slate-700">
                             {buildEvidenceReferenceV2Locator(reference)}
                           </dd>
                         </div>
                         <div>
-                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
+                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                            Technical reference
+                          </dt>
                           <dd className="mt-1 text-sm text-slate-700">
-                            {buildTechnicalEvidenceReferenceV2Locator(reference)}
+                            {buildTechnicalEvidenceReferenceV2Locator(
+                              reference,
+                            )}
                           </dd>
                         </div>
                         <div>
-                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Confidence</dt>
+                          <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                            Confidence
+                          </dt>
                           <dd className="mt-1 text-sm text-slate-700">
-                            {reference.confidence ? reference.confidence : "Unavailable"}
+                            {reference.confidence
+                              ? reference.confidence
+                              : "Unavailable"}
                           </dd>
                         </div>
                       </dl>
-                      <p className="mt-3 text-xs text-slate-500">Source ID: {reference.artifact_id}</p>
+                      <p className="mt-3 text-xs text-slate-500">
+                        Source ID: {reference.artifact_id}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -292,18 +342,31 @@ export function EvidenceReferences({
                 id={`claim-${claim.id}`}
                 className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm"
               >
-                <p className="text-base font-medium text-slate-900">{claim.claim_text}</p>
+                <p className="text-base font-medium text-slate-900">
+                  {claim.claim_text}
+                </p>
                 {claim.evidence.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-600">No evidence excerpts for this claim.</p>
+                  <p className="mt-3 text-sm text-slate-600">
+                    No evidence excerpts for this claim.
+                  </p>
                 ) : (
                   <ul className="mt-4 space-y-3">
                     {claim.evidence.map((pointer) => (
-                      <li key={pointer.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
-                        <p className="text-sm leading-6 text-slate-700">{pointer.excerpt}</p>
+                      <li
+                        key={pointer.id}
+                        className="rounded-2xl border border-white bg-white p-4 shadow-sm"
+                      >
+                        <p className="text-sm leading-6 text-slate-700">
+                          {pointer.excerpt}
+                        </p>
                         <div className="mt-4 flex flex-wrap gap-3">
-                          {pointer.source_document_url ? (
+                          {(sourceRecordUrl ?? pointer.source_document_url) ? (
                             <a
-                              href={pointer.source_document_url}
+                              href={
+                                sourceRecordUrl ??
+                                pointer.source_document_url ??
+                                undefined
+                              }
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-100"
@@ -318,15 +381,25 @@ export function EvidenceReferences({
                         </div>
                         <dl className="mt-4 grid gap-3 text-xs text-slate-500 sm:grid-cols-2">
                           <div>
-                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Where to verify</dt>
-                            <dd className="mt-1 text-sm text-slate-700">{buildEvidenceLocator(pointer)}</dd>
+                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              Where to verify
+                            </dt>
+                            <dd className="mt-1 text-sm text-slate-700">
+                              {buildEvidenceLocator(pointer)}
+                            </dd>
                           </div>
                           <div>
-                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">Technical reference</dt>
-                            <dd className="mt-1 text-sm text-slate-700">{buildTechnicalEvidenceLocator(pointer)}</dd>
+                            <dt className="font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              Technical reference
+                            </dt>
+                            <dd className="mt-1 text-sm text-slate-700">
+                              {buildTechnicalEvidenceLocator(pointer)}
+                            </dd>
                           </div>
                         </dl>
-                        <p className="mt-3 text-xs text-slate-500">Source ID: {pointer.artifact_id}</p>
+                        <p className="mt-3 text-xs text-slate-500">
+                          Source ID: {pointer.artifact_id}
+                        </p>
                       </li>
                     ))}
                   </ul>

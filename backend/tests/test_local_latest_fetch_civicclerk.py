@@ -45,9 +45,9 @@ def test_civicclerk_selects_latest_event_then_prefers_minutes() -> None:
         fetch_url=_stub_fetch,
     )
 
-    assert candidate.meeting_date_iso == "2026-03-01"
-    assert candidate.candidate_url.endswith("stream/new-agenda.pdf")
-    assert "Agenda" in candidate.title
+    assert candidate.meeting_date_iso == "2025-12-01"
+    assert candidate.candidate_url.endswith("stream/old-minutes.pdf")
+    assert "Minutes" in candidate.title
     assert warning is None
 
 
@@ -136,7 +136,7 @@ def test_civicclerk_event_url_uses_explicit_event_id_and_meetings_endpoint() -> 
         return b"%PDF-1.7\nmock pdf bytes"
 
     candidate, artifact_bytes, artifact_suffix, warning = _fetch_latest_candidate_from_civicclerk(
-        source_url="https://eaglemountainut.portal.civicclerk.com/event/710/media",
+        source_url="https://eaglemountainut.portal.civicclerk.com/event/710/files",
         preferred_file_type="agenda",
         timeout_seconds=5.0,
         fetch_url=_stub_fetch,
@@ -192,6 +192,56 @@ def test_civicclerk_skips_newest_event_without_published_files() -> None:
     assert warning is None
 
 
+def test_civicclerk_supports_latest_offset_for_completed_events() -> None:
+    payload = {
+        "value": [
+            {
+                "id": 21,
+                "eventName": "City Council Meeting",
+                "eventDate": "2026-03-09T00:00:00Z",
+                "publishedFiles": [
+                    {
+                        "type": "Minutes",
+                        "name": "Minutes March 9",
+                        "url": "stream/mar-9-minutes.pdf",
+                    }
+                ],
+            },
+            {
+                "id": 20,
+                "eventName": "City Council Meeting",
+                "eventDate": "2026-03-03T00:00:00Z",
+                "publishedFiles": [
+                    {
+                        "type": "Minutes",
+                        "name": "Minutes March 3",
+                        "url": "stream/mar-3-minutes.pdf",
+                    }
+                ],
+            },
+        ]
+    }
+
+    def _stub_fetch(url: str, _: float) -> bytes:
+        if "/events?" in url or url.endswith("/events"):
+            import json
+
+            return json.dumps(payload).encode("utf-8")
+        return b"%PDF-1.7\nmock pdf bytes"
+
+    candidate, _, _, warning = _fetch_latest_candidate_from_civicclerk(
+        source_url="https://eaglemountainut.portal.civicclerk.com/",
+        preferred_file_type="minutes",
+        latest_offset=1,
+        timeout_seconds=5.0,
+        fetch_url=_stub_fetch,
+    )
+
+    assert candidate.meeting_date_iso == "2026-03-03"
+    assert candidate.candidate_url.endswith("stream/mar-3-minutes.pdf")
+    assert warning is None
+
+
 def test_civicclerk_uses_portal_event_ids_when_events_feed_is_stale() -> None:
     stale_payload = {
         "value": [
@@ -233,7 +283,7 @@ def test_civicclerk_uses_portal_event_ids_when_events_feed_is_stale() -> None:
 
             return json.dumps(stale_payload).encode("utf-8")
         if url == "https://eaglemountainut.portal.civicclerk.com/":
-            return b'<a href="/event/710/media">Go To Event Media</a>'
+            return b'<a href="/event/710/files">Go To Event Media</a>'
         if url.endswith("/Events/710"):
             import json
 

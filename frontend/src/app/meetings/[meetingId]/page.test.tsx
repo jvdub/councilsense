@@ -106,6 +106,7 @@ describe("MeetingDetailPage", () => {
       body_name: "City Council",
       source_document_kind: "minutes",
       source_document_url: "https://example.org/minutes/council-session.pdf",
+      source_meeting_url: "https://example.org/meetings/council-session",
       status: "processed",
       confidence_label: "high",
       reader_low_confidence: false,
@@ -140,7 +141,8 @@ describe("MeetingDetailPage", () => {
             {
               id: "pointer-1",
               artifact_id: "artifact-1",
-              source_document_url: "https://example.org/minutes/council-session.pdf",
+              source_document_url:
+                "https://example.org/minutes/council-session.pdf",
               section_ref: "minutes.section.4",
               char_start: 12,
               char_end: 80,
@@ -163,7 +165,9 @@ describe("MeetingDetailPage", () => {
       screen.getByRole("heading", { name: "Council Session" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Seattle")).toBeInTheDocument();
-    expect(screen.getByText("City Council • February 25, 2026")).toBeInTheDocument();
+    expect(
+      screen.getByText("City Council • February 25, 2026"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Summary" }),
     ).toBeInTheDocument();
@@ -192,7 +196,9 @@ describe("MeetingDetailPage", () => {
       screen.getByText("minutes/section/4 • chars 12-80 • Span precision"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Where to verify").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Technical reference").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Technical reference").length).toBeGreaterThan(
+      0,
+    );
     expect(
       screen.queryByRole("heading", { name: "Planned" }),
     ).not.toBeInTheDocument();
@@ -206,11 +212,20 @@ describe("MeetingDetailPage", () => {
       screen.getByText("Council approved the transit plan."),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByText("Council voted 6-1 to approve the transit plan.").length,
+      screen.getAllByText("Council voted 6-1 to approve the transit plan.")
+        .length,
     ).toBe(2);
     expect(
       screen.getAllByRole("link", { name: "Open source record" }).length,
     ).toBeGreaterThan(0);
+    for (const link of screen.getAllByRole("link", {
+      name: "Open source record",
+    })) {
+      expect(link).toHaveAttribute(
+        "href",
+        "https://example.org/meetings/council-session",
+      );
+    }
     expect(
       screen.getByRole("link", { name: "Back to meetings" }),
     ).toHaveAttribute("href", "/meetings");
@@ -325,7 +340,9 @@ describe("MeetingDetailPage", () => {
         "Quick answers to a fixed set of common follow-up questions from this meeting record.",
       ),
     ).toBeInTheDocument();
-    expect(within(promptSection).getAllByText("Approved prompt")).toHaveLength(2);
+    expect(within(promptSection).getAllByText("Approved prompt")).toHaveLength(
+      2,
+    );
     expect(
       within(promptSection).getByText("What project or item is this about?"),
     ).toBeInTheDocument();
@@ -572,19 +589,29 @@ describe("MeetingDetailPage", () => {
     expect(
       within(residentScanSection).getByText("North Gateway District"),
     ).toBeInTheDocument();
-    expect(within(residentScanSection).getByText("approved")).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("approved"),
+    ).toBeInTheDocument();
     expect(
       within(residentScanSection).getByText("142 acres and 893 units"),
     ).toBeInTheDocument();
-    expect(within(residentScanSection).getByText("Impact tags")).toBeInTheDocument();
-    expect(within(residentScanSection).getByText("Housing")).toBeInTheDocument();
-    expect(within(residentScanSection).getByText("Land Use")).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("Impact tags"),
+    ).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("Housing"),
+    ).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getByText("Land Use"),
+    ).toBeInTheDocument();
     expect(
       within(residentScanSection).getByText(
         "Supporting links are not available for this scan yet.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Summary" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Decisions and actions" }),
     ).toBeInTheDocument();
@@ -664,7 +691,8 @@ describe("MeetingDetailPage", () => {
                   char_end: 101,
                   precision: "span",
                   confidence: "high",
-                  excerpt: "Council approved the North Gateway rezoning application.",
+                  excerpt:
+                    "Council approved the North Gateway rezoning application.",
                 },
               ],
             },
@@ -726,8 +754,12 @@ describe("MeetingDetailPage", () => {
     expect(supportingDetailLink).toHaveFocus();
     await user.tab();
     expect(evidenceLink).toHaveFocus();
-    expect(screen.getByRole("heading", { name: "Outcomes" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Resident scan evidence" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Outcomes" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Resident scan evidence" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Minutes section 7 • page 4")).toBeInTheDocument();
   });
 
@@ -799,13 +831,19 @@ describe("MeetingDetailPage", () => {
         "Some structured details were not available for this item.",
       ),
     ).toBeInTheDocument();
-    expect(within(residentScanSection).getByText("Partial")).toBeInTheDocument();
-    expect(within(residentScanSection).getAllByText("Not specified")).toHaveLength(3);
+    expect(
+      within(residentScanSection).getByText("Partial"),
+    ).toBeInTheDocument();
+    expect(
+      within(residentScanSection).getAllByText("Not specified"),
+    ).toHaveLength(3);
     expect(
       within(residentScanSection).getByRole("link", { name: "View summary" }),
     ).toHaveAttribute("href", "#summary-section");
     expect(
-      within(residentScanSection).queryByRole("link", { name: "View evidence" }),
+      within(residentScanSection).queryByRole("link", {
+        name: "View evidence",
+      }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Resident scan evidence" }),
@@ -859,7 +897,9 @@ describe("MeetingDetailPage", () => {
     const baselineMain = baselineRender.container.querySelector(
       "main[data-resident-scan-mode]",
     );
-    const baselineHeadings = getLabelledSectionHeadings(baselineRender.container);
+    const baselineHeadings = getLabelledSectionHeadings(
+      baselineRender.container,
+    );
 
     expect(baselineMain).toHaveAttribute("data-resident-scan-mode", "baseline");
     expect(
@@ -895,7 +935,9 @@ describe("MeetingDetailPage", () => {
     const additiveMain = additiveRender.container.querySelector(
       "main[data-resident-scan-mode]",
     );
-    const additiveHeadings = getLabelledSectionHeadings(additiveRender.container);
+    const additiveHeadings = getLabelledSectionHeadings(
+      additiveRender.container,
+    );
 
     expect(additiveMain).toHaveAttribute(
       "data-resident-scan-mode",
@@ -972,7 +1014,9 @@ describe("MeetingDetailPage", () => {
     expect(
       screen.queryByRole("heading", { name: "Resident impact scan" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Summary" }),
+    ).toBeInTheDocument();
   });
 
   it("preserves baseline output when additive fields are malformed and feature flags are off", async () => {

@@ -45,14 +45,14 @@
 
 ## Scenario matrix
 
-| Resident scan flag | `structured_relevance` | Item-level resident relevance | Resolved mode | Card contract | Result |
-| ------------------ | ---------------------- | ----------------------------- | ------------- | ------------- | ------ |
-| off                | any                    | any                           | `baseline`    | `missing`     | baseline-only detail |
-| on                 | missing                | any                           | `baseline`    | `missing`     | baseline-only detail |
-| on                 | invalid                | any                           | `baseline`    | `missing`     | baseline-only detail |
-| on                 | valid                  | valid outcome items           | `resident_scan` | `present`   | outcome-backed cards |
-| on                 | valid                  | no outcome cards, valid planned items | `resident_scan` | `present` | planned-backed cards |
-| on                 | valid                  | missing or malformed item fields | `resident_scan` | `partial` | single meeting-summary fallback card |
+| Resident scan flag | `structured_relevance` | Item-level resident relevance         | Resolved mode   | Card contract | Result                               |
+| ------------------ | ---------------------- | ------------------------------------- | --------------- | ------------- | ------------------------------------ |
+| off                | any                    | any                                   | `baseline`      | `missing`     | baseline-only detail                 |
+| on                 | missing                | any                                   | `baseline`      | `missing`     | baseline-only detail                 |
+| on                 | invalid                | any                                   | `baseline`      | `missing`     | baseline-only detail                 |
+| on                 | valid                  | valid outcome items                   | `resident_scan` | `present`     | outcome-backed cards                 |
+| on                 | valid                  | no outcome cards, valid planned items | `resident_scan` | `present`     | planned-backed cards                 |
+| on                 | valid                  | missing or malformed item fields      | `resident_scan` | `partial`     | single meeting-summary fallback card |
 
 ## Fallback notes
 

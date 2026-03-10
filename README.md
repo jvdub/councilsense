@@ -78,6 +78,57 @@ Run the built-in smoke check:
 bash scripts/local_runtime_smoke.sh
 ```
 
+## Local runtime LLM providers
+
+The local runtime supports deterministic summarization plus pluggable LLM-backed summarization.
+
+- `--llm-provider none` uses the built-in deterministic path.
+- `--llm-provider ollama` uses a local Ollama instance.
+- `--llm-provider openai` uses an OpenAI-compatible hosted `chat/completions` endpoint.
+
+Examples:
+
+```bash
+docker compose -f docker-compose.local.yml exec -T api \
+	python -m councilsense.app.local_runtime run-latest \
+	--city-id city-eagle-mountain-ut \
+	--llm-provider ollama \
+	--ollama-endpoint http://host.docker.internal:11434 \
+	--ollama-model gemma3:12b \
+	--ollama-timeout-seconds 90
+```
+
+```bash
+export OPENAI_API_KEY=your-api-key
+
+docker compose -f docker-compose.local.yml exec -T api \
+	python -m councilsense.app.local_runtime run-latest \
+	--city-id city-eagle-mountain-ut \
+	--llm-provider openai \
+	--llm-model gpt-4.1-mini \
+	--llm-timeout-seconds 45
+```
+
+For hosted providers, the generic flags are:
+
+- `--llm-endpoint`
+- `--llm-model`
+- `--llm-api-key`
+- `--llm-timeout-seconds`
+
+Env var fallbacks:
+
+- `OPENAI_API_KEY`
+- `COUNCILSENSE_OPENAI_API_KEY`
+- `COUNCILSENSE_LLM_API_KEY`
+- `COUNCILSENSE_OPENAI_ENDPOINT`
+- `COUNCILSENSE_LLM_ENDPOINT`
+- `COUNCILSENSE_OPENAI_MODEL`
+- `COUNCILSENSE_LLM_MODEL`
+- `COUNCILSENSE_LLM_TIMEOUT_SECONDS`
+
+If a hosted or Ollama request fails, the runtime falls back to deterministic summarization and records a warning in the command envelope.
+
 ## Quick start: run backend + frontend directly
 
 ### 1) Backend setup

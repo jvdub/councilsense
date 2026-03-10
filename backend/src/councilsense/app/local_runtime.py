@@ -11,7 +11,7 @@ from typing import Any
 
 from councilsense.app.canonical_persistence import run_pilot_canonical_backfill
 from councilsense.app.local_latest_fetch import LatestFetchError, fetch_latest_meeting
-from councilsense.app.local_pipeline import LocalPipelineOrchestrator
+from councilsense.app.local_pipeline import LlmProviderConfig, LocalPipelineOrchestrator
 from councilsense.app.notification_delivery_worker import NotificationDeliveryWorker
 from councilsense.app.notification_fanout import (
     NotificationSubscriptionTarget,
@@ -36,7 +36,7 @@ _FIXTURE_ARTIFACT_ID = "artifact-local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_ID = "canonical-local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_ID = "local-runtime-eaglemountain-review-v4"
 _FIXTURE_DOCUMENT_REVISION_NUMBER = 2
-_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/722/media"
+_FIXTURE_SOURCE_DOCUMENT_URL = "https://eaglemountainut.portal.civicclerk.com/event/722/files"
 _FIXTURE_MEETING_DATE = "2026-02-17"
 _FIXTURE_SUMMARY = (
     "The council reviewed major residential development proposals totaling 893 units across 208 acres, "
@@ -57,6 +57,7 @@ _FIXTURE_TOPICS = (
     "Right-of-way acquisition and property transfer",
     "2025 meeting schedule updates",
 )
+_DEFAULT_LLM_TIMEOUT_SECONDS = 20.0
 _FIXTURE_CLAIMS = (
     {
         "claim_id": "claim-local-runtime-eaglemountain-review-v4-1",
@@ -139,7 +140,7 @@ def _fixture_history() -> tuple[dict[str, Any], ...]:
             "document_id": "canonical-local-runtime-eaglemountain-review-history-002",
             "document_revision_id": "local-runtime-eaglemountain-review-history-002",
             "document_revision_number": 1,
-            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/153/media",
+            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/153/files",
             "authority_note": "Local review fixture showing recurring January Eagle Mountain processing.",
             "selected_event_name": "Eagle Mountain City Council",
             "summary": (
@@ -200,7 +201,7 @@ def _fixture_history() -> tuple[dict[str, Any], ...]:
             "document_id": "canonical-local-runtime-eaglemountain-review-history-003",
             "document_revision_id": "local-runtime-eaglemountain-review-history-003",
             "document_revision_number": 1,
-            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/149/media",
+            "source_document_url": "https://eaglemountainut.portal.civicclerk.com/event/149/files",
             "authority_note": "Local review fixture showing recurring December Eagle Mountain processing.",
             "selected_event_name": "Eagle Mountain City Council",
             "summary": (
@@ -609,25 +610,35 @@ def _parse_args() -> argparse.Namespace:
     fetch_latest = subparsers.add_parser("fetch-latest")
     fetch_latest.add_argument("--city-id", default=PILOT_CITY_ID)
     fetch_latest.add_argument("--source-id", default=None)
+    fetch_latest.add_argument("--latest-offset", type=int, default=0)
     fetch_latest.add_argument("--timeout-seconds", type=float, default=12.0)
 
     process_latest = subparsers.add_parser("process-latest")
     process_latest.add_argument("--city-id", default=PILOT_CITY_ID)
     process_latest.add_argument("--meeting-id", default=None)
-    process_latest.add_argument("--llm-provider", choices=("none", "ollama"), default="none")
+    process_latest.add_argument("--llm-provider", choices=("none", "ollama", "openai"), default="none")
+    process_latest.add_argument("--llm-endpoint", default=None)
+    process_latest.add_argument("--llm-model", default=None)
+    process_latest.add_argument("--llm-api-key", default=None)
+    process_latest.add_argument("--llm-timeout-seconds", type=float, default=None)
     process_latest.add_argument("--ollama-endpoint", default=None)
     process_latest.add_argument("--ollama-model", default=None)
-    process_latest.add_argument("--ollama-timeout-seconds", type=float, default=20.0)
+    process_latest.add_argument("--ollama-timeout-seconds", type=float, default=_DEFAULT_LLM_TIMEOUT_SECONDS)
 
     run_latest = subparsers.add_parser("run-latest")
     run_latest.add_argument("--city-id", default=PILOT_CITY_ID)
     run_latest.add_argument("--source-id", default=None)
     run_latest.add_argument("--meeting-id", default=None)
+    run_latest.add_argument("--latest-offset", type=int, default=0)
     run_latest.add_argument("--timeout-seconds", type=float, default=12.0)
-    run_latest.add_argument("--llm-provider", choices=("none", "ollama"), default="none")
+    run_latest.add_argument("--llm-provider", choices=("none", "ollama", "openai"), default="none")
+    run_latest.add_argument("--llm-endpoint", default=None)
+    run_latest.add_argument("--llm-model", default=None)
+    run_latest.add_argument("--llm-api-key", default=None)
+    run_latest.add_argument("--llm-timeout-seconds", type=float, default=None)
     run_latest.add_argument("--ollama-endpoint", default=None)
     run_latest.add_argument("--ollama-model", default=None)
-    run_latest.add_argument("--ollama-timeout-seconds", type=float, default=20.0)
+    run_latest.add_argument("--ollama-timeout-seconds", type=float, default=_DEFAULT_LLM_TIMEOUT_SECONDS)
 
     canonical_backfill = subparsers.add_parser("canonical-backfill")
     canonical_backfill.add_argument("--city-id", default=PILOT_CITY_ID)
@@ -644,6 +655,50 @@ def _resolve_db_path(raw_db_path: str | None) -> str:
     path = Path(resolved)
     path.parent.mkdir(parents=True, exist_ok=True)
     return str(path)
+
+
+def _read_env_float(*names: str) -> float | None:
+    for name in names:
+        raw_value = os.getenv(name)
+        if raw_value is None or not raw_value.strip():
+            continue
+        try:
+            return float(raw_value)
+        except ValueError:
+            continue
+    return None
+
+
+def _build_llm_config(args: argparse.Namespace) -> LlmProviderConfig:
+    provider = str(args.llm_provider).strip().lower()
+
+    timeout_seconds = args.llm_timeout_seconds
+    if timeout_seconds is None:
+        timeout_seconds = _read_env_float("COUNCILSENSE_LLM_TIMEOUT_SECONDS")
+    if timeout_seconds is None:
+        timeout_seconds = args.ollama_timeout_seconds
+    if timeout_seconds is None:
+        timeout_seconds = _DEFAULT_LLM_TIMEOUT_SECONDS
+
+    endpoint = args.llm_endpoint or os.getenv("COUNCILSENSE_LLM_ENDPOINT")
+    model = args.llm_model or os.getenv("COUNCILSENSE_LLM_MODEL")
+    api_key = args.llm_api_key or os.getenv("COUNCILSENSE_LLM_API_KEY")
+
+    if provider == "ollama":
+        endpoint = endpoint or args.ollama_endpoint or os.getenv("COUNCILSENSE_OLLAMA_ENDPOINT")
+        model = model or args.ollama_model or os.getenv("COUNCILSENSE_OLLAMA_MODEL")
+    elif provider == "openai":
+        endpoint = endpoint or os.getenv("COUNCILSENSE_OPENAI_ENDPOINT")
+        model = model or os.getenv("COUNCILSENSE_OPENAI_MODEL")
+        api_key = api_key or os.getenv("COUNCILSENSE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+
+    return LlmProviderConfig(
+        provider=provider,
+        endpoint=endpoint,
+        model=model,
+        timeout_seconds=max(1.0, float(timeout_seconds)),
+        api_key=api_key,
+    )
 
 
 def main() -> None:
@@ -683,6 +738,7 @@ def main() -> None:
                     connection,
                     city_id=args.city_id,
                     source_id=args.source_id,
+                    latest_offset=args.latest_offset,
                     timeout_seconds=args.timeout_seconds,
                 )
                 envelope = _build_command_envelope(
@@ -746,10 +802,7 @@ def main() -> None:
                 city_id=args.city_id,
                 meeting_id=args.meeting_id,
                 ingest_stage_metadata=None,
-                llm_provider=args.llm_provider,
-                ollama_endpoint=args.ollama_endpoint,
-                ollama_model=args.ollama_model,
-                ollama_timeout_seconds=args.ollama_timeout_seconds,
+                llm_config=_build_llm_config(args),
             )
             envelope = _build_command_envelope(
                 command="process-latest",
@@ -776,6 +829,7 @@ def main() -> None:
                     connection,
                     city_id=args.city_id,
                     source_id=args.source_id,
+                    latest_offset=args.latest_offset,
                     timeout_seconds=args.timeout_seconds,
                 )
             except Exception as exc:  # pragma: no cover - handled as local fallback for operator reliability
@@ -812,10 +866,7 @@ def main() -> None:
                         else None
                     )
                 ),
-                llm_provider=args.llm_provider,
-                ollama_endpoint=args.ollama_endpoint,
-                ollama_model=args.ollama_model,
-                ollama_timeout_seconds=args.ollama_timeout_seconds,
+                llm_config=_build_llm_config(args),
             )
 
             envelope = _build_command_envelope(

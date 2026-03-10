@@ -30,9 +30,7 @@
         "evidence_references_v2",
         "suggested_prompts"
       ],
-      "expected_absent_top_level_fields": [
-        "structured_relevance"
-      ],
+      "expected_absent_top_level_fields": ["structured_relevance"],
       "expected_present_prompt_paths": [
         "$.suggested_prompts",
         "$.suggested_prompts[0].evidence_references_v2",
@@ -73,9 +71,7 @@
         "suggested_prompts"
       ],
       "expected_present_prompt_paths": [],
-      "expected_omitted_prompt_paths": [
-        "$.suggested_prompts"
-      ]
+      "expected_omitted_prompt_paths": ["$.suggested_prompts"]
     }
   ],
   "scenarios": [
@@ -196,16 +192,12 @@
         "publication_id": "pub-follow-up-contract-supported",
         "published_at": "2026-03-09T14:05:00Z",
         "summary": "Council approved the North Gateway rezoning application.",
-        "key_decisions": [
-          "Approved the North Gateway rezoning application."
-        ],
+        "key_decisions": ["Approved the North Gateway rezoning application."],
         "key_actions": [
           "Staff will publish the ordinance by April 15, 2026.",
           "Operator replay completed."
         ],
-        "notable_topics": [
-          "Land use"
-        ],
+        "notable_topics": ["Land use"],
         "evidence_references_v2": [
           {
             "evidence_id": "pointer-follow-up-contract-supported-1",
@@ -443,12 +435,8 @@
         "published_at": "2026-03-09T15:05:00Z",
         "summary": "Discussion of future work with no evidence-backed follow-up answers.",
         "key_decisions": [],
-        "key_actions": [
-          "Operator replay completed."
-        ],
-        "notable_topics": [
-          "Operations"
-        ],
+        "key_actions": ["Operator replay completed."],
+        "notable_topics": ["Operations"],
         "evidence_references_v2": [
           {
             "evidence_id": "pointer-follow-up-contract-unsupported-1",

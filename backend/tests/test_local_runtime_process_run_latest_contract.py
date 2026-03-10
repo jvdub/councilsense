@@ -114,6 +114,60 @@ def test_run_latest_contract_includes_ingest_then_process_stages(
     ]
 
 
+def test_run_latest_supports_latest_offset(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "local-runtime-run-latest-offset.db"
+
+    def _stub_offset_fetch(url: str, __: float) -> bytes:
+        if "/events?" in url or url.endswith("/events"):
+            return (
+                '{"value":['
+                '{"id":22,"eventName":"City Council Meeting","eventDate":"2026-03-09T00:00:00Z",'
+                '"publishedFiles":[{"type":"Minutes","name":"March 9 Minutes","fileId":1103,"url":"stream/mar-9-minutes.pdf"}]},'
+                '{"id":21,"eventName":"City Council Meeting","eventDate":"2026-01-08T00:00:00Z",'
+                '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1102,"url":"stream/fixture-minutes.pdf"}]}'
+                ']}'
+            ).encode("utf-8")
+        if "GetMeetingFile(" in url and "plainText=true" in url:
+            return b'{"blobUri":"https://blob.example/minutes.txt"}'
+        if "GetMeetingFile(" in url and "plainText=false" in url:
+            return b'{"blobUri":"https://blob.example/minutes.pdf"}'
+        if url.endswith("minutes.txt"):
+            return b"City Council approved minutes and directed staff to publish updates."
+        return b"%PDF-1.7\nmock pdf bytes"
+
+    monkeypatch.setenv("COUNCILSENSE_LOCAL_ARTIFACT_ROOT", str(tmp_path / "artifacts"))
+    monkeypatch.setattr("councilsense.app.local_latest_fetch._fetch_url_bytes", _stub_offset_fetch)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "local_runtime.py",
+            "--db-path",
+            str(db_path),
+            "run-latest",
+            "--city-id",
+            "city-eagle-mountain-ut",
+            "--latest-offset",
+            "1",
+            "--llm-provider",
+            "none",
+        ],
+    )
+    local_runtime.main()
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["command"] == "run-latest"
+    assert payload["status"] == "limited_confidence"
+    assert payload["error_summary"] is None
+    assert [item["stage"] for item in payload["stage_outcomes"]] == ["ingest", "extract", "summarize", "publish"]
+    assert payload["stage_outcomes"][0]["metadata"]["meeting_date"] == "2026-01-08"
+
+
 def test_run_latest_falls_back_to_fixture_when_fetch_fails(
     monkeypatch,
     capsys,

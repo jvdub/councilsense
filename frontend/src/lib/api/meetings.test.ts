@@ -85,6 +85,7 @@ describe("meetings api client", () => {
       body_name: "City Council",
       source_document_kind: "minutes",
       source_document_url: "https://example.org/minutes/council-session.pdf",
+      source_meeting_url: "https://example.org/meetings/council-session",
       status: "processed",
       confidence_label: "high",
       reader_low_confidence: false,

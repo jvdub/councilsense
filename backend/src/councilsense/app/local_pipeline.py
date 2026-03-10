@@ -12,7 +12,7 @@ from html import unescape
 from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -41,6 +41,7 @@ from councilsense.app.multi_document_observability import (
     emit_multi_document_stage_event,
     resolve_stage_source_type,
 )
+from councilsense.app.notable_topics import sanitize_notable_topics
 from councilsense.app.st031_source_observability import (
     SourceAwareMetricEmitter,
     emit_citation_precision_ratio,
@@ -66,6 +67,8 @@ from councilsense.db import MeetingSummaryRepository, ProcessingLifecycleService
 _DEFAULT_ARTIFACT_ROOT = "/tmp/councilsense-local-latest-artifacts"
 _DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 _DEFAULT_OLLAMA_MODEL = "llama3.2:3b"
+_DEFAULT_OPENAI_ENDPOINT = "https://api.openai.com/v1"
+_DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 _THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think>", flags=re.IGNORECASE | re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", flags=re.DOTALL)
 _GENERIC_TOPIC_TOKENS = frozenset(
@@ -118,15 +121,26 @@ _TOPIC_SUPPRESSION_TOKENS = frozenset(
     }
 )
 _TOPIC_CONCEPT_RULES: tuple[tuple[str, str], ...] = (
+    ("appointment", "Board and Commission Appointments"),
+    ("legislative update", "Legislative Update"),
+    ("legislative", "Legislative Update"),
+    ("financial report", "Quarterly Financial Report"),
+    ("quarterly financial report", "Quarterly Financial Report"),
     ("purchase agreement", "Purchase Agreement Approval"),
     ("right-of-way", "Right-of-Way Acquisition"),
     ("consent agenda", "Consent Agenda Changes"),
     ("public hearing", "Public Hearing Scheduling"),
+    ("future land use", "Land Use Planning"),
+    ("land use", "Land Use Planning"),
     ("zoning", "Zoning and Land Use"),
+    ("youth council", "Youth Council Code"),
     ("ordinance", "Ordinance Adoption"),
     ("resolution", "Resolution Approval"),
     ("budget", "Budget and Fiscal Planning"),
     ("fiscal", "Budget and Fiscal Planning"),
+    ("bond release", "Bond Releases"),
+    ("bond releases", "Bond Releases"),
+    ("change order", "Project Change Orders"),
     ("transportation", "Transportation Infrastructure"),
     ("traffic", "Transportation Infrastructure"),
     ("water", "Water and Utility Infrastructure"),
@@ -141,7 +155,14 @@ _TOPIC_CONCEPT_RULES: tuple[tuple[str, str], ...] = (
     ("safety", "Public Safety Measures"),
 )
 _TOPIC_FALLBACK_LABELS: tuple[tuple[str, str], ...] = (
+    ("appointment", "Board and Commission Appointments"),
+    ("legislative", "Legislative Update"),
+    ("financial report", "Quarterly Financial Report"),
     ("budget", "Budget and Fiscal Planning"),
+    ("land use", "Land Use Planning"),
+    ("youth council", "Youth Council Code"),
+    ("bond release", "Bond Releases"),
+    ("change order", "Project Change Orders"),
     ("zoning", "Zoning and Land Use"),
     ("hearing", "Public Hearing Scheduling"),
     ("transportation", "Transportation Infrastructure"),
@@ -337,6 +358,7 @@ class _ExtractedPayload:
 @dataclass(frozen=True)
 class _SummarizePayload:
     output: SummarizationOutput
+    provider_requested: str
     provider_used: str
     fallback_reason: str | None
     authority_policy: _AuthorityPolicyResult
@@ -355,6 +377,20 @@ class _MeetingMaterialContext:
     @property
     def is_same_day_or_future(self) -> bool:
         return self.meeting_temporal_status == "same_day_or_future"
+
+
+@dataclass(frozen=True)
+class LlmProviderConfig:
+    provider: str
+    endpoint: str | None = None
+    model: str | None = None
+    timeout_seconds: float = 20.0
+    api_key: str | None = None
+
+    @property
+    def normalized_provider(self) -> str:
+        normalized = self.provider.strip().lower()
+        return normalized or "none"
 
 
 @dataclass(frozen=True)
@@ -513,10 +549,7 @@ class LocalPipelineOrchestrator:
         city_id: str,
         meeting_id: str | None,
         ingest_stage_metadata: dict[str, object] | None,
-        llm_provider: str,
-        ollama_endpoint: str | None,
-        ollama_model: str | None,
-        ollama_timeout_seconds: float,
+        llm_config: LlmProviderConfig,
     ) -> ProcessLatestResult:
         stage_outcomes: list[dict[str, object]] = []
         warnings: list[str] = []
@@ -584,10 +617,7 @@ class LocalPipelineOrchestrator:
                 extracted=extract_payload,
                 material_context=material_context,
                 rollout_config=rollout_config,
-                llm_provider=llm_provider,
-                ollama_endpoint=ollama_endpoint,
-                ollama_model=ollama_model,
-                ollama_timeout_seconds=ollama_timeout_seconds,
+                llm_config=llm_config,
             )
             summarize_metadata: dict[str, object] = {
                 "provider_used": summarize_payload.provider_used,
@@ -601,7 +631,7 @@ class LocalPipelineOrchestrator:
             if summarize_payload.fallback_reason is not None:
                 fallback_used = True
                 summarize_metadata["fallback_reason"] = summarize_payload.fallback_reason
-                warnings.append("ollama_fallback_to_deterministic")
+                warnings.append(f"{summarize_payload.provider_requested}_fallback_to_deterministic")
 
             stage_outcomes.append(
                 {
@@ -945,10 +975,7 @@ class LocalPipelineOrchestrator:
         extracted: _ExtractedPayload,
         material_context: _MeetingMaterialContext,
         rollout_config: QualityGateRolloutConfig,
-        llm_provider: str,
-        ollama_endpoint: str | None,
-        ollama_model: str | None,
-        ollama_timeout_seconds: float,
+        llm_config: LlmProviderConfig,
     ) -> tuple[_SummarizePayload, str]:
         started_at = _now_iso_utc()
         provider_used = "deterministic"
@@ -993,57 +1020,64 @@ class LocalPipelineOrchestrator:
         summarize_text = authority_policy.summarize_text
         compose_section_ref = "compose.multi_document"
 
-        if llm_provider == "ollama":
+        provider_requested = llm_config.normalized_provider
+        common_kwargs = {
+            "text": summarize_text,
+            "artifact_id": extracted.artifact_id,
+            "section_ref": compose_section_ref,
+            "compose_input": compose_input,
+            "material_context": material_context,
+            "authority_policy": authority_policy,
+            "topic_hardening_enabled": rollout_config.behavior_flags.topic_hardening_enabled,
+            "specificity_retention_enabled": rollout_config.behavior_flags.specificity_retention_enabled,
+            "evidence_projection_enabled": rollout_config.behavior_flags.evidence_projection_enabled,
+        }
+
+        if provider_requested == "ollama":
             try:
                 output = _summarize_with_ollama(
-                    text=summarize_text,
-                    artifact_id=extracted.artifact_id,
-                    section_ref=compose_section_ref,
-                    compose_input=compose_input,
-                    material_context=material_context,
-                    authority_policy=authority_policy,
-                    topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
-                    specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
-                    evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
-                    endpoint=(ollama_endpoint or _DEFAULT_OLLAMA_ENDPOINT),
-                    model=(ollama_model or _DEFAULT_OLLAMA_MODEL),
-                    timeout_seconds=max(1.0, ollama_timeout_seconds),
+                    **common_kwargs,
+                    endpoint=(llm_config.endpoint or _DEFAULT_OLLAMA_ENDPOINT),
+                    model=(llm_config.model or _DEFAULT_OLLAMA_MODEL),
+                    timeout_seconds=max(1.0, llm_config.timeout_seconds),
                 )
                 provider_used = "ollama"
                 status = "processed"
             except Exception as exc:
                 output = _deterministic_summarize(
-                    text=summarize_text,
-                    artifact_id=extracted.artifact_id,
-                    section_ref=compose_section_ref,
-                    compose_input=compose_input,
-                    material_context=material_context,
-                    authority_policy=authority_policy,
-                    topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
-                    specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
-                    evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
+                    **common_kwargs,
                 )
                 provider_used = "deterministic_fallback"
                 fallback_reason = f"{type(exc).__name__}: {exc}"
                 status = "limited_confidence"
-        elif llm_provider == "none":
+        elif provider_requested == "openai":
+            try:
+                output = _summarize_with_openai_chat_completion(
+                    **common_kwargs,
+                    endpoint=(llm_config.endpoint or _DEFAULT_OPENAI_ENDPOINT),
+                    model=(llm_config.model or _DEFAULT_OPENAI_MODEL),
+                    timeout_seconds=max(1.0, llm_config.timeout_seconds),
+                    api_key=llm_config.api_key,
+                )
+                provider_used = "openai"
+                status = "processed"
+            except Exception as exc:
+                output = _deterministic_summarize(
+                    **common_kwargs,
+                )
+                provider_used = "deterministic_fallback"
+                fallback_reason = f"{type(exc).__name__}: {exc}"
+                status = "limited_confidence"
+        elif provider_requested == "none":
             output = _deterministic_summarize(
-                text=summarize_text,
-                artifact_id=extracted.artifact_id,
-                section_ref=compose_section_ref,
-                compose_input=compose_input,
-                material_context=material_context,
-                authority_policy=authority_policy,
-                topic_hardening_enabled=rollout_config.behavior_flags.topic_hardening_enabled,
-                specificity_retention_enabled=rollout_config.behavior_flags.specificity_retention_enabled,
-                evidence_projection_enabled=rollout_config.behavior_flags.evidence_projection_enabled,
+                **common_kwargs,
             )
             status = "processed"
         else:
             raise LocalPipelineError(
                 stage="summarize",
-                message=f"Unsupported llm provider: {llm_provider}",
-                operator_hint="Use --llm-provider none|ollama.",
+                message=f"Unsupported llm provider: {provider_requested}",
+                operator_hint="Use --llm-provider none|ollama|openai.",
             )
 
         finished_at = _now_iso_utc()
@@ -1096,6 +1130,7 @@ class LocalPipelineOrchestrator:
         )
         return _SummarizePayload(
             output=output,
+            provider_requested=provider_requested,
             provider_used=provider_used,
             fallback_reason=fallback_reason,
             authority_policy=authority_policy,
@@ -1595,6 +1630,13 @@ def _deterministic_summarize(
         structured_relevance=structured_relevance,
         authority_policy=authority_policy,
     )
+    notable_topics = _supplement_notable_topics(
+        notable_topics=notable_topics,
+        summary=summary,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        structured_relevance=structured_relevance,
+    )
 
     return SummarizationOutput.from_sections(
         summary=summary,
@@ -1621,24 +1663,44 @@ def _summarize_with_ollama(
     model: str,
     timeout_seconds: float,
 ) -> SummarizationOutput:
-    cleaned_source = _normalize_generated_text(text)
-    focused_source = _focus_source_text(cleaned_source)
-    preview_instruction = (
-        "This source is agenda-only or packet-only; describe scheduled items and explicitly state that no decisions or completed actions are recorded yet because minutes are unavailable. "
-        if authority_policy.preview_only or material_context.is_preview_only
-        else ""
+    prompt = _build_llm_summary_prompt(
+        text=text,
+        material_context=material_context,
+        authority_policy=authority_policy,
     )
-    prompt = (
-        "You are summarizing local government meeting materials. "
-        "Use only facts present in the provided meeting text. "
-        "Prioritize what actually happened: decisions made, actions assigned, policy or project impacts. "
-        "Avoid procedural meeting operations unless they materially change an outcome (attendance, roll call, call to order, adjournment, schedule mechanics). "
-        + preview_instruction
-        + "Do not include chain-of-thought, reasoning traces, or meta commentary. "
-        + "Return ONLY valid JSON with keys: summary, claim. "
-        + "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
-        + f"Meeting text:\n{(focused_source or cleaned_source)[:6000]}"
+    return _request_ollama_summary(
+        prompt=prompt,
+        source_text=text,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+        compose_input=compose_input,
+        material_context=material_context,
+        authority_policy=authority_policy,
+        topic_hardening_enabled=topic_hardening_enabled,
+        specificity_retention_enabled=specificity_retention_enabled,
+        evidence_projection_enabled=evidence_projection_enabled,
+        endpoint=endpoint,
+        model=model,
+        timeout_seconds=timeout_seconds,
     )
+
+
+def _request_ollama_summary(
+    *,
+    prompt: str,
+    source_text: str,
+    artifact_id: str,
+    section_ref: str,
+    compose_input: SummarizeComposeInput | None,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
+    topic_hardening_enabled: bool,
+    specificity_retention_enabled: bool,
+    evidence_projection_enabled: bool,
+    endpoint: str,
+    model: str,
+    timeout_seconds: float,
+) -> SummarizationOutput:
     payload = json.dumps(
         {
             "model": model,
@@ -1671,6 +1733,162 @@ def _summarize_with_ollama(
     response_text = parsed.get("response")
     if not isinstance(response_text, str) or not response_text.strip():
         raise RuntimeError("ollama response missing non-empty 'response' field")
+
+    return _materialize_llm_summary_output(
+        response_text=response_text,
+        source_text=source_text,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+        compose_input=compose_input,
+        material_context=material_context,
+        authority_policy=authority_policy,
+        topic_hardening_enabled=topic_hardening_enabled,
+        specificity_retention_enabled=specificity_retention_enabled,
+        evidence_projection_enabled=evidence_projection_enabled,
+    )
+
+
+def _summarize_with_openai_chat_completion(
+    *,
+    text: str,
+    artifact_id: str,
+    section_ref: str,
+    compose_input: SummarizeComposeInput | None,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
+    topic_hardening_enabled: bool,
+    specificity_retention_enabled: bool,
+    evidence_projection_enabled: bool,
+    endpoint: str,
+    model: str,
+    timeout_seconds: float,
+    api_key: str | None,
+) -> SummarizationOutput:
+    if api_key is None or not api_key.strip():
+        raise RuntimeError("OpenAI API key is not configured")
+
+    prompt = _build_llm_summary_prompt(
+        text=text,
+        material_context=material_context,
+        authority_policy=authority_policy,
+    )
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    request = Request(
+        f"{endpoint.rstrip('/')}/chat/completions",
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except (TimeoutError, URLError, HTTPError) as exc:
+        raise RuntimeError(f"openai request failed: {exc}") from exc
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("openai response payload was not valid JSON") from exc
+
+    if not isinstance(parsed, dict):
+        raise RuntimeError("openai response payload was not an object")
+
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("openai response missing non-empty 'choices' field")
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        raise RuntimeError("openai response choice was not an object")
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("openai response missing message payload")
+    response_text = _extract_chat_message_content(message.get("content"))
+    if not response_text:
+        raise RuntimeError("openai response missing non-empty message content")
+
+    return _materialize_llm_summary_output(
+        response_text=response_text,
+        source_text=text,
+        artifact_id=artifact_id,
+        section_ref=section_ref,
+        compose_input=compose_input,
+        material_context=material_context,
+        authority_policy=authority_policy,
+        topic_hardening_enabled=topic_hardening_enabled,
+        specificity_retention_enabled=specificity_retention_enabled,
+        evidence_projection_enabled=evidence_projection_enabled,
+    )
+
+
+def _build_llm_summary_prompt(
+    *,
+    text: str,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
+) -> str:
+    cleaned_source = _normalize_generated_text(text)
+    focused_source = _focus_source_text(cleaned_source)
+    preview_instruction = (
+        "This source is agenda-only or packet-only; describe scheduled items and explicitly state that no decisions or completed actions are recorded yet because minutes are unavailable. "
+        if authority_policy.preview_only or material_context.is_preview_only
+        else ""
+    )
+    return (
+        "You are summarizing local government meeting materials. "
+        "Use only facts present in the provided meeting text. "
+        "Prioritize what actually happened: decisions made, actions assigned, policy or project impacts. "
+        "Avoid procedural meeting operations unless they materially change an outcome (attendance, roll call, call to order, adjournment, schedule mechanics). "
+        + preview_instruction
+        + "Do not include chain-of-thought, reasoning traces, or meta commentary. "
+        + "Return ONLY valid JSON with keys: summary, claim. "
+        + "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
+        + f"Meeting text:\n{(focused_source or cleaned_source)[:6000]}"
+    )
+
+
+def _extract_chat_message_content(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text.strip():
+            parts.append(text.strip())
+    return "\n".join(parts).strip()
+
+
+def _materialize_llm_summary_output(
+    *,
+    response_text: str,
+    source_text: str,
+    artifact_id: str,
+    section_ref: str,
+    compose_input: SummarizeComposeInput | None,
+    material_context: _MeetingMaterialContext,
+    authority_policy: _AuthorityPolicyResult,
+    topic_hardening_enabled: bool,
+    specificity_retention_enabled: bool,
+    evidence_projection_enabled: bool,
+) -> SummarizationOutput:
+    cleaned_source = _normalize_generated_text(source_text)
+    focused_source = _focus_source_text(cleaned_source)
 
     normalized_response = _normalize_generated_text(unescape(response_text))
     parsed_json = _extract_json_object(normalized_response)
@@ -1730,6 +1948,13 @@ def _summarize_with_ollama(
         key_actions=key_actions,
         structured_relevance=structured_relevance,
         authority_policy=authority_policy,
+    )
+    notable_topics = _supplement_notable_topics(
+        notable_topics=notable_topics,
+        summary=summary_text,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        structured_relevance=structured_relevance,
     )
 
     return SummarizationOutput.from_sections(
@@ -1813,16 +2038,56 @@ def _derive_grounded_sections(
         "approved",
     )
 
+    decisive_decision_keywords = (
+        "approve",
+        "approved",
+        "adopt",
+        "adopted",
+        "authorized",
+        "ratified",
+        "denied",
+        "motion carried",
+        "moved to",
+        "passed",
+    )
+    primary_action_keywords = (
+        "direct",
+        "directed",
+        "schedule",
+        "scheduled",
+        "submit",
+        "prepare",
+        "continue",
+        "follow up",
+        "public hearing",
+        "assigned",
+        "tabled",
+        "determined",
+    )
+
     decision_candidates = [
         _normalize_decision_sentence(s)
         for s in content_sentences
-        if any(keyword in s.lower() for keyword in decision_keywords)
+        if any(keyword in s.lower() for keyword in decisive_decision_keywords)
     ]
+    if not decision_candidates:
+        decision_candidates = [
+            _normalize_decision_sentence(s)
+            for s in content_sentences
+            if any(keyword in s.lower() for keyword in decision_keywords)
+        ]
+
     action_candidates = [
         _normalize_action_sentence(s)
         for s in content_sentences
-        if any(keyword in s.lower() for keyword in action_keywords)
+        if any(keyword in s.lower() for keyword in primary_action_keywords)
     ]
+    if not action_candidates:
+        action_candidates = [
+            _normalize_action_sentence(s)
+            for s in content_sentences
+            if any(keyword in s.lower() for keyword in action_keywords)
+        ]
 
     decision_final = [s for s in decision_candidates if s and not _is_low_value_outcome(s)]
     action_final = [s for s in action_candidates if s and not _is_low_value_outcome(s)]
@@ -2246,7 +2511,8 @@ def _derive_preview_topics(*, existing: tuple[str, ...]) -> tuple[str, ...]:
             continue
         if mapped not in preview_topics:
             preview_topics.append(mapped)
-    return tuple(preview_topics[:5])
+    sanitized = sanitize_notable_topics(preview_topics, max_items=5)
+    return sanitized or ("Agenda items",)
 
 
 def _derive_basic_topics(*, key_decisions: tuple[str, ...], key_actions: tuple[str, ...]) -> tuple[str, ...]:
@@ -2264,12 +2530,15 @@ def _derive_basic_topics(*, key_decisions: tuple[str, ...], key_actions: tuple[s
 
 
 def _split_sentences(text: str) -> list[str]:
-    chunks = re.split(r"(?<=[.!?])\s+|\n+", text)
-    return [chunk.strip() for chunk in chunks if chunk.strip()]
+    return [sentence for sentence, _, _, _ in _split_sentences_with_offsets(text)]
 
 
 def _derive_notable_topics(*, key_decisions: tuple[str, ...], key_actions: tuple[str, ...]) -> tuple[str, ...]:
-    findings = [*key_decisions, *key_actions]
+    return _derive_notable_topics_from_findings([*key_decisions, *key_actions])
+
+
+def _derive_notable_topics_from_findings(findings: Sequence[str]) -> tuple[str, ...]:
+    findings = [finding for finding in findings if _normalize_generated_text(finding)]
     if not findings:
         return ("Meeting outcomes",)
 
@@ -2308,18 +2577,46 @@ def _derive_notable_topics(*, key_decisions: tuple[str, ...], key_actions: tuple
         )
     ]
 
-    bounded = list(ordered[:5])
+    bounded = list(sanitize_notable_topics(ordered[:5], max_items=5))
     if len(bounded) < 3:
-        bounded = _apply_topic_fallbacks(existing=bounded, findings=findings)
+        bounded = list(sanitize_notable_topics(_apply_topic_fallbacks(existing=bounded, findings=findings), max_items=5))
 
     if not bounded:
         return ("Meeting outcomes",)
     return tuple(bounded[:5])
 
 
+def _supplement_notable_topics(
+    *,
+    notable_topics: tuple[str, ...],
+    summary: str,
+    key_decisions: tuple[str, ...],
+    key_actions: tuple[str, ...],
+    structured_relevance: StructuredRelevance | None,
+) -> tuple[str, ...]:
+    candidates: list[str] = list(notable_topics)
+    supporting_findings: list[str] = [summary, *key_decisions, *key_actions]
+    if structured_relevance is not None:
+        for field in (
+            structured_relevance.subject,
+            structured_relevance.location,
+            structured_relevance.action,
+            structured_relevance.scale,
+        ):
+            if field is not None:
+                supporting_findings.append(field.value)
+
+    supplemental_topics = _derive_notable_topics_from_findings(supporting_findings)
+    for topic in supplemental_topics:
+        if topic not in candidates:
+            candidates.append(topic)
+
+    return tuple(sanitize_notable_topics(candidates, max_items=5))
+
+
 def _extract_phrase_topic_candidate(sentence: str) -> str | None:
     match = re.search(
-        r"\b(?:approved?|adopted?|authorized?|directed?|scheduled?|tabled?|ratified?|denied|accepted|amended|continued?)\b\s+"
+        r"\b(?:approve(?:d)?|adopt(?:ed)?|authorize(?:d)?|direct(?:ed)?|schedule(?:d)?|table(?:d)?|ratif(?:ied|y)|denied|accept(?:ed)?|amend(?:ed)?|continue(?:d)?)\b\s+"
         r"(?:the\s+|a\s+|an\s+)?([a-z][a-z0-9\-\s]{6,100})",
         sentence.lower(),
     )
@@ -2429,39 +2726,147 @@ def _focus_source_text(text: str) -> str:
     return " ".join(focused)
 
 
+def _is_low_value_summary_sentence(sentence: str) -> bool:
+    lower = sentence.lower()
+    if _is_low_signal_sentence(sentence) or _is_low_value_outcome(sentence):
+        return True
+    low_value_markers = (
+        "recording of the discussion can be found",
+        "recording of the motion can be found",
+        "seconded the motion",
+        "the motion passed with",
+    )
+    if any(marker in lower for marker in low_value_markers):
+        return True
+    if lower.count(" yes") >= 2 or lower.count(" no") >= 2:
+        return True
+    return False
+
+
+def _is_presenter_only_sentence(sentence: str) -> bool:
+    lower = sentence.lower()
+    if any(
+        marker in lower
+        for marker in (
+            "approved",
+            "adopted",
+            "authorized",
+            "awarded",
+            "directed",
+            "provided direction",
+            "motion carried",
+            "moved to",
+            "ordinance",
+            "resolution",
+        )
+    ):
+        return False
+    return any(
+        marker in lower
+        for marker in (
+            "presented",
+            "provided an overview",
+            "reviewed",
+            "responded to questions",
+        )
+    )
+
+
+def _score_summary_sentence(sentence: str) -> int:
+    lower = sentence.lower()
+    score = 0
+    if any(
+        marker in lower
+        for marker in (
+            "approved",
+            "adopted",
+            "authorized",
+            "awarded",
+            "denied",
+            "motion carried",
+            "moved to adopt",
+            "moved to approve",
+        )
+    ):
+        score += 6
+    if any(marker in lower for marker in ("directed", "provided direction", "scheduled", "public hearing")):
+        score += 4
+    if any(
+        marker in lower
+        for marker in (
+            "budget",
+            "financial report",
+            "future land use",
+            "land use",
+            "map",
+            "plan",
+            "report",
+            "agreement",
+            "contract",
+            "ordinance",
+            "resolution",
+            "code",
+            "fee",
+        )
+    ):
+        score += 2
+    if _is_presenter_only_sentence(sentence):
+        score -= 2
+    return score
+
+
+def _normalize_summary_sentence(sentence: str) -> str:
+    lower = sentence.lower()
+    if any(
+        marker in lower
+        for marker in (
+            "approved",
+            "adopted",
+            "authorized",
+            "awarded",
+            "denied",
+            "motion carried",
+            "moved to",
+        )
+    ):
+        return _normalize_decision_sentence(sentence)
+    if any(marker in lower for marker in ("directed", "provided direction", "scheduled", "public hearing")):
+        return _normalize_action_sentence(sentence)
+    return _normalize_sentence(sentence)
+
+
 def _build_grounded_summary(text: str) -> str:
     sentences = _split_sentences(text)
     if not sentences:
         return "Meeting source text unavailable."
-    substantive_sentences = [
-        sentence
-        for sentence in sentences
-        if not _is_low_value_outcome(sentence) and not _is_meeting_operations_sentence(sentence)
-    ]
-    if substantive_sentences:
-        sentences = substantive_sentences
-    prioritized = [
-        sentence
-        for sentence in sentences
-        if any(
-            keyword in sentence.lower()
-            for keyword in (
-                "motion",
-                "resolution",
-                "approved",
-                "adopt",
-                "directed",
-                "hearing",
-                "agreement",
-                "contract",
-                "ordinance",
-                "budget",
-                "zoning",
-            )
-        )
-    ]
-    selected = (prioritized or sentences)[:3]
-    summary = " ".join(selected)
+    candidate_sentences = [sentence for sentence in sentences if not _is_low_value_summary_sentence(sentence)]
+    if not candidate_sentences:
+        candidate_sentences = [sentence for sentence in sentences if not _is_meeting_operations_sentence(sentence)]
+    if not candidate_sentences:
+        candidate_sentences = sentences
+
+    ranked_candidates: list[tuple[int, int, str]] = []
+    for index, sentence in enumerate(candidate_sentences):
+        normalized = _normalize_summary_sentence(sentence)
+        if not normalized or _is_low_value_summary_sentence(normalized):
+            continue
+        ranked_candidates.append((_score_summary_sentence(sentence), index, normalized))
+
+    if not ranked_candidates:
+        ranked_candidates = [(0, index, _normalize_sentence(sentence)) for index, sentence in enumerate(candidate_sentences)]
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    for _, _, candidate in sorted(ranked_candidates, key=lambda item: (-item[0], item[1])):
+        dedupe_key = candidate.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        selected.append(candidate)
+        if len(selected) >= 3:
+            break
+
+    summary = " ".join(selected or [_normalize_sentence(candidate_sentences[0])])
     return summary[:520]
 
 
@@ -2469,6 +2874,46 @@ def _normalize_decision_sentence(sentence: str) -> str:
     cleaned = _normalize_sentence(sentence)
     if not cleaned:
         return cleaned
+
+    cleaned = re.sub(
+        r"\bCouncilmember\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)?\s+seconded the motion\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip(" .")
+    if cleaned and cleaned[-1] not in ".!?":
+        cleaned = f"{cleaned}."
+
+    motion_match = re.search(
+        r"\bmoved to\s+(adopt|approve|authorize|award|deny|continue)\b\s+(?P<subject>.+)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if motion_match is not None:
+        verb = motion_match.group(1).lower()
+        remainder = motion_match.group("subject").strip().rstrip(".")
+        remainder = re.sub(r"\bwith updated revisions made in work session\b", "with work session revisions", remainder, flags=re.IGNORECASE)
+        remainder = re.sub(
+            r"^an ordinance of [^,]+(?:,\s*[^,]+){0,2},\s*",
+            "the ordinance ",
+            remainder,
+            flags=re.IGNORECASE,
+        )
+        remainder = re.sub(
+            r"^a resolution of [^,]+(?:,\s*[^,]+){0,2},\s*",
+            "the resolution ",
+            remainder,
+            flags=re.IGNORECASE,
+        )
+        mapping = {
+            "adopt": "Adopted",
+            "approve": "Approved",
+            "authorize": "Authorized",
+            "award": "Awarded",
+            "deny": "Denied",
+            "continue": "Continued",
+        }
+        return f"{mapping.get(verb, 'Approved')} {remainder.strip()} .".replace(" .", ".")
 
     resolution_match = re.search(
         r"\bresolution\b\s*[-:]?\s*(?:a\s+resolution\s+of\s+.*?)?"
@@ -2522,14 +2967,20 @@ def _is_low_value_outcome(sentence: str) -> bool:
         "is located directly",
         "parcel number",
         "recording of the discussion can be found",
+        "recording of the motion can be found",
         "joined the meeting",
         "was excused",
         "roll call",
         "call to order",
         "pledge of allegiance",
         "mayor pro tempore",
+        "the motion passed with",
     )
-    return any(marker in lower for marker in markers)
+    if any(marker in lower for marker in markers):
+        return True
+    if lower.count(" yes") >= 2 or lower.count(" no") >= 2:
+        return True
+    return False
 
 
 def _is_low_value_anchor_text(anchor_text: str) -> bool:
@@ -2642,8 +3093,8 @@ def _synthesize_structured_relevance(
             continue
         seen_keys.add(dedupe_key)
         candidates.append(candidate)
-        if len(candidates) >= 3:
-            break
+
+    candidates = sorted(candidates, key=lambda item: item.rank)[:3]
 
     if authority_policy.authority_outcome == "unresolved_conflict":
         candidates = [
@@ -2862,6 +3313,29 @@ def _collect_relevance_snippets(
     for source in ordered_sources:
         if source.spans:
             for span in source.spans:
+                sentence_spans = _split_sentences_with_offsets(span.span_text)
+                use_sentence_level = (
+                    len(sentence_spans) > 1
+                    or span.start_char_offset is None
+                    or span.end_char_offset is None
+                    or (span.end_char_offset - span.start_char_offset > 400)
+                )
+                if use_sentence_level and sentence_spans:
+                    for sentence, sentence_index, char_start, char_end in sentence_spans:
+                        if _is_low_signal_sentence(sentence):
+                            continue
+                        snippets.append(
+                            _RelevanceSnippet(
+                                text=sentence,
+                                source=source,
+                                span=span,
+                                sentence_index=sentence_index,
+                                char_start=(span.start_char_offset + char_start if span.start_char_offset is not None else char_start),
+                                char_end=(span.start_char_offset + char_end if span.start_char_offset is not None else char_end),
+                            )
+                        )
+                    continue
+
                 normalized = _normalize_generated_text(span.span_text)
                 if not normalized or _is_low_signal_sentence(normalized):
                     continue
@@ -2946,14 +3420,22 @@ def _build_relevance_evidence_pointer(
             include_offsets=True,
         )
         sentence_section_ref = evidence_match.section_ref
-        if snippet.span is None and snippet.sentence_index is not None and snippet.source.source_type:
+        if snippet.sentence_index is not None and snippet.source.source_type:
             sentence_section_ref = f"{snippet.source.source_type}.sentence.{snippet.sentence_index + 1}"
+        char_start = evidence_match.char_start
+        char_end = evidence_match.char_end
+        excerpt = evidence_match.excerpt
+        if snippet.sentence_index is not None:
+            excerpt = _normalize_generated_text(snippet.text)[:280]
+            if snippet.char_start is not None and snippet.char_end is not None and snippet.char_end > snippet.char_start:
+                char_start = snippet.char_start
+                char_end = snippet.char_end
         return ClaimEvidencePointer(
             artifact_id=evidence_match.artifact_id,
             section_ref=sentence_section_ref,
-            char_start=evidence_match.char_start,
-            char_end=evidence_match.char_end,
-            excerpt=_normalize_generated_text(snippet.text)[:280],
+            char_start=char_start,
+            char_end=char_end,
+            excerpt=excerpt,
             document_id=evidence_match.document_id,
             span_id=evidence_match.span_id,
             document_kind=evidence_match.document_kind,
@@ -3093,8 +3575,8 @@ def _extract_structured_subject(text: str, *, anchors: tuple[Any, ...]) -> str |
     normalized = _normalize_generated_text(text)
     subject_reference = next((anchor.text for anchor in anchors if anchor.kind == "subject"), None)
     action_match = re.search(
-        r"\b(?:approved?|adopted?|authorized?|awarded?|directed?|scheduled?|continued?|denied|rejected|reviewed|consider(?:ed)?|"
-        r"motion carried to authorize)\b\s+(?:the\s+|a\s+|an\s+)?(?P<subject>[^.;]+)",
+        r"\b(?:approve(?:d)?|adopt(?:ed)?|authorize(?:d)?|award(?:ed)?|direct(?:ed)?|schedule(?:d)?|continue(?:d)?|deny|denied|reject(?:ed)?|review(?:ed)?|consider(?:ed)?|"
+        r"motion carried to authorize)\b\s+(?:the\s+|a\s+|an\s+)?(?P<subject>[^;]+)",
         normalized,
         flags=re.IGNORECASE,
     )
@@ -3116,6 +3598,25 @@ def _extract_structured_subject(text: str, *, anchors: tuple[Any, ...]) -> str |
 
 def _trim_structured_subject(value: str) -> str | None:
     cleaned = _normalize_generated_text(value)
+    regarding_match = re.search(
+        r"regarding\s+([A-Z][A-Za-z0-9'&./-]+(?:\s+[A-Z][A-Za-z0-9'&./-]+){0,4})",
+        cleaned,
+    )
+    if regarding_match is not None and any(marker in cleaned.lower() for marker in ("ordinance", "code section", "municipal code")):
+        return f"{regarding_match.group(1).strip()} ordinance"
+
+    cleaned = re.sub(
+        r"^(?:an\s+|the\s+)?ordinance of [^,]+(?:,\s*[^,]+){0,2},\s*",
+        "ordinance ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:a\s+|the\s+)?resolution of [^,]+(?:,\s*[^,]+){0,2},\s*",
+        "resolution ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"^(?:of|for|regarding)\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(
         r"\s+for\s+[A-Z][A-Za-z0-9'&./-]+(?:\s+[A-Z][A-Za-z0-9'&./-]+){0,4}\s+(?:Street|Road|Avenue|Boulevard|Drive|Lane|Way|Trail|Highway|Corridor|District|Neighborhood|Subdivision|Zone|Overlay|Parcel).*$",
@@ -3423,12 +3924,33 @@ def _best_evidence_match_for_finding(
 def _split_sentences_with_offsets(text: str) -> list[tuple[str, int, int, int]]:
     spans: list[tuple[str, int, int, int]] = []
     sentence_index = 0
-    for match in re.finditer(r"[^.!?\n]+(?:[.!?]|$)", text):
-        sentence = _normalize_generated_text(match.group(0)).strip()
-        if not sentence:
+    start = 0
+    for index, char in enumerate(text):
+        is_newline = char == "\n"
+        is_sentence_punctuation = char in ".!?"
+        is_decimal_point = (
+            char == "."
+            and index > 0
+            and index + 1 < len(text)
+            and text[index - 1].isdigit()
+            and text[index + 1].isdigit()
+        )
+        if not is_newline and (not is_sentence_punctuation or is_decimal_point):
             continue
-        spans.append((sentence, sentence_index, match.start(), match.end()))
+
+        end = index if is_newline else index + 1
+        sentence = _normalize_generated_text(text[start:end]).strip()
+        if not sentence:
+            start = index + 1
+            continue
+        spans.append((sentence, sentence_index, start, end))
         sentence_index += 1
+        start = index + 1
+
+    if start < len(text):
+        sentence = _normalize_generated_text(text[start:]).strip()
+        if sentence:
+            spans.append((sentence, sentence_index, start, len(text)))
     return spans
 
 

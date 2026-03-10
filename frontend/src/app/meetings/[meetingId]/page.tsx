@@ -215,8 +215,9 @@ function getResidentScanSourceLabel(card: MeetingResidentScanCardModel) {
 
 function hasResidentScanEvidence(card: MeetingResidentScanCardModel) {
   return (
-    Object.values(card.fields).some((field) => field.evidenceReferences.length > 0) ||
-    card.impactTags.some((tag) => tag.evidenceReferences.length > 0)
+    Object.values(card.fields).some(
+      (field) => field.evidenceReferences.length > 0,
+    ) || card.impactTags.some((tag) => tag.evidenceReferences.length > 0)
   );
 }
 
@@ -278,11 +279,19 @@ function getResidentScanSupportingDetailHref(
     return "#summary-section";
   }
 
-  if (card.source === "planned" && options.showPlannedSection && card.sourceItemId) {
+  if (
+    card.source === "planned" &&
+    options.showPlannedSection &&
+    card.sourceItemId
+  ) {
     return `#planned-item-${card.sourceItemId}`;
   }
 
-  if (card.source === "outcome" && options.showOutcomesSection && card.sourceItemId) {
+  if (
+    card.source === "outcome" &&
+    options.showOutcomesSection &&
+    card.sourceItemId
+  ) {
     return `#outcome-item-${card.sourceItemId}`;
   }
 
@@ -298,7 +307,8 @@ function renderResidentScanCard(
 ) {
   const impactTags = card.impactTags;
   const hasNavigation =
-    navigation.supportingDetailHref !== null || navigation.evidenceHref !== null;
+    navigation.supportingDetailHref !== null ||
+    navigation.evidenceHref !== null;
 
   return (
     <li
@@ -361,7 +371,9 @@ function renderResidentScanCard(
               href={navigation.supportingDetailHref}
               className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
             >
-              {card.source === "meeting" ? "View summary" : "View supporting detail"}
+              {card.source === "meeting"
+                ? "View summary"
+                : "View supporting detail"}
             </a>
           ) : null}
           {navigation.evidenceHref ? (
@@ -380,6 +392,13 @@ function renderResidentScanCard(
       )}
     </li>
   );
+}
+
+function resolvePreferredSourceRecordUrl(detail: {
+  source_meeting_url?: string | null;
+  source_document_url: string | null;
+}) {
+  return detail.source_meeting_url ?? detail.source_document_url;
 }
 
 export default async function MeetingDetailPage({
@@ -463,23 +482,35 @@ export default async function MeetingDetailPage({
   const additiveOutcomes = showOutcomesSection
     ? (detailResponse.outcomes ?? null)
     : null;
-  const cityLabel = formatCityLabel(detailResponse.city_name, detailResponse.city_id);
+  const cityLabel = formatCityLabel(
+    detailResponse.city_name,
+    detailResponse.city_id,
+  );
+  const sourceRecordUrl = resolvePreferredSourceRecordUrl(detailResponse);
   const meetingDateLabel = formatCalendarDate(
     detailResponse.meeting_date ?? detailResponse.created_at,
   );
   const bodyLabel = detailResponse.body_name?.trim() || detailResponse.title;
-  const publishedLabel = formatTimestamp(detailResponse.published_at, "Pending");
+  const publishedLabel = formatTimestamp(
+    detailResponse.published_at,
+    "Pending",
+  );
   const showResidentScanCards =
-    residentScanState.mode === "resident_scan" && residentScanState.cards.length > 0;
+    residentScanState.mode === "resident_scan" &&
+    residentScanState.cards.length > 0;
   const residentScanEvidenceGroups = buildResidentScanEvidenceGroups(
     residentScanState.cards,
   );
   const suggestedPrompts = detailResponse.suggested_prompts ?? [];
-  const promptEvidenceGroups = buildSuggestedPromptEvidenceGroups(suggestedPrompts);
+  const promptEvidenceGroups =
+    buildSuggestedPromptEvidenceGroups(suggestedPrompts);
   const residentScanEvidenceHrefByCardId = new Map(
     residentScanState.cards
       .filter((card) => hasResidentScanEvidence(card))
-      .map((card) => [card.id, `#${buildResidentScanEvidenceAnchorId(card.id)}`]),
+      .map((card) => [
+        card.id,
+        `#${buildResidentScanEvidenceAnchorId(card.id)}`,
+      ]),
   );
   const promptEvidenceHrefByPromptId = new Map(
     promptEvidenceGroups.map((group) => [
@@ -524,28 +555,39 @@ export default async function MeetingDetailPage({
               {meetingDateLabel ? ` • ${meetingDateLabel}` : ""}
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Status: {humanizeIdentifier(detailResponse.status, "Unknown")} · Confidence:{" "}
+              Status: {humanizeIdentifier(detailResponse.status, "Unknown")} ·
+              Confidence:{" "}
               {humanizeIdentifier(detailResponse.confidence_label, "Unknown")}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:w-104">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Meeting date</p>
-              <p className="mt-2 font-medium text-slate-900">{meetingDateLabel}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Meeting date
+              </p>
+              <p className="mt-2 font-medium text-slate-900">
+                {meetingDateLabel}
+              </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Published</p>
-              <p className="mt-2 font-medium text-slate-900">{publishedLabel}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Published
+              </p>
+              <p className="mt-2 font-medium text-slate-900">
+                {publishedLabel}
+              </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Source</p>
-              {detailResponse.source_document_url ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Source
+              </p>
+              {sourceRecordUrl ? (
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   <span className="font-medium text-slate-900">
                     {formatSourceKindLabel(detailResponse.source_document_kind)}
                   </span>
                   <a
-                    href={detailResponse.source_document_url}
+                    href={sourceRecordUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
@@ -554,7 +596,9 @@ export default async function MeetingDetailPage({
                   </a>
                 </div>
               ) : (
-                <p className="mt-2 font-medium text-slate-900">Source document unavailable</p>
+                <p className="mt-2 font-medium text-slate-900">
+                  Source document unavailable
+                </p>
               )}
             </div>
           </div>
@@ -575,16 +619,21 @@ export default async function MeetingDetailPage({
             Resident impact scan
           </h2>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Scan the structured highlights first, then use the full meeting detail below.
+            Scan the structured highlights first, then use the full meeting
+            detail below.
           </p>
           <ul className="mt-6 space-y-4">
             {residentScanState.cards.map((card) =>
               renderResidentScanCard(card, {
-                supportingDetailHref: getResidentScanSupportingDetailHref(card, {
-                  showPlannedSection,
-                  showOutcomesSection,
-                }),
-                evidenceHref: residentScanEvidenceHrefByCardId.get(card.id) ?? null,
+                supportingDetailHref: getResidentScanSupportingDetailHref(
+                  card,
+                  {
+                    showPlannedSection,
+                    showOutcomesSection,
+                  },
+                ),
+                evidenceHref:
+                  residentScanEvidenceHrefByCardId.get(card.id) ?? null,
               }),
             )}
           </ul>
@@ -609,7 +658,8 @@ export default async function MeetingDetailPage({
           promptId: prompt.prompt_id,
           prompt: prompt.prompt,
           answer: prompt.answer,
-          evidenceHref: promptEvidenceHrefByPromptId.get(prompt.prompt_id) ?? null,
+          evidenceHref:
+            promptEvidenceHrefByPromptId.get(prompt.prompt_id) ?? null,
           evidenceCount: prompt.evidence_references_v2.length,
         }))}
       />
@@ -780,6 +830,7 @@ export default async function MeetingDetailPage({
             residentScanEvidenceGroups={residentScanEvidenceGroups}
             promptEvidenceGroups={promptEvidenceGroups}
             sourceDocumentKind={detailResponse.source_document_kind}
+            sourceMeetingUrl={detailResponse.source_meeting_url}
             sourceDocumentUrl={detailResponse.source_document_url}
           />
         </div>

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 
 from councilsense.app.local_latest_fetch import fetch_latest_meeting
-from councilsense.app.local_pipeline import LocalPipelineOrchestrator
+from councilsense.app.local_pipeline import LlmProviderConfig, LocalPipelineOrchestrator
 from councilsense.app.pipeline_retry import PermanentStageError, StageExecutionService, StageWorkItem
 from councilsense.app.st031_source_observability import (
     PIPELINE_DLQ_BACKLOG_COUNT,
@@ -82,23 +83,25 @@ def test_st031_success_path_emits_source_stage_quality_metrics(
         fetch_url=_stub_fetch,
         metric_emitter=metric_emitter,
     )
+    ingest_metadata = cast(dict[str, object], fetch_result.stage_outcomes[0]["metadata"])
     orchestrator = LocalPipelineOrchestrator(connection, metric_emitter=metric_emitter)
     result = orchestrator.process_latest(
         run_id="run-st031-metrics-success",
         city_id=PILOT_CITY_ID,
         meeting_id=fetch_result.meeting_id,
-        ingest_stage_metadata=fetch_result.stage_outcomes[0]["metadata"],
-        llm_provider="none",
-        ollama_endpoint=None,
-        ollama_model=None,
-        ollama_timeout_seconds=20.0,
+        ingest_stage_metadata=ingest_metadata,
+        llm_config=LlmProviderConfig(provider="none"),
     )
 
     assert result.status in {"processed", "limited_confidence"}
 
     stage_samples = [sample for sample in samples if sample["name"] == SOURCE_STAGE_OUTCOMES_TOTAL]
     assert {
-        (sample["stage"], sample["outcome"], sample["labels"]["source_type"])
+        (
+            cast(str, sample["stage"]),
+            cast(str, sample["outcome"]),
+            cast(dict[str, str], cast(Any, sample["labels"]))["source_type"],
+        )
         for sample in stage_samples
     } >= {
         ("ingest", "success", "minutes"),
@@ -110,12 +113,12 @@ def test_st031_success_path_emits_source_stage_quality_metrics(
     assert coverage_sample["stage"] == "compose"
     assert coverage_sample["outcome"] == "measured"
     assert coverage_sample["labels"] == {"city_id": PILOT_CITY_ID, "source_type": "bundle"}
-    assert 0.0 <= float(coverage_sample["value"]) <= 1.0
+    assert 0.0 <= float(cast(float, coverage_sample["value"])) <= 1.0
 
     citation_sample = next(sample for sample in samples if sample["name"] == SOURCE_CITATION_PRECISION_RATIO)
     assert citation_sample["stage"] == "summarize"
     assert citation_sample["labels"] == {"city_id": PILOT_CITY_ID, "source_type": "bundle"}
-    assert 0.0 <= float(citation_sample["value"]) <= 1.0
+    assert 0.0 <= float(cast(float, citation_sample["value"])) <= 1.0
 
 
 def test_st031_terminal_failure_emits_dlq_backlog_and_age_metrics(connection: sqlite3.Connection) -> None:
@@ -173,7 +176,7 @@ def test_st031_terminal_failure_emits_dlq_backlog_and_age_metrics(connection: sq
         "source_id": "source-st031-minutes",
         "source_type": "minutes",
     }
-    assert float(backlog_sample["value"]) == 1.0
+    assert float(cast(float, backlog_sample["value"])) == 1.0
 
     oldest_age_sample = next(sample for sample in samples if sample["name"] == PIPELINE_DLQ_OLDEST_AGE_SECONDS)
     assert oldest_age_sample["stage"] == "extract"
@@ -183,4 +186,4 @@ def test_st031_terminal_failure_emits_dlq_backlog_and_age_metrics(connection: sq
         "source_id": "source-st031-minutes",
         "source_type": "minutes",
     }
-    assert float(oldest_age_sample["value"]) >= 0.0
+    assert float(cast(float, oldest_age_sample["value"])) >= 0.0

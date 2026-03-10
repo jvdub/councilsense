@@ -12,6 +12,7 @@ from councilsense.app.local_pipeline import (
     _derive_grounded_sections,
     _evaluate_authority_policy,
     _focus_source_text,
+    _materialize_llm_summary_output,
     _normalize_action_sentence,
     _normalize_decision_sentence,
     _normalize_generated_text,
@@ -76,6 +77,23 @@ def test_build_grounded_summary_prefers_substantive_outcomes_over_operations() -
     assert "joined as Mayor Pro Tempore" not in summary
     assert "4:20 PM" not in summary
     assert "approved a purchase agreement" in summary.lower()
+
+
+def test_build_grounded_summary_prefers_outcomes_and_direction_over_motion_boilerplate() -> None:
+    source_text = (
+        "Management Analyst Terrence Dela Pena presented the Second Quarterly Financial Report, highlighting the City's budget status and capital projects. "
+        "City Council provided direction to Staff and GSBS Consulting regarding moving forward on the future land use process. "
+        "MOTION: Councilmember Wright moved to adopt an Ordinance of Eagle Mountain City, Utah, Amending the Eagle Mountain Municipal Code Section 2.45 regarding Youth Council with updated revisions made in Work Session. "
+        "Councilmember Clark seconded the motion. "
+        "The motion passed with a unanimous vote."
+    )
+
+    summary = _build_grounded_summary(source_text)
+
+    assert "Youth Council" in summary
+    assert "provided direction" in summary
+    assert "seconded the motion" not in summary
+    assert "The motion passed with a unanimous vote" not in summary
 
 
 def test_apply_material_context_converts_agenda_only_meeting_to_preview_mode() -> None:
@@ -364,6 +382,22 @@ def test_derive_grounded_sections_excludes_city_name_topics() -> None:
 
     assert "eagle" not in notable_topics
     assert "mountain" not in notable_topics
+
+
+def test_derive_grounded_sections_suppresses_appointment_name_and_table_fragments_from_topics() -> None:
+    source_text = (
+        "The Council scheduled appointment of Marcia Vasquez to the planning commission. "
+        "The appointment table listed year term beginning January for the seat."
+    )
+
+    _, key_actions, notable_topics = _derive_grounded_sections(source_text)
+
+    assert key_actions
+    assert "Board and Commission Appointments" in notable_topics
+    lower_topics = {topic.lower() for topic in notable_topics}
+    assert "appointment of marcia vasquez" not in lower_topics
+    assert "year term" not in lower_topics
+    assert "term beginning" not in lower_topics
 
 
 def test_normalize_decision_sentence_rewrites_resolution_to_outcome() -> None:
@@ -943,6 +977,106 @@ def test_deterministic_summarize_structured_relevance_is_stable_across_repeated_
     assert second.structured_relevance is not None
     assert first.structured_relevance.to_payload() == second.structured_relevance.to_payload()
     assert tuple(tag.tag for tag in first.structured_relevance.impact_tags) == ("traffic",)
+
+
+def test_deterministic_summary_extracts_structured_relevance_from_coarse_minutes_span() -> None:
+    span_text = (
+        "Management Analyst Terrence Dela Pena presented the Second Quarterly Financial Report, highlighting the City's budget status and capital projects. "
+        "Brandon Larsen, Planning Director, and GSBS Consulting reviewed the future land use process and land use designations. "
+        "City Council provided direction to Staff and GSBS Consulting regarding moving forward. "
+        "Assistant to the City Manager Natalie Winterton presented a proposed ordinance updating the Youth Council Code. "
+        "MOTION: Councilmember Wright moved to adopt an Ordinance of Eagle Mountain City, Utah, Amending the Eagle Mountain Municipal Code Section 2.45 regarding Youth Council with updated revisions made in Work Session. "
+        "Councilmember Clark seconded the motion. The motion passed with a unanimous vote."
+    )
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                span_text,
+                spans=(
+                    ComposedSourceSpan(
+                        span_id="span-minutes-coarse",
+                        artifact_id="artifact-minutes-coarse",
+                        stable_section_path="minutes/content/1",
+                        page_number=None,
+                        line_index=0,
+                        start_char_offset=None,
+                        end_char_offset=None,
+                        span_text=span_text,
+                    ),
+                ),
+            ),
+            _compose_source("agenda", "Agenda includes future land use discussion and Youth Council ordinance review."),
+            _compose_source("packet", "Packet includes staff background for future land use planning and Youth Council code revisions."),
+        ),
+        statuses={"minutes": "present", "agenda": "present", "packet": "present"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _deterministic_summarize(
+        text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-02-03",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.summary
+    assert "Youth Council" in output.summary
+    assert "seconded the motion" not in output.summary
+    assert output.structured_relevance is not None
+    assert output.structured_relevance.subject is not None
+    assert "Youth Council" in output.structured_relevance.subject.value
+
+
+def test_materialize_llm_summary_output_supplements_notable_topics_from_summary_text() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "The Council received a legislative update, reviewed the quarterly financial report, gave direction on future land use designations, and updated the Youth Council code.",
+            ),
+            _compose_source("agenda", "Agenda includes legislative update, quarterly financial report, and Youth Council code discussion."),
+            _compose_source("packet", "Packet includes future land use maps and Youth Council code revisions."),
+        ),
+        statuses={"minutes": "present", "agenda": "present", "packet": "present"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _materialize_llm_summary_output(
+        response_text=(
+            '{"summary":"The Eagle Mountain City Council received a legislative update and reviewed the Second Quarterly Financial Report. '
+            'The Council provided direction on future land use designations and recommended corrections to the Youth Council municipal code.",'
+            '"claim":"The Council recommended corrections to the Youth Council municipal code."}'
+        ),
+        source_text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-02-03",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=True,
+        evidence_projection_enabled=True,
+    )
+
+    lower_topics = {topic.lower() for topic in output.notable_topics}
+    assert "legislative update" in lower_topics
+    assert "quarterly financial report" in lower_topics or "budget and fiscal planning" in lower_topics
+    assert "land use planning" in lower_topics
+    assert "youth council code" in lower_topics
 
 
 def _build_compose_input(

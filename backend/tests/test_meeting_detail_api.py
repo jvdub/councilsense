@@ -117,6 +117,7 @@ def _with_reader_context(payload: dict[str, Any]) -> dict[str, Any]:
             "body_name": None,
             "source_document_kind": payload.get("source_document_kind"),
             "source_document_url": payload.get("source_document_url"),
+            "source_meeting_url": payload.get("source_meeting_url"),
         }
     )
     return enriched
@@ -411,6 +412,7 @@ def _insert_ingest_stage_outcome(
     candidate_url: str,
     selected_event_name: str = "City Council Meeting",
     selected_event_date: str = "2026-02-20",
+    extra_metadata: dict[str, Any] | None = None,
 ) -> None:
     app = cast(Any, client.app)
     app.state.db_connection.execute(
@@ -460,6 +462,7 @@ def _insert_ingest_stage_outcome(
                     "candidate_url": candidate_url,
                     "selected_event_name": selected_event_name,
                     "selected_event_date": selected_event_date,
+                    **(extra_metadata or {}),
                 },
                 separators=(",", ":"),
             ),
@@ -774,6 +777,7 @@ def _meeting_detail_with_follow_up_prompt_inputs(
         body_name=None,
         source_document_kind="minutes",
         source_document_url="https://example.org/minutes/follow-up-test.pdf",
+        source_meeting_url=None,
         publication_id="pub-follow-up-test",
         publication_status="processed",
         confidence_label="high",
@@ -1213,6 +1217,7 @@ def test_meeting_detail_flag_off_remains_baseline_equivalent_when_publish_metada
         "body_name",
         "source_document_kind",
         "source_document_url",
+        "source_meeting_url",
         "status",
         "confidence_label",
         "reader_low_confidence",
@@ -1813,6 +1818,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         "body_name",
         "source_document_kind",
         "source_document_url",
+        "source_meeting_url",
         "status",
         "confidence_label",
         "reader_low_confidence",
@@ -1832,6 +1838,7 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
     assert payload["body_name"] == "Eagle Mountain City Council"
     assert payload["source_document_kind"] == "minutes"
     assert payload["source_document_url"] == "https://example.org/minutes/meeting-detail-1.pdf"
+    assert payload["source_meeting_url"] is None
     assert payload["status"] == "processed"
     assert payload["confidence_label"] == "high"
     assert payload["reader_low_confidence"] is False
@@ -1919,6 +1926,55 @@ def test_meeting_detail_returns_summary_sections_and_evidence_payload(monkeypatc
         "char_end",
         "excerpt",
     }
+
+
+def test_meeting_detail_derives_source_meeting_url_from_civicclerk_ingest_metadata(monkeypatch) -> None:
+    client = _client_with_configured_cities(monkeypatch, secret="meeting-detail-secret", supported_city_ids=PILOT_CITY_ID)
+    token = _issue_token("user-meeting-detail", secret="meeting-detail-secret", expires_in_seconds=300)
+    headers = {"Authorization": f"Bearer {token}"}
+    _set_home_city(client, headers=headers)
+
+    _insert_meeting(
+        client,
+        meeting_id="meeting-detail-civicclerk",
+        city_id=PILOT_CITY_ID,
+        meeting_uid="uid-detail-civicclerk",
+        title="Council Session",
+        created_at="2026-03-09 12:00:00",
+    )
+    _insert_publication(
+        client,
+        publication_id="pub-detail-civicclerk",
+        meeting_id="meeting-detail-civicclerk",
+        publication_status="processed",
+        confidence_label="high",
+        summary_text="Council discussed civic clerk links.",
+        key_decisions_json="[]",
+        key_actions_json="[]",
+        notable_topics_json="[]",
+        published_at="2026-03-09 13:00:00",
+    )
+    _insert_ingest_stage_outcome(
+        client,
+        outcome_id="outcome-ingest-detail-civicclerk",
+        run_id="run-detail-civicclerk",
+        city_id=PILOT_CITY_ID,
+        meeting_id="meeting-detail-civicclerk",
+        candidate_url="https://blob.example/meeting-detail-civicclerk.pdf",
+        selected_event_name="Eagle Mountain City Council",
+        selected_event_date="2026-03-09",
+        extra_metadata={
+            "source_url": "https://eaglemountainut.portal.civicclerk.com/",
+            "selected_event_id": 722,
+        },
+    )
+
+    response = client.get("/v1/meetings/meeting-detail-civicclerk", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_meeting_url"] == "https://eaglemountainut.portal.civicclerk.com/event/722/files"
+    assert payload["source_document_url"] == "https://blob.example/meeting-detail-civicclerk.pdf"
 
 
 def test_meeting_detail_evidence_references_use_precision_ladder_and_stable_tie_breakers(monkeypatch) -> None:

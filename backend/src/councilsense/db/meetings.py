@@ -4,6 +4,9 @@ import json
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from councilsense.app.notable_topics import sanitize_notable_topics
 
 
 @dataclass(frozen=True)
@@ -28,12 +31,14 @@ class MeetingIngestContext:
     body_name: str | None
     meeting_date: str | None
     candidate_url: str | None
+    source_meeting_url: str | None
 
 
 @dataclass(frozen=True)
 class MeetingSourceContext:
     document_kind: str | None
     source_document_url: str | None
+    source_meeting_url: str | None
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,7 @@ class MeetingDetail:
     body_name: str | None
     source_document_kind: str | None
     source_document_url: str | None
+    source_meeting_url: str | None
     publication_id: str | None
     publication_status: str | None
     confidence_label: str | None
@@ -505,6 +511,7 @@ class MeetingReadRepository:
             body_name=ingest_context.body_name,
             source_document_kind=source_context.document_kind,
             source_document_url=source_context.source_document_url,
+            source_meeting_url=source_context.source_meeting_url,
             publication_id=publication_id,
             publication_status=str(meeting_row[8]) if meeting_row[8] is not None else None,
             confidence_label=str(meeting_row[9]) if meeting_row[9] is not None else None,
@@ -512,7 +519,7 @@ class MeetingReadRepository:
             summary_text=str(meeting_row[11]) if meeting_row[11] is not None else None,
             key_decisions=self._parse_string_list(meeting_row[12]),
             key_actions=self._parse_string_list(meeting_row[13]),
-            notable_topics=self._parse_string_list(meeting_row[14]),
+            notable_topics=self._parse_notable_topic_list(meeting_row[14]),
             published_at=str(meeting_row[15]) if meeting_row[15] is not None else None,
             claims=claims,
             structured_relevance=structured_relevance,
@@ -532,24 +539,53 @@ class MeetingReadRepository:
             (meeting_id,),
         ).fetchone()
         if row is None or row[0] is None:
-            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+            return MeetingIngestContext(
+                body_name=None,
+                meeting_date=None,
+                candidate_url=None,
+                source_meeting_url=None,
+            )
 
         try:
             parsed = json.loads(str(row[0]))
         except json.JSONDecodeError:
-            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+            return MeetingIngestContext(
+                body_name=None,
+                meeting_date=None,
+                candidate_url=None,
+                source_meeting_url=None,
+            )
 
         if not isinstance(parsed, dict):
-            return MeetingIngestContext(body_name=None, meeting_date=None, candidate_url=None)
+            return MeetingIngestContext(
+                body_name=None,
+                meeting_date=None,
+                candidate_url=None,
+                source_meeting_url=None,
+            )
 
         raw_body_name = parsed.get("selected_event_name")
         raw_meeting_date = parsed.get("selected_event_date") or parsed.get("meeting_date")
         raw_candidate_url = parsed.get("candidate_url")
+        raw_source_meeting_url = parsed.get("source_meeting_url")
+        raw_source_url = parsed.get("source_url")
+        raw_selected_event_id = parsed.get("selected_event_id")
         return MeetingIngestContext(
             body_name=raw_body_name.strip() if isinstance(raw_body_name, str) and raw_body_name.strip() else None,
             meeting_date=raw_meeting_date.strip() if isinstance(raw_meeting_date, str) and raw_meeting_date.strip() else None,
             candidate_url=(
                 raw_candidate_url.strip() if isinstance(raw_candidate_url, str) and raw_candidate_url.strip() else None
+            ),
+            source_meeting_url=self._resolve_source_meeting_url(
+                source_meeting_url=(
+                    raw_source_meeting_url.strip()
+                    if isinstance(raw_source_meeting_url, str) and raw_source_meeting_url.strip()
+                    else None
+                ),
+                source_url=(
+                    raw_source_url.strip() if isinstance(raw_source_url, str) and raw_source_url.strip() else None
+                ),
+                selected_event_id=raw_selected_event_id,
             ),
         )
 
@@ -587,11 +623,13 @@ class MeetingReadRepository:
                     if row[1] is not None and str(row[1]).strip()
                     else ingest_context.candidate_url
                 ),
+                source_meeting_url=ingest_context.source_meeting_url,
             )
 
         return MeetingSourceContext(
             document_kind=None,
             source_document_url=ingest_context.candidate_url,
+            source_meeting_url=ingest_context.source_meeting_url,
         )
 
     def _resolve_meeting_date(self, *, created_at: str, ingest_context: MeetingIngestContext) -> str | None:
@@ -670,6 +708,50 @@ class MeetingReadRepository:
         )
         return source_context.source_document_url
 
+    def _resolve_source_meeting_url(
+        self,
+        *,
+        source_meeting_url: str | None,
+        source_url: str | None,
+        selected_event_id: object,
+    ) -> str | None:
+        if source_meeting_url is not None:
+            return source_meeting_url
+
+        if source_url is None:
+            return None
+
+        parsed = urlparse(source_url)
+        if not parsed.scheme or not parsed.netloc or not parsed.netloc.endswith("portal.civicclerk.com"):
+            return None
+
+        event_id: int | None = None
+        try:
+            if selected_event_id is not None:
+                event_id = int(str(selected_event_id))
+        except (TypeError, ValueError):
+            event_id = None
+
+        if event_id is None or event_id <= 0:
+            event_id = self._extract_event_id_from_url(source_url)
+
+        if event_id is None:
+            return None
+
+        return f"{parsed.scheme}://{parsed.netloc}/event/{event_id}/files"
+
+    def _extract_event_id_from_url(self, url: str) -> int | None:
+        segments = [segment for segment in url.split("/") if segment]
+        for index, segment in enumerate(segments[:-1]):
+            if segment.lower() != "event":
+                continue
+            try:
+                event_id = int(segments[index + 1])
+            except ValueError:
+                return None
+            return event_id if event_id > 0 else None
+        return None
+
     def _parse_string_list(self, value: object) -> tuple[str, ...]:
         if value is None:
             return ()
@@ -683,6 +765,9 @@ class MeetingReadRepository:
             return ()
 
         return tuple(str(item) for item in parsed if isinstance(item, str))
+
+    def _parse_notable_topic_list(self, value: object) -> tuple[str, ...]:
+        return sanitize_notable_topics(self._parse_string_list(value))
 
     def explain_city_meetings_query_plan(
         self,

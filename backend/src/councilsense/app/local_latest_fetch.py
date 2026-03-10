@@ -9,11 +9,13 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from html import unescape
 from html.parser import HTMLParser
+from io import BytesIO
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
+from councilsense.app.canonical_persistence import persist_pipeline_canonical_records
 from councilsense.app.multi_document_observability import derive_artifact_id, emit_multi_document_stage_event
 from councilsense.app.st031_source_observability import SourceAwareMetricEmitter, emit_source_stage_outcome
 from councilsense.db import CityRegistryRepository, MeetingWriteRepository, PILOT_CITY_ID
@@ -51,6 +53,27 @@ class LatestFetchResult:
     candidate_document_kind: str | None
     stage_outcomes: tuple[dict[str, object], ...]
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CivicClerkDownloadedArtifact:
+    document_kind: str
+    file_type: str
+    file_name: str
+    source_url: str
+    artifact_bytes: bytes
+    artifact_suffix: str
+    extracted_text: str
+
+
+@dataclass(frozen=True)
+class _CivicClerkBundleResult:
+    candidate: LatestCandidate
+    primary_artifact_bytes: bytes
+    primary_artifact_suffix: str
+    download_warning: str | None
+    selected_event_id: int | None
+    published_artifacts: tuple[_CivicClerkDownloadedArtifact, ...]
 
 
 def _normalize_document_kind(value: str | None) -> str | None:
@@ -124,6 +147,7 @@ def fetch_latest_meeting(
     *,
     city_id: str = PILOT_CITY_ID,
     source_id: str | None = None,
+    latest_offset: int = 0,
     timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     artifact_root: str | None = None,
     fetch_url: Callable[[str, float], bytes] | None = None,
@@ -138,22 +162,30 @@ def fetch_latest_meeting(
     )
 
     timeout = max(timeout_seconds, 1.0)
+    candidate_offset = max(latest_offset, 0)
     fetcher = fetch_url or _fetch_url_bytes
     download_warning: str | None = None
     artifact_suffix = ".html"
+    civicclerk_bundle: _CivicClerkBundleResult | None = None
     if _is_civicclerk_portal_url(source_url):
-        candidate, artifact_bytes, artifact_suffix, download_warning = _fetch_latest_candidate_from_civicclerk(
+        civicclerk_bundle = _fetch_civicclerk_bundle_from_selected_event(
             source_url=source_url,
             preferred_file_type=source_type,
+            latest_offset=candidate_offset,
             timeout_seconds=timeout,
             fetch_url=fetcher,
         )
+        candidate = civicclerk_bundle.candidate
+        artifact_bytes = civicclerk_bundle.primary_artifact_bytes
+        artifact_suffix = civicclerk_bundle.primary_artifact_suffix
+        download_warning = civicclerk_bundle.download_warning
     else:
         artifact_bytes = fetcher(source_url, timeout)
         html_text = artifact_bytes.decode("utf-8", errors="replace")
         candidate = extract_latest_candidate(
             html=html_text,
             source_url=source_url,
+            latest_offset=candidate_offset,
         )
     fingerprint = _build_fingerprint(
         city_id=city_id,
@@ -178,6 +210,16 @@ def fetch_latest_meeting(
         title=candidate.title,
     )
 
+    if civicclerk_bundle is not None:
+        _persist_civicclerk_bundle_documents(
+            connection=connection,
+            city_id=city_id,
+            meeting_id=meeting.id,
+            source_id=selected_source_id,
+            artifact_root=(artifact_root or os.getenv("COUNCILSENSE_LOCAL_ARTIFACT_ROOT") or _DEFAULT_ARTIFACT_ROOT),
+            published_artifacts=civicclerk_bundle.published_artifacts,
+        )
+
     stage_outcome = {
         "stage": "ingest",
         "status": "processed",
@@ -190,6 +232,18 @@ def fetch_latest_meeting(
             "candidate_document_kind": candidate.document_kind,
             "meeting_temporal_status": _classify_meeting_temporal_status(candidate.meeting_date_iso),
             "fingerprint": fingerprint,
+            **(
+                {
+                    "selected_event_id": civicclerk_bundle.selected_event_id,
+                    "source_meeting_url": _build_civicclerk_event_portal_url(
+                        source_url=source_url,
+                        event_id=civicclerk_bundle.selected_event_id,
+                    ),
+                    "published_document_kinds": [item.document_kind for item in civicclerk_bundle.published_artifacts],
+                }
+                if civicclerk_bundle is not None
+                else {}
+            ),
         },
     }
     emit_multi_document_stage_event(
@@ -243,7 +297,7 @@ def fetch_latest_meeting(
     )
 
 
-def extract_latest_candidate(*, html: str, source_url: str) -> LatestCandidate:
+def extract_latest_candidate(*, html: str, source_url: str, latest_offset: int = 0) -> LatestCandidate:
     collector = _AnchorCollector()
     collector.feed(html)
 
@@ -268,7 +322,12 @@ def extract_latest_candidate(*, html: str, source_url: str) -> LatestCandidate:
 
     if candidates:
         candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
-        return candidates[0][3]
+        candidate_index = max(latest_offset, 0)
+        if candidate_index >= len(candidates):
+            raise LatestFetchError(
+                f"Requested latest_offset={candidate_index} but only {len(candidates)} eligible meeting candidates were found"
+            )
+        return candidates[candidate_index][3]
 
     fallback_title = _extract_title_tag(html) or "Latest meeting source"
     return LatestCandidate(
@@ -331,9 +390,33 @@ def _fetch_latest_candidate_from_civicclerk(
     *,
     source_url: str,
     preferred_file_type: str,
+    latest_offset: int = 0,
     timeout_seconds: float,
     fetch_url: Callable[[str, float], bytes] | None = None,
 ) -> tuple[LatestCandidate, bytes, str, str | None]:
+    bundle = _fetch_civicclerk_bundle_from_selected_event(
+        source_url=source_url,
+        preferred_file_type=preferred_file_type,
+        latest_offset=latest_offset,
+        timeout_seconds=timeout_seconds,
+        fetch_url=fetch_url,
+    )
+    return (
+        bundle.candidate,
+        bundle.primary_artifact_bytes,
+        bundle.primary_artifact_suffix,
+        bundle.download_warning,
+    )
+
+
+def _fetch_civicclerk_bundle_from_selected_event(
+    *,
+    source_url: str,
+    preferred_file_type: str,
+    latest_offset: int = 0,
+    timeout_seconds: float,
+    fetch_url: Callable[[str, float], bytes] | None = None,
+) -> _CivicClerkBundleResult:
     parsed = urlparse(source_url)
     tenant = parsed.netloc.split(".")[0]
     if not tenant:
@@ -349,6 +432,7 @@ def _fetch_latest_candidate_from_civicclerk(
         events_url=events_url,
         explicit_event_id=explicit_event_id,
         preferred_file_type=preferred_file_type,
+        latest_offset=max(latest_offset, 0),
         timeout_seconds=timeout_seconds,
         fetcher=fetcher,
     )
@@ -367,7 +451,7 @@ def _fetch_latest_candidate_from_civicclerk(
     file_id: int | None = None
     try:
         if file_id_value is not None:
-            file_id = int(file_id_value)
+            file_id = int(str(file_id_value))
     except (TypeError, ValueError):
         file_id = None
 
@@ -396,15 +480,107 @@ def _fetch_latest_candidate_from_civicclerk(
         document_kind=_normalize_document_kind(file_type),
     )
 
-    artifact_payload = {
-        "source": "civicclerk_events",
-        "events_url": events_url,
-        "selected_event_id": selected_event.get("id"),
-        "selected_event_name": event_name,
-        "selected_event_date": event_date_iso,
-        "selected_file": selected_file,
-    }
-    metadata_bytes = json.dumps(artifact_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    primary_artifact, download_warning = _download_civicclerk_published_artifact(
+        api_base_url=api_base_url,
+        selected_event=selected_event,
+        published_file=selected_file,
+        timeout_seconds=timeout_seconds,
+        fetcher=fetcher,
+    )
+
+    published_artifacts: list[_CivicClerkDownloadedArtifact] = [primary_artifact]
+    seen_document_kinds = {primary_artifact.document_kind}
+    for item in _list_supported_published_files(selected_event):
+        if not isinstance(item, dict):
+            continue
+        document_kind = _normalize_document_kind(str(item.get("type") or ""))
+        if document_kind is None or document_kind in seen_document_kinds:
+            continue
+        artifact, artifact_warning = _download_civicclerk_published_artifact(
+            api_base_url=api_base_url,
+            selected_event=selected_event,
+            published_file=item,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+        if artifact_warning is not None and not artifact.extracted_text:
+            continue
+        published_artifacts.append(artifact)
+        seen_document_kinds.add(document_kind)
+
+    selected_event_id: int | None = None
+    try:
+        if selected_event.get("id") is not None:
+            selected_event_id = int(str(selected_event.get("id")))
+    except (TypeError, ValueError):
+        selected_event_id = None
+
+    return _CivicClerkBundleResult(
+        candidate=candidate,
+        primary_artifact_bytes=primary_artifact.artifact_bytes,
+        primary_artifact_suffix=primary_artifact.artifact_suffix,
+        download_warning=download_warning,
+        selected_event_id=selected_event_id,
+        published_artifacts=tuple(published_artifacts),
+    )
+
+
+def _list_supported_published_files(event: dict[str, object]) -> tuple[dict[str, object], ...]:
+    published_files = event.get("publishedFiles")
+    if not isinstance(published_files, list):
+        return ()
+
+    supported: list[dict[str, object]] = []
+    seen_document_kinds: set[str] = set()
+    for item in published_files:
+        if not isinstance(item, dict):
+            continue
+        document_kind = _normalize_document_kind(str(item.get("type") or ""))
+        if document_kind is None or document_kind in seen_document_kinds:
+            continue
+        supported.append(item)
+        seen_document_kinds.add(document_kind)
+    return tuple(supported)
+
+
+def _download_civicclerk_published_artifact(
+    *,
+    api_base_url: str,
+    selected_event: dict[str, object],
+    published_file: dict[str, object],
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> tuple[_CivicClerkDownloadedArtifact, str | None]:
+    file_type = str(published_file.get("type") or "Agenda")
+    document_kind = _normalize_document_kind(file_type)
+    if document_kind is None:
+        raise LatestFetchError(f"Unsupported CivicClerk published file type: {file_type}")
+
+    file_name = str(published_file.get("name") or "Published Document")
+    file_url_raw = str(published_file.get("url") or "").strip()
+    file_id_value = published_file.get("fileId")
+    file_id: int | None = None
+    try:
+        if file_id_value is not None:
+            file_id = int(str(file_id_value))
+    except (TypeError, ValueError):
+        file_id = None
+
+    if file_id is not None:
+        candidate_url = _resolve_civicclerk_blob_uri(
+            api_base_url=api_base_url,
+            file_id=file_id,
+            plain_text=False,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+    elif file_url_raw:
+        if file_url_raw.startswith("http://") or file_url_raw.startswith("https://"):
+            candidate_url = file_url_raw
+        else:
+            candidate_url = f"{api_base_url}/{file_url_raw.lstrip('/')}"
+    else:
+        raise LatestFetchError("Selected CivicClerk event file did not include a fileId or URL")
 
     if file_id is not None:
         try:
@@ -417,16 +593,138 @@ def _fetch_latest_candidate_from_civicclerk(
             )
             plain_text_bytes = fetcher(plain_text_url, timeout_seconds)
             if plain_text_bytes.strip():
-                return candidate, plain_text_bytes, ".txt", None
+                return (
+                    _CivicClerkDownloadedArtifact(
+                        document_kind=document_kind,
+                        file_type=file_type,
+                        file_name=file_name,
+                        source_url=plain_text_url,
+                        artifact_bytes=plain_text_bytes,
+                        artifact_suffix=".txt",
+                        extracted_text=_extract_text_from_downloaded_artifact(plain_text_bytes, ".txt"),
+                    ),
+                    None,
+                )
         except Exception:
             pass
 
     try:
         document_bytes = fetcher(candidate_url, timeout_seconds)
         suffix = _infer_artifact_suffix(candidate_url=candidate_url, content_bytes=document_bytes)
-        return candidate, document_bytes, suffix, None
+        return (
+            _CivicClerkDownloadedArtifact(
+                document_kind=document_kind,
+                file_type=file_type,
+                file_name=file_name,
+                source_url=candidate_url,
+                artifact_bytes=document_bytes,
+                artifact_suffix=suffix,
+                extracted_text=_extract_text_from_downloaded_artifact(document_bytes, suffix),
+            ),
+            None,
+        )
     except Exception:
-        return candidate, metadata_bytes, ".json", "candidate_document_download_failed"
+        metadata_bytes = json.dumps(
+            {
+                "source": "civicclerk_events",
+                "selected_event_id": selected_event.get("id"),
+                "selected_event_name": selected_event.get("eventName"),
+                "selected_event_date": _parse_event_date_iso(selected_event),
+                "selected_file": published_file,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return (
+            _CivicClerkDownloadedArtifact(
+                document_kind=document_kind,
+                file_type=file_type,
+                file_name=file_name,
+                source_url=candidate_url,
+                artifact_bytes=metadata_bytes,
+                artifact_suffix=".json",
+                extracted_text="",
+            ),
+            "candidate_document_download_failed",
+        )
+
+
+def _extract_text_from_downloaded_artifact(artifact_bytes: bytes, artifact_suffix: str) -> str:
+    normalized_suffix = artifact_suffix.lower()
+    if normalized_suffix == ".pdf" or artifact_bytes.startswith(b"%PDF"):
+        try:
+            from pypdf import PdfReader
+        except Exception:
+            return ""
+
+        try:
+            reader = PdfReader(BytesIO(artifact_bytes))
+        except Exception:
+            return ""
+
+        parts: list[str] = []
+        for page in reader.pages:
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                page_text = ""
+            normalized = _normalize_space(page_text)
+            if normalized:
+                parts.append(normalized)
+        return " ".join(parts).strip()
+
+    return _normalize_space(artifact_bytes.decode("utf-8", errors="replace"))
+
+
+def _persist_civicclerk_bundle_documents(
+    *,
+    connection: sqlite3.Connection,
+    city_id: str,
+    meeting_id: str,
+    source_id: str,
+    artifact_root: str,
+    published_artifacts: tuple[_CivicClerkDownloadedArtifact, ...],
+) -> None:
+    for artifact in published_artifacts:
+        artifact_path = _persist_artifact(
+            city_id=city_id,
+            source_id=f"{source_id}-{artifact.document_kind}",
+            artifact_root=artifact_root,
+            fingerprint=_build_civicclerk_bundle_artifact_fingerprint(
+                city_id=city_id,
+                meeting_id=meeting_id,
+                document_kind=artifact.document_kind,
+                source_url=artifact.source_url,
+            ),
+            artifact_bytes=artifact.artifact_bytes,
+            artifact_suffix=artifact.artifact_suffix,
+        )
+        persist_pipeline_canonical_records(
+            connection,
+            meeting_id=meeting_id,
+            source_id=source_id,
+            source_url=artifact.source_url,
+            source_type_override=artifact.document_kind,
+            extracted_text=(artifact.extracted_text or artifact.file_name),
+            extraction_status=("processed" if artifact.extracted_text else "limited_confidence"),
+            extraction_confidence=(0.92 if artifact.extracted_text else 0.55),
+            artifact_storage_uri=artifact_path,
+            evidence_spans=(),
+        )
+
+
+def _build_civicclerk_bundle_artifact_fingerprint(
+    *,
+    city_id: str,
+    meeting_id: str,
+    document_kind: str,
+    source_url: str,
+) -> str:
+    return hashlib.sha256(
+        "|".join((city_id.strip(), meeting_id.strip(), document_kind.strip(), source_url.strip().lower())).encode(
+            "utf-8"
+        )
+    ).hexdigest()
 
 
 def _is_city_council_event(event: object) -> bool:
@@ -438,7 +736,7 @@ def _is_city_council_event(event: object) -> bool:
 
 def _event_sort_key(event: dict[str, object]) -> tuple[str, int]:
     date_value = str(event.get("eventDate") or event.get("startDateTime") or "")
-    event_id = int(event.get("id") or 0)
+    event_id = int(str(event.get("id") or 0))
     return (date_value, event_id)
 
 
@@ -466,6 +764,25 @@ def _select_published_file(*, event: dict[str, object], preferred_type: str) -> 
     return None
 
 
+def _has_preferred_published_file(*, event: dict[str, object], preferred_type: str) -> bool:
+    published_files = event.get("publishedFiles")
+    if not isinstance(published_files, list):
+        return False
+
+    preferred = preferred_type.strip().lower()
+    if not preferred:
+        return False
+
+    preferred_aliases = set(_preferred_type_aliases(preferred))
+    for item in published_files:
+        if not isinstance(item, dict):
+            continue
+        file_type = str(item.get("type") or "").strip().lower()
+        if file_type in preferred_aliases:
+            return True
+    return False
+
+
 def _preferred_type_aliases(preferred_type: str) -> tuple[str, ...]:
     if preferred_type == "minutes":
         return ("minutes",)
@@ -486,6 +803,17 @@ def _extract_event_id_from_portal_url(source_url: str) -> int | None:
         return None
 
 
+def _build_civicclerk_event_portal_url(*, source_url: str, event_id: int | None) -> str | None:
+    if event_id is None or event_id <= 0:
+        return None
+
+    parsed = urlparse(source_url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+
+    return f"{parsed.scheme}://{parsed.netloc}/event/{event_id}/files"
+
+
 def _select_civicclerk_event(
     *,
     api_base_url: str,
@@ -493,10 +821,11 @@ def _select_civicclerk_event(
     events_url: str,
     explicit_event_id: int | None,
     preferred_file_type: str,
+    latest_offset: int,
     timeout_seconds: float,
     fetcher: Callable[[str, float], bytes],
 ) -> dict[str, object]:
-    if explicit_event_id is not None:
+    if explicit_event_id is not None and latest_offset == 0:
         event = _fetch_civicclerk_event_by_id(
             api_base_url=api_base_url,
             event_id=explicit_event_id,
@@ -533,7 +862,7 @@ def _select_civicclerk_event(
         event_id_value = event.get("id")
         try:
             if event_id_value is not None:
-                known_ids.add(int(event_id_value))
+                known_ids.add(int(str(event_id_value)))
         except (TypeError, ValueError):
             continue
 
@@ -568,23 +897,23 @@ def _select_civicclerk_event(
 
     council_events.sort(key=_event_sort_key, reverse=True)
 
-    with_published_files = [
+    with_preferred_files = [
         event
         for event in council_events
-        if _select_published_file(event=event, preferred_type=normalized_preferred_type) is not None
+        if _has_preferred_published_file(event=event, preferred_type=normalized_preferred_type)
     ]
     completed_with_preferred = [
         event
-        for event in with_published_files
+        for event in with_preferred_files
         if _event_sort_key(event)[0] and _event_sort_key(event)[0] <= today_iso
     ]
 
     if completed_with_preferred:
         completed_with_preferred.sort(key=_event_sort_key, reverse=True)
-        return completed_with_preferred[0]
+        return _select_offset_event(completed_with_preferred, latest_offset=latest_offset)
 
-    if with_published_files:
-        return with_published_files[0]
+    if with_preferred_files:
+        return _select_offset_event(with_preferred_files, latest_offset=latest_offset)
 
     with_any_supported_file = [
         event
@@ -599,12 +928,24 @@ def _select_civicclerk_event(
 
     if completed_with_any_supported_file:
         completed_with_any_supported_file.sort(key=_event_sort_key, reverse=True)
-        return completed_with_any_supported_file[0]
+        return _select_offset_event(completed_with_any_supported_file, latest_offset=latest_offset)
 
     if with_any_supported_file:
-        return with_any_supported_file[0]
+        return _select_offset_event(with_any_supported_file, latest_offset=latest_offset)
 
-    return council_events[0]
+    return _select_offset_event(council_events, latest_offset=latest_offset)
+
+
+def _select_offset_event(
+    events: list[dict[str, object]],
+    *,
+    latest_offset: int,
+) -> dict[str, object]:
+    if latest_offset >= len(events):
+        raise LatestFetchError(
+            f"Requested latest_offset={latest_offset} but only {len(events)} eligible CivicClerk events were found"
+        )
+    return events[latest_offset]
 
 
 def _build_civicclerk_events_feed_urls(*, api_base_url: str, fallback_events_url: str) -> tuple[str, ...]:
@@ -631,7 +972,7 @@ def _fetch_event_ids_from_portal(
 
 
 def _extract_event_ids_from_html(html: str) -> tuple[int, ...]:
-    matches = re.findall(r"/event/(\d+)/media", html, flags=re.IGNORECASE)
+    matches = re.findall(r"/event/(\d+)/files", html, flags=re.IGNORECASE)
     seen: set[int] = set()
     ids: list[int] = []
     for raw in matches:
@@ -685,7 +1026,7 @@ def _enrich_civicclerk_event(
     meeting_id: int | None = None
     try:
         if agenda_id_value is not None:
-            meeting_id = int(agenda_id_value)
+            meeting_id = int(str(agenda_id_value))
     except (TypeError, ValueError):
         meeting_id = None
 

@@ -9,11 +9,19 @@ from councilsense.app import local_runtime
 
 
 def _stub_fetch(_: str, __: float) -> bytes:
-    return (
-        "<html><body>"
-        "<a href='/agenda/2026-02-11-minutes.pdf'>City Council Minutes - 02/11/2026</a>"
-        "</body></html>"
-    ).encode("utf-8")
+    url = _
+    if "/events?" in url or url.endswith("/events"):
+        return (
+            '{"value":[{"id":21,"eventName":"City Council Meeting","eventDate":"2026-01-08T00:00:00Z",'
+            '"publishedFiles":[{"type":"Minutes","name":"Approved Minutes","fileId":1102,"url":"stream/fixture-minutes.pdf"}]}]}'
+        ).encode("utf-8")
+    if "GetMeetingFile(" in url and "plainText=true" in url:
+        return b'{"blobUri":"https://blob.example/minutes.txt"}'
+    if "GetMeetingFile(" in url and "plainText=false" in url:
+        return b'{"blobUri":"https://blob.example/minutes.pdf"}'
+    if url.endswith("minutes.txt"):
+        return b"City Council approved minutes and directed staff to publish updates."
+    return b"%PDF-1.7\nmock pdf bytes"
 
 
 def test_process_latest_marks_run_failed_when_publish_stage_errors(

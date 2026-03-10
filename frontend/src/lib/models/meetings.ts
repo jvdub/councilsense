@@ -172,6 +172,7 @@ export type MeetingDetailResponse = {
   body_name: string | null;
   source_document_kind: string | null;
   source_document_url: string | null;
+  source_meeting_url?: string | null;
   status: string | null;
   confidence_label: string | null;
   reader_low_confidence: boolean;

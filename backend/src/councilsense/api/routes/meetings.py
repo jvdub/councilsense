@@ -103,6 +103,7 @@ class MeetingDetailResponse(BaseModel):
     body_name: str | None
     source_document_kind: str | None
     source_document_url: str | None
+    source_meeting_url: str | None
     status: str | None
     confidence_label: str | None
     reader_low_confidence: bool
@@ -1107,6 +1108,7 @@ def get_meeting_detail(
         body_name=detail.body_name,
         source_document_kind=detail.source_document_kind,
         source_document_url=detail.source_document_url,
+        source_meeting_url=detail.source_meeting_url,
         status=detail.publication_status,
         confidence_label=detail.confidence_label,
         reader_low_confidence=detail.reader_low_confidence,

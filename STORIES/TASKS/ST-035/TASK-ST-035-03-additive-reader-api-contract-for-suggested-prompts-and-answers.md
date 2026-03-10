@@ -41,25 +41,25 @@ Each emitted array item uses this contract:
 
 ```json
 {
-	"prompt_id": "project_identity",
-	"prompt": "What project or item is this about?",
-	"answer": "North Gateway rezoning application.",
-	"evidence_references_v2": [
-		{
-			"evidence_id": "ev-follow-up-subject-2",
-			"document_id": "doc-follow-up-subject-2",
-			"artifact_id": "artifact-follow-up-subject-2",
-			"document_kind": "minutes",
-			"section_path": "minutes.section.4",
-			"page_start": null,
-			"page_end": null,
-			"char_start": 18,
-			"char_end": 122,
-			"precision": "offset",
-			"confidence": "high",
-			"excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
-		}
-	]
+  "prompt_id": "project_identity",
+  "prompt": "What project or item is this about?",
+  "answer": "North Gateway rezoning application.",
+  "evidence_references_v2": [
+    {
+      "evidence_id": "ev-follow-up-subject-2",
+      "document_id": "doc-follow-up-subject-2",
+      "artifact_id": "artifact-follow-up-subject-2",
+      "document_kind": "minutes",
+      "section_path": "minutes.section.4",
+      "page_start": null,
+      "page_end": null,
+      "char_start": 18,
+      "char_end": 122,
+      "precision": "offset",
+      "confidence": "high",
+      "excerpt": "Council approved the North Gateway rezoning application for the North Gateway District."
+    }
+  ]
 }
 ```
 
@@ -75,12 +75,12 @@ Each emitted array item uses this contract:
 
 ### Presence and omission matrix
 
-| Meeting / flag state | Contract result |
-| --- | --- |
-| `ST035_API_FOLLOW_UP_PROMPTS_ENABLED=false` | omit `suggested_prompts` |
-| flag enabled, top-level `structured_relevance` missing | omit `suggested_prompts` |
-| flag enabled, top-level `structured_relevance` present but no approved prompt answer is fully grounded | omit `suggested_prompts` |
-| flag enabled, one or more approved prompts are grounded | emit `suggested_prompts` in frozen prompt order and omit unsupported prompts inside the block |
+| Meeting / flag state                                                                                   | Contract result                                                                               |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `ST035_API_FOLLOW_UP_PROMPTS_ENABLED=false`                                                            | omit `suggested_prompts`                                                                      |
+| flag enabled, top-level `structured_relevance` missing                                                 | omit `suggested_prompts`                                                                      |
+| flag enabled, top-level `structured_relevance` present but no approved prompt answer is fully grounded | omit `suggested_prompts`                                                                      |
+| flag enabled, one or more approved prompts are grounded                                                | emit `suggested_prompts` in frozen prompt order and omit unsupported prompts inside the block |
 
 ### Deterministic examples
 
