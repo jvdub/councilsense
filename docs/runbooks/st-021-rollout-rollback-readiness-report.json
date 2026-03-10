@@ -7,10 +7,7 @@
       "promotion_check_two_consecutive_green_runs",
       "selective_enforced_mode_by_environment_and_cohort"
     ],
-    "enforcement_policies": [
-      "downgrade",
-      "block"
-    ]
+    "enforcement_policies": ["downgrade", "block"]
   },
   "rollback": {
     "required_reverse_order": [

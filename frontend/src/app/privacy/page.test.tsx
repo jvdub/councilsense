@@ -8,13 +8,16 @@ describe("PrivacyPolicyPage", () => {
   it("renders privacy content with local navigation", () => {
     render(<PrivacyPolicyPage />);
 
-    expect(screen.getByRole("heading", { name: "Privacy policy" })).toBeInTheDocument();
     expect(
-      screen.getByText(/stores account, city preference, and notification settings/i),
+      screen.getByRole("heading", { name: "Privacy policy" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review terms of service" })).toHaveAttribute(
-      "href",
-      "/terms",
-    );
+    expect(
+      screen.getByText(
+        /stores account, city preference, and notification settings/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Review terms of service" }),
+    ).toHaveAttribute("href", "/terms");
   });
 });

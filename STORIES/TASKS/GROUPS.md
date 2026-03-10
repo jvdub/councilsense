@@ -73,6 +73,16 @@ This file records the story grouping used to refine stories into task files.
 - ST-034 Resident Relevance Meeting Detail Impact Cards and Scan View
 - ST-035 Evidence-Backed Follow-Up Prompts for Meeting Detail
 
+## Group M — Source Catalog Foundations, Reader API, and On-Demand Processing
+
+- ST-036 Source Catalog: Discovered Meetings Registry and Sync Baseline
+- ST-037 Source Catalog: Reader API and Queue-or-Return Processing Request Contract
+- ST-038 Source Catalog: On-Demand Processing Admission Control and Meeting-Level Dedupe
+
+## Group N — Source Catalog Frontend Meeting Explorer UX
+
+- ST-039 Source Catalog: Frontend Meeting Explorer and On-Demand Processing UX
+
 ## Correlation Pattern
 
 - Every task belongs to exactly one story folder: `STORIES/TASKS/ST-###/`.

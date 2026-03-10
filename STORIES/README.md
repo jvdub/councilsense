@@ -9,6 +9,7 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 - **Phase 2 (Agenda Program Foundations):** ST-022 through ST-024
 - **Phase 3 (Agenda Program Reader Rollout):** ST-025 through ST-031
 - **Phase 4 (Resident Relevance + Explainability):** ST-032 through ST-035
+- **Phase 5 (Source Catalog + On-Demand Processing):** ST-036 through ST-039
 
 ## Ordered Backlog
 
@@ -49,6 +50,10 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 | 33    | ST-033   | Resident Relevance: Reader API Additive Subject, Location, and Impact Fields | Phase 4 | FR-4, FR-6, REQUIREMENTS §12.2, §12.3, §13.1, §13.5, §14(3,10) | ST-027, ST-032 |
 | 34    | ST-034   | Resident Relevance: Meeting Detail Impact Cards and Scan View | Phase 4 | FR-4, REQUIREMENTS §12.3, §13.1, §13.2, §13.5, §14(3,10) | ST-007, ST-028, ST-033 |
 | 35    | ST-035   | Resident Relevance: Evidence-Backed Follow-Up Prompts for Meeting Detail | Phase 4 | FR-4, REQUIREMENTS §12.2, §12.3, §12.4, §13.1, §13.2, §13.5 | ST-032, ST-033, ST-034 |
+| 36    | ST-036   | Source Catalog: Discovered Meetings Registry and Sync Baseline | Phase 5 | FR-3, FR-6, FR-7, NFR-1, NFR-4 | ST-003, ST-004, ST-023 |
+| 37    | ST-037   | Source Catalog: Reader API and Queue-or-Return Processing Request Contract | Phase 5 | FR-4, FR-6, NFR-2, NFR-4 | ST-006, ST-036 |
+| 38    | ST-038   | Source Catalog: On-Demand Processing Admission Control and Meeting-Level Dedupe | Phase 5 | FR-3, FR-4, FR-7, NFR-1, NFR-4 | ST-004, ST-029, ST-036, ST-037 |
+| 39    | ST-039   | Source Catalog: Frontend Meeting Explorer and On-Demand Processing UX | Phase 5 | FR-4, FR-6, NFR-2 | ST-007, ST-037, ST-038 |
 
 ## Dependency Summary
 
@@ -61,6 +66,7 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 - **Agenda foundation chain:** ST-022 → ST-023 → ST-024 → ST-025 → ST-026 → ST-027 → ST-028.
 - **Agenda operational hardening chain:** ST-023/ST-025 → ST-029 → ST-030 → ST-031.
 - **Resident relevance chain:** ST-032 → ST-033 → ST-034 → ST-035.
+- **Source catalog and on-demand processing chain:** ST-036 → ST-037 → ST-038 → ST-039.
 
 ## Notes on Scope Boundaries
 
@@ -69,6 +75,7 @@ This backlog is grounded in `REQUIREMENTS.md` (authoritative) with architecture 
 - Phase 1.5 stories capture required hardening boundaries: DLQ/replay, audited ECR operations, parser drift monitoring, rubric freeze, additive evidence safety, specificity hardening, and controlled rollout/rollback.
 - Phase 2 and Phase 3 extend the platform into document-aware agenda/packet/minutes ingestion, additive reader APIs, frontend rendering, and operational hardening.
 - Phase 4 focuses on resident relevance and explainability so readers can see what changed, where it applies, and why it may matter without needing a full chat workflow.
+- Phase 5 extends the reader from persisted-summary browsing into a source-backed meeting explorer where residents can request processing for unprocessed meetings without creating duplicate work.
 
 ## Review Outcome
 

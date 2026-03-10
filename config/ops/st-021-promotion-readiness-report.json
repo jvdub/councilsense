@@ -12,8 +12,6 @@
       "run-local-run-latest-2a9112f8ab01",
       "run-local-run-latest-3554fb2d2c77"
     ],
-    "reason_codes": [
-      "promotion_prerequisites_satisfied"
-    ]
+    "reason_codes": ["promotion_prerequisites_satisfied"]
   }
 }

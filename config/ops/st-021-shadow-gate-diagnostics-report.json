@@ -10,23 +10,17 @@
     {
       "gate_id": "gate_a_contract_safety",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     },
     {
       "gate_id": "gate_b_quality_parity",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     },
     {
       "gate_id": "gate_c_operational_reliability",
       "passed": true,
-      "reason_codes": [
-        "gate_pass"
-      ]
+      "reason_codes": ["gate_pass"]
     }
   ]
 }

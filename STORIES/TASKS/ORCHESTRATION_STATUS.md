@@ -202,6 +202,7 @@ Last updated: 2026-03-09
 - ST-033 is completed.
 - ST-034 is completed.
 - ST-035 is completed.
+- ST-036 through ST-039 are decomposed and ready for execution.
 
 ## Prepared and Execution Stories (Decomposed)
 
@@ -221,3 +222,7 @@ Last updated: 2026-03-09
 | ST-033 | `STORIES/ST-033-reader-api-additive-resident-relevance-fields.md`                        | `STORIES/TASKS/ST-033/` | ✅ Complete          | ✅ Completed     |
 | ST-034 | `STORIES/ST-034-frontend-meeting-detail-resident-impact-cards-and-scan-view.md`          | `STORIES/TASKS/ST-034/` | ✅ Complete          | ✅ Completed     |
 | ST-035 | `STORIES/ST-035-evidence-backed-follow-up-prompts-for-meeting-detail.md`                 | `STORIES/TASKS/ST-035/` | ✅ Complete          | ✅ Completed     |
+| ST-036 | `STORIES/ST-036-source-catalog-discovered-meetings-registry-and-sync-baseline.md`        | `STORIES/TASKS/ST-036/` | ✅ Complete          | ⏳ Not started   |
+| ST-037 | `STORIES/ST-037-source-catalog-reader-api-and-queue-or-return-processing-request-contract.md` | `STORIES/TASKS/ST-037/` | ✅ Complete      | ⏳ Not started   |
+| ST-038 | `STORIES/ST-038-source-catalog-on-demand-processing-admission-control-and-meeting-level-dedupe.md` | `STORIES/TASKS/ST-038/` | ✅ Complete | ⏳ Not started   |
+| ST-039 | `STORIES/ST-039-source-catalog-frontend-meeting-explorer-and-on-demand-processing-ux.md` | `STORIES/TASKS/ST-039/` | ✅ Complete          | ⏳ Not started   |

@@ -13,13 +13,11 @@ describe("RootLayout", () => {
     );
 
     expect(screen.getByLabelText("Public legal links")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
-      "href",
-      "/privacy",
-    );
-    expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
-      "href",
-      "/terms",
-    );
+    expect(
+      screen.getByRole("link", { name: "Privacy policy" }),
+    ).toHaveAttribute("href", "/privacy");
+    expect(
+      screen.getByRole("link", { name: "Terms of service" }),
+    ).toHaveAttribute("href", "/terms");
   });
 });

@@ -23,6 +23,12 @@ from councilsense.db.confidence_calibration import (
 	ConfidenceCalibrationPolicyRecord,
 	ConfidenceCalibrationPolicyRepository,
 )
+from councilsense.db.discovered_meetings import (
+	DiscoveredMeetingIdentity,
+	DiscoveredMeetingRecord,
+	DiscoveredMeetingRepository,
+	build_discovered_meeting_id,
+)
 from councilsense.db.meetings import (
 	InvalidMeetingListCursorError,
 	MeetingListCursor,
@@ -100,6 +106,9 @@ __all__ = [
 	"ConfidenceCalibrationPolicyRecord",
 	"ConfidenceCalibrationPolicyRepository",
 	"ConfiguredCitySelectionService",
+	"DiscoveredMeetingIdentity",
+	"DiscoveredMeetingRecord",
+	"DiscoveredMeetingRepository",
 	"EnabledCityConfig",
 	"SourceHealthRepository",
 	"AuthorityLevel",
@@ -123,6 +132,7 @@ __all__ = [
 	"MeetingRecord",
 	"MeetingWriteRepository",
 	"MissingMeetingCityError",
+	"build_discovered_meeting_id",
 	"NotificationAttemptOutcome",
 	"NotificationDeliveryDlqRecord",
 	"NotificationDeliveryAttemptRecord",

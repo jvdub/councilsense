@@ -114,11 +114,17 @@ describe("MeetingsPage", () => {
       }),
     );
 
-    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
-      cursor: undefined,
-      limit: 20,
-    });
-    expect(screen.getByText("No meetings found for your city yet.")).toBeInTheDocument();
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith(
+      "token-abc",
+      "seattle-wa",
+      {
+        cursor: undefined,
+        limit: 20,
+      },
+    );
+    expect(
+      screen.getByText("No meetings found for your city yet."),
+    ).toBeInTheDocument();
   });
 
   it("renders meetings list rows with status and confidence metadata", async () => {
@@ -145,19 +151,32 @@ describe("MeetingsPage", () => {
 
     render(await MeetingsPage());
 
-    expect(screen.getByRole("heading", { name: "Meetings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Budget Committee" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Budget Committee" })).toHaveAttribute(
-      "href",
-      "/meetings/meeting-1",
+    expect(
+      screen.getByRole("heading", { name: "Meetings" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Budget Committee" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Budget Committee" }),
+    ).toHaveAttribute("href", "/meetings/meeting-1");
+    expect(
+      screen.getByText("Seattle • City Council • February 25, 2026"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Status: Processed · Confidence: High"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Meeting date: February 25, 2026"),
+    ).toBeInTheDocument();
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith(
+      "token-abc",
+      "seattle-wa",
+      {
+        cursor: undefined,
+        limit: 20,
+      },
     );
-    expect(screen.getByText("Seattle • City Council • February 25, 2026")).toBeInTheDocument();
-    expect(screen.getByText("Status: Processed · Confidence: High")).toBeInTheDocument();
-    expect(screen.getByText("Meeting date: February 25, 2026")).toBeInTheDocument();
-    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
-      cursor: undefined,
-      limit: 20,
-    });
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
@@ -186,7 +205,9 @@ describe("MeetingsPage", () => {
     render(await MeetingsPage());
 
     expect(
-      screen.getByText("Status: Limited Confidence · Confidence: Limited Confidence"),
+      screen.getByText(
+        "Status: Limited Confidence · Confidence: Limited Confidence",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -199,16 +220,22 @@ describe("MeetingsPage", () => {
 
     render(await MeetingsPage());
 
-    expect(screen.getByText("No meetings found for your city yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No meetings found for your city yet."),
+    ).toBeInTheDocument();
   });
 
   it("renders an error state when list fetch fails", async () => {
-    fetchCityMeetingsMock.mockRejectedValueOnce(new Error("Service unavailable"));
+    fetchCityMeetingsMock.mockRejectedValueOnce(
+      new Error("Service unavailable"),
+    );
 
     render(await MeetingsPage());
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("Unable to load meetings. Service unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText("Unable to load meetings. Service unavailable"),
+    ).toBeInTheDocument();
   });
 
   it("shows pagination links and preserves cursor continuity", async () => {
@@ -243,15 +270,20 @@ describe("MeetingsPage", () => {
       }),
     );
 
-    expect(fetchCityMeetingsMock).toHaveBeenCalledWith("token-abc", "seattle-wa", {
-      cursor: "cursor-current",
-      limit: 10,
-    });
-    expect(screen.getByRole("link", { name: "Load newer meetings" })).toHaveAttribute(
-      "href",
-      "/meetings?cursor=cursor-prev&limit=10",
+    expect(fetchCityMeetingsMock).toHaveBeenCalledWith(
+      "token-abc",
+      "seattle-wa",
+      {
+        cursor: "cursor-current",
+        limit: 10,
+      },
     );
-    expect(screen.getByRole("link", { name: "Load older meetings" })).toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: "Load newer meetings" }),
+    ).toHaveAttribute("href", "/meetings?cursor=cursor-prev&limit=10");
+    expect(
+      screen.getByRole("link", { name: "Load older meetings" }),
+    ).toHaveAttribute(
       "href",
       "/meetings?cursor=cursor-next&prev=cursor-current&limit=10",
     );

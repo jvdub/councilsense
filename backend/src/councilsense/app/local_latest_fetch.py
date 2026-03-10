@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from councilsense.app.canonical_persistence import persist_pipeline_canonical_records
 from councilsense.app.multi_document_observability import derive_artifact_id, emit_multi_document_stage_event
+from councilsense.app.provider_enumeration import ProviderEnumerationError, enumerate_civicclerk_events
 from councilsense.app.st031_source_observability import SourceAwareMetricEmitter, emit_source_stage_outcome
 from councilsense.db import CityRegistryRepository, MeetingWriteRepository, PILOT_CITY_ID
 
@@ -835,62 +836,17 @@ def _select_civicclerk_event(
         if event is not None:
             return event
 
-    enriched_events: list[dict[str, object]] = []
-    feed_urls = _build_civicclerk_events_feed_urls(api_base_url=api_base_url, fallback_events_url=events_url)
-    for feed_url in feed_urls:
-        try:
-            raw = fetcher(feed_url, timeout_seconds)
-            payload = json.loads(raw.decode("utf-8", errors="replace"))
-            items = payload.get("value") if isinstance(payload, dict) else None
-            if not isinstance(items, list):
-                continue
-            enriched_events.extend(
-                _enrich_civicclerk_event(
-                    event=item,
-                    api_base_url=api_base_url,
-                    timeout_seconds=timeout_seconds,
-                    fetcher=fetcher,
-                )
-                for item in items
-                if isinstance(item, dict)
+    try:
+        council_events = [
+            dict(item.raw_payload)
+            for item in enumerate_civicclerk_events(
+                source_url=source_url,
+                timeout_seconds=timeout_seconds,
+                fetch_url=fetcher,
             )
-        except Exception:
-            continue
-
-    known_ids: set[int] = set()
-    for event in enriched_events:
-        event_id_value = event.get("id")
-        try:
-            if event_id_value is not None:
-                known_ids.add(int(str(event_id_value)))
-        except (TypeError, ValueError):
-            continue
-
-    portal_event_ids = _fetch_event_ids_from_portal(
-        source_url=source_url,
-        timeout_seconds=timeout_seconds,
-        fetcher=fetcher,
-    )
-    for event_id in portal_event_ids:
-        if event_id in known_ids:
-            continue
-        event = _fetch_civicclerk_event_by_id(
-            api_base_url=api_base_url,
-            event_id=event_id,
-            timeout_seconds=timeout_seconds,
-            fetcher=fetcher,
-        )
-        if event is None:
-            continue
-        enriched_events.append(event)
-        known_ids.add(event_id)
-
-    if not enriched_events:
-        raise LatestFetchError("Unable to retrieve CivicClerk events from API or portal")
-
-    council_events = [item for item in enriched_events if _is_city_council_event(item)]
-    if not council_events:
-        raise LatestFetchError("No City Council events were found in CivicClerk events payload")
+        ]
+    except ProviderEnumerationError as exc:
+        raise LatestFetchError(str(exc)) from exc
 
     normalized_preferred_type = preferred_file_type.strip().lower()
     today_iso = datetime.now(tz=UTC).date().isoformat()

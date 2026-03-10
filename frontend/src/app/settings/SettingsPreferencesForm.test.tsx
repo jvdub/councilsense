@@ -56,7 +56,9 @@ function createServerSubscription({
   };
 }
 
-function createBrowserPushSubscription(endpoint = "https://example.test/push/sub-1") {
+function createBrowserPushSubscription(
+  endpoint = "https://example.test/push/sub-1",
+) {
   return {
     endpoint,
     toJSON: () => ({
@@ -92,10 +94,13 @@ function setPushSupportedBrowser({
   existingSubscription = null,
 }: {
   permission?: NotificationPermission;
-  existingSubscription?: ReturnType<typeof createBrowserPushSubscription> | null;
+  existingSubscription?: ReturnType<
+    typeof createBrowserPushSubscription
+  > | null;
 } = {}) {
   notificationPermissionState = permission;
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BEl6MU5fM2VxQk9hYkhWVE5TV0xqU0FLeXhyY0JvUmVubEx3aUNYQnY2Q1M";
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY =
+    "BEl6MU5fM2VxQk9hYkhWVE5TV0xqU0FLeXhyY0JvUmVubEx3aUNYQnY2Q1M";
 
   pushManagerGetSubscriptionMock.mockResolvedValue(existingSubscription);
   pushManagerSubscribeMock.mockResolvedValue(createBrowserPushSubscription());
@@ -125,10 +130,12 @@ function setPushSupportedBrowser({
       get permission() {
         return notificationPermissionState;
       },
-      requestPermission: notificationRequestPermissionMock.mockImplementation(async () => {
-        notificationPermissionState = "granted";
-        return "granted";
-      }),
+      requestPermission: notificationRequestPermissionMock.mockImplementation(
+        async () => {
+          notificationPermissionState = "granted";
+          return "granted";
+        },
+      ),
     },
   });
 
@@ -156,7 +163,8 @@ vi.mock("../../lib/api/profile", async (importOriginal) => {
 });
 
 vi.mock("../../lib/api/pushSubscriptions", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/pushSubscriptions")>();
+  const actual =
+    await importOriginal<typeof import("../../lib/api/pushSubscriptions")>();
   return {
     ...actual,
     listPushSubscriptions: vi.fn(),
@@ -166,7 +174,8 @@ vi.mock("../../lib/api/pushSubscriptions", async (importOriginal) => {
 });
 
 vi.mock("../../lib/api/governance", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/governance")>();
+  const actual =
+    await importOriginal<typeof import("../../lib/api/governance")>();
   return {
     ...actual,
     createExportRequest: vi.fn(),
@@ -264,20 +273,26 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Home city")).toHaveValue("city-eagle-mountain-ut");
-    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue("city-eagle-mountain-ut");
-    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue("portland-or");
+    expect(screen.getByLabelText("Home city")).toHaveValue(
+      "city-eagle-mountain-ut",
+    );
+    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue(
+      "city-eagle-mountain-ut",
+    );
+    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue(
+      "portland-or",
+    );
     expect(screen.getByLabelText("Enable notifications")).toBeChecked();
-    expect(screen.getByText("Notifications paused until: Not paused")).toBeInTheDocument();
+    expect(
+      screen.getByText("Notifications paused until: Not paused"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unpause" })).toBeDisabled();
-    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
-      "href",
-      "/privacy",
-    );
-    expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute(
-      "href",
-      "/terms",
-    );
+    expect(
+      screen.getByRole("link", { name: "Privacy policy" }),
+    ).toHaveAttribute("href", "/privacy");
+    expect(
+      screen.getByRole("link", { name: "Terms of service" }),
+    ).toHaveAttribute("href", "/terms");
   });
 
   it("submits and refreshes export request status", async () => {
@@ -296,17 +311,25 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Request data export" }));
+    await user.click(
+      screen.getByRole("button", { name: "Request data export" }),
+    );
 
     expect(createExportRequest).toHaveBeenCalledWith("token-abc", {
       idempotency_key: expect.stringMatching(/^export-/),
     });
-    expect(await screen.findByText("Export request status: requested")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Export request status: requested"),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Refresh export status" }));
+    await user.click(
+      screen.getByRole("button", { name: "Refresh export status" }),
+    );
 
     expect(getExportRequest).toHaveBeenCalledWith("token-abc", "export-1");
-    expect(await screen.findByText("Export request status: processing")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Export request status: processing"),
+    ).toBeInTheDocument();
   });
 
   it("requires explicit confirmation before deletion request", async () => {
@@ -350,7 +373,11 @@ describe("SettingsPreferencesForm", () => {
     );
 
     await user.selectOptions(screen.getByLabelText("Request mode"), "delete");
-    await user.click(screen.getByLabelText("I understand this request can remove my personal data."));
+    await user.click(
+      screen.getByLabelText(
+        "I understand this request can remove my personal data.",
+      ),
+    );
     await user.click(screen.getByRole("button", { name: "Request deletion" }));
 
     expect(createDeletionRequest).toHaveBeenCalledWith("token-abc", {
@@ -358,12 +385,18 @@ describe("SettingsPreferencesForm", () => {
       mode: "delete",
       reason_code: "user_requested_account_deletion",
     });
-    expect(await screen.findByText("Deletion request status: requested")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Deletion request status: requested"),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Refresh deletion status" }));
+    await user.click(
+      screen.getByRole("button", { name: "Refresh deletion status" }),
+    );
 
     expect(getDeletionRequest).toHaveBeenCalledWith("token-abc", "deletion-1");
-    expect(await screen.findByText("Deletion request status: accepted")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Deletion request status: accepted"),
+    ).toBeInTheDocument();
   });
 
   it("rehydrates persisted paused state", () => {
@@ -380,7 +413,9 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(screen.getByText("Notifications paused until: 2026-02-28T12:00:00.000Z")).toBeInTheDocument();
+    expect(
+      screen.getByText("Notifications paused until: 2026-02-28T12:00:00.000Z"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unpause" })).toBeEnabled();
   });
 
@@ -415,7 +450,9 @@ describe("SettingsPreferencesForm", () => {
       notifications_enabled: false,
       notifications_paused_until: null,
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Preferences saved.");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Preferences saved.",
+    );
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
@@ -445,9 +482,15 @@ describe("SettingsPreferencesForm", () => {
 
     await user.selectOptions(screen.getByLabelText("Home city"), "portland-or");
     await user.click(screen.getByLabelText("Enable notifications"));
-    await user.click(screen.getByRole("button", { name: "Pause for 24 hours" }));
+    await user.click(
+      screen.getByRole("button", { name: "Pause for 24 hours" }),
+    );
 
-    expect(await screen.findByText("Notifications paused until: 2026-03-01T00:00:00.000Z")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Notifications paused until: 2026-03-01T00:00:00.000Z",
+      ),
+    ).toBeInTheDocument();
 
     unmount();
 
@@ -461,7 +504,9 @@ describe("SettingsPreferencesForm", () => {
 
     expect(screen.getByLabelText("Home city")).toHaveValue("portland-or");
     expect(screen.getByLabelText("Enable notifications")).not.toBeChecked();
-    expect(screen.getByText("Notifications paused until: 2026-03-01T00:00:00.000Z")).toBeInTheDocument();
+    expect(
+      screen.getByText("Notifications paused until: 2026-03-01T00:00:00.000Z"),
+    ).toBeInTheDocument();
   });
 
   it("shows validation error when backend rejects payload", async () => {
@@ -492,7 +537,9 @@ describe("SettingsPreferencesForm", () => {
 
   it("supports pause and unpause actions", async () => {
     const user = userEvent.setup();
-    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-02-27T12:00:00.000Z").getTime());
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-02-27T12:00:00.000Z").getTime(),
+    );
 
     vi.mocked(patchProfile)
       .mockResolvedValueOnce({
@@ -521,13 +568,19 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Pause for 24 hours" }));
+    await user.click(
+      screen.getByRole("button", { name: "Pause for 24 hours" }),
+    );
     expect(patchProfile).toHaveBeenNthCalledWith(1, "token-abc", {
       home_city_id: "seattle-wa",
       notifications_enabled: true,
       notifications_paused_until: "2026-02-28T12:00:00.000Z",
     });
-    expect(await screen.findByText("Notifications paused until: 2026-02-28T12:00:00.000Z")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Notifications paused until: 2026-02-28T12:00:00.000Z",
+      ),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Unpause" }));
     expect(patchProfile).toHaveBeenNthCalledWith(2, "token-abc", {
@@ -535,7 +588,9 @@ describe("SettingsPreferencesForm", () => {
       notifications_enabled: true,
       notifications_paused_until: null,
     });
-    expect(await screen.findByText("Notifications paused until: Not paused")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Notifications paused until: Not paused"),
+    ).toBeInTheDocument();
   });
 
   it("shows unsupported-browser push messaging", () => {
@@ -555,7 +610,9 @@ describe("SettingsPreferencesForm", () => {
     );
 
     expect(
-      screen.getByText("Push is not supported in this browser. You can still manage notification preferences above."),
+      screen.getByText(
+        "Push is not supported in this browser. You can still manage notification preferences above.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -576,9 +633,13 @@ describe("SettingsPreferencesForm", () => {
     );
 
     expect(
-      screen.getByText("Push is blocked by browser permission. Enable notifications in browser settings, then retry."),
+      screen.getByText(
+        "Push is blocked by browser permission. Enable notifications in browser settings, then retry.",
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Enable push on this device" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Enable push on this device" }),
+    ).toBeDisabled();
   });
 
   it("subscribes push on explicit user action", async () => {
@@ -597,7 +658,9 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Enable push on this device" }));
+    await user.click(
+      screen.getByRole("button", { name: "Enable push on this device" }),
+    );
 
     expect(notificationRequestPermissionMock).toHaveBeenCalledTimes(1);
     expect(serviceWorkerRegisterMock).toHaveBeenCalledWith("/sw.js");
@@ -610,10 +673,18 @@ describe("SettingsPreferencesForm", () => {
       },
       user_agent: navigator.userAgent,
     });
-    expect(await screen.findByText("Device subscription: Enabled")).toBeInTheDocument();
-    expect(await screen.findByText("Server subscription state: active")).toBeInTheDocument();
-    expect(await screen.findByText("Push enabled on this device.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Disable push on this device" })).toBeEnabled();
+    expect(
+      await screen.findByText("Device subscription: Enabled"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Server subscription state: active"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Push enabled on this device."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Disable push on this device" }),
+    ).toBeEnabled();
   });
 
   it("unsubscribes push when already subscribed", async () => {
@@ -641,14 +712,27 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(await screen.findByText("Device subscription: Enabled")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Disable push on this device" }));
+    expect(
+      await screen.findByText("Device subscription: Enabled"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Disable push on this device" }),
+    );
 
     expect(pushSubscriptionUnsubscribeMock).toHaveBeenCalledTimes(1);
-    expect(deletePushSubscription).toHaveBeenCalledWith("token-abc", "psub-server-1");
-    expect(await screen.findByText("Device subscription: Not enabled")).toBeInTheDocument();
-    expect(await screen.findByText("Server subscription state: none")).toBeInTheDocument();
-    expect(await screen.findByText("Push disabled on this device.")).toBeInTheDocument();
+    expect(deletePushSubscription).toHaveBeenCalledWith(
+      "token-abc",
+      "psub-server-1",
+    );
+    expect(
+      await screen.findByText("Device subscription: Not enabled"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Server subscription state: none"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Push disabled on this device."),
+    ).toBeInTheDocument();
   });
 
   it("maps invalid backend state to recover action", async () => {
@@ -682,15 +766,23 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(await screen.findByText("Server subscription state: invalid")).toBeInTheDocument();
     expect(
-      await screen.findByText("This subscription is no longer deliverable. Recover it to continue push alerts."),
+      await screen.findByText("Server subscription state: invalid"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "This subscription is no longer deliverable. Recover it to continue push alerts.",
+      ),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Recover push subscription" }));
+    await user.click(
+      screen.getByRole("button", { name: "Recover push subscription" }),
+    );
 
     expect(createOrRefreshPushSubscription).toHaveBeenCalled();
-    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Push recovery completed on this device."),
+    ).toBeInTheDocument();
   });
 
   it("maps expired backend state to recover action", async () => {
@@ -724,11 +816,17 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(await screen.findByText("Server subscription state: expired")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Recover push subscription" }));
+    expect(
+      await screen.findByText("Server subscription state: expired"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Recover push subscription" }),
+    );
 
     expect(createOrRefreshPushSubscription).toHaveBeenCalled();
-    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Push recovery completed on this device."),
+    ).toBeInTheDocument();
   });
 
   it("maps suppressed backend state to reactivate action", async () => {
@@ -762,15 +860,24 @@ describe("SettingsPreferencesForm", () => {
       />,
     );
 
-    expect(await screen.findByText("Server subscription state: suppressed")).toBeInTheDocument();
     expect(
-      await screen.findByText("This subscription is currently suppressed. Reactivate push to resume deliveries."),
+      await screen.findByText("Server subscription state: suppressed"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "This subscription is currently suppressed. Reactivate push to resume deliveries.",
+      ),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Reactivate push" }));
 
-    expect(deletePushSubscription).toHaveBeenCalledWith("token-abc", "psub-server-suppressed");
+    expect(deletePushSubscription).toHaveBeenCalledWith(
+      "token-abc",
+      "psub-server-suppressed",
+    );
     expect(createOrRefreshPushSubscription).toHaveBeenCalled();
-    expect(await screen.findByText("Push recovery completed on this device.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Push recovery completed on this device."),
+    ).toBeInTheDocument();
   });
 });

@@ -22,7 +22,11 @@ export function CitySelectionForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const cityOptions = useMemo(
-    () => cityIds.map((cityId) => ({ cityId, label: formatCityLabel(null, cityId) })),
+    () =>
+      cityIds.map((cityId) => ({
+        cityId,
+        label: formatCityLabel(null, cityId),
+      })),
     [cityIds],
   );
 
@@ -55,31 +59,39 @@ export function CitySelectionForm({
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-xl shadow-slate-200/60 backdrop-blur">
         <div className="space-y-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-700">Onboarding</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Select your home city</h1>
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-700">
+            Onboarding
+          </p>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+            Select your home city
+          </h1>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Choose the city you want to follow so CouncilSense can personalize meeting summaries and alerts.
+            Choose the city you want to follow so CouncilSense can personalize
+            meeting summaries and alerts.
           </p>
         </div>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-5">
-          <label htmlFor="home-city" className="block text-sm font-medium text-slate-700">
+          <label
+            htmlFor="home-city"
+            className="block text-sm font-medium text-slate-700"
+          >
             Home city
           </label>
-        <select
-          id="home-city"
-          name="home-city"
-          value={selectedCityId}
-          onChange={(event) => setSelectedCityId(event.target.value)}
-          disabled={isSubmitting}
-          className="mt-2 block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
-        >
-          {cityOptions.map((option) => (
-            <option key={option.cityId} value={option.cityId}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          <select
+            id="home-city"
+            name="home-city"
+            value={selectedCityId}
+            onChange={(event) => setSelectedCityId(event.target.value)}
+            disabled={isSubmitting}
+            className="mt-2 block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+          >
+            {cityOptions.map((option) => (
+              <option key={option.cityId} value={option.cityId}>
+                {option.label}
+              </option>
+            ))}
+          </select>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
@@ -89,12 +101,17 @@ export function CitySelectionForm({
             >
               {isSubmitting ? "Saving..." : "Continue"}
             </button>
-            <p className="text-sm text-slate-500">You can change this later in settings.</p>
+            <p className="text-sm text-slate-500">
+              You can change this later in settings.
+            </p>
           </div>
         </form>
 
         {submitError ? (
-          <p role="alert" className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <p
+            role="alert"
+            className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+          >
             {submitError}
           </p>
         ) : null}

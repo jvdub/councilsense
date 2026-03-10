@@ -48,8 +48,12 @@ describe("CitySelectionForm", () => {
       />,
     );
 
-    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue("city-eagle-mountain-ut");
-    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue("portland-or");
+    expect(screen.getByRole("option", { name: "Eagle Mountain" })).toHaveValue(
+      "city-eagle-mountain-ut",
+    );
+    expect(screen.getByRole("option", { name: "Portland" })).toHaveValue(
+      "portland-or",
+    );
 
     await user.selectOptions(screen.getByLabelText("Home city"), "portland-or");
     await user.click(screen.getByRole("button", { name: "Continue" }));

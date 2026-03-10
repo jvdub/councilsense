@@ -47,7 +47,11 @@ function parseLimit(rawLimit: string | null): number {
   return Math.min(parsed, 100);
 }
 
-function buildMeetingsHref(cursor: string | null, prev: string | null, limit: number): string {
+function buildMeetingsHref(
+  cursor: string | null,
+  prev: string | null,
+  limit: number,
+): string {
   const query = new URLSearchParams();
 
   if (cursor) {
@@ -103,7 +107,8 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
       limit,
     });
   } catch (error) {
-    meetingsError = error instanceof Error ? error.message : "Failed to load meetings";
+    meetingsError =
+      error instanceof Error ? error.message : "Failed to load meetings";
   }
 
   const hasMeetings = (listResponse?.items.length ?? 0) > 0;
@@ -118,16 +123,25 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
       <section className="rounded-[2rem] border border-slate-200/80 bg-slate-950 px-6 py-8 text-white shadow-2xl shadow-slate-400/20 sm:px-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-200">Civic briefings</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Meetings</h1>
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-200">
+              Civic briefings
+            </p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">
+              Meetings
+            </h1>
             <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
-              Review recent local government meetings, scan confidence levels, and open a meeting for a concise, evidence-backed summary.
+              Review recent local government meetings, scan confidence levels,
+              and open a meeting for a concise, evidence-backed summary.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-[0.2em] text-slate-400">Home city</span>
-              <span className="mt-1 block font-semibold text-white">{homeCityLabel}</span>
+              <span className="block text-xs uppercase tracking-[0.2em] text-slate-400">
+                Home city
+              </span>
+              <span className="mt-1 block font-semibold text-white">
+                {homeCityLabel}
+              </span>
             </div>
             <Link
               href="/settings"
@@ -140,15 +154,22 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
       </section>
 
       {meetingsError ? (
-        <p role="alert" className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm">
+        <p
+          role="alert"
+          className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm"
+        >
           Unable to load meetings. {meetingsError}
         </p>
       ) : null}
 
       {!meetingsError && !hasMeetings ? (
         <section className="rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center shadow-sm">
-          <p className="text-base font-medium text-slate-800">No meetings found for your city yet.</p>
-          <p className="mt-2 text-sm text-slate-500">Check back after the next agenda packet or processing run.</p>
+          <p className="text-base font-medium text-slate-800">
+            No meetings found for your city yet.
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            Check back after the next agenda packet or processing run.
+          </p>
         </section>
       ) : null}
 
@@ -165,22 +186,34 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
                     {humanizeIdentifier(meeting.status, "Unknown")}
                   </div>
                   <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-                    <Link href={`/meetings/${meeting.id}`} className="transition hover:text-cyan-700">
+                    <Link
+                      href={`/meetings/${meeting.id}`}
+                      className="transition hover:text-cyan-700"
+                    >
                       {meeting.title}
                     </Link>
                   </h2>
                   <p className="text-sm font-medium leading-6 text-slate-700">
                     {formatCityLabel(meeting.city_name, meeting.city_id)}
-                    {meeting.body_name && meeting.body_name !== meeting.title ? ` • ${meeting.body_name}` : ""}
-                    {meeting.meeting_date ? ` • ${formatCalendarDate(meeting.meeting_date)}` : ""}
+                    {meeting.body_name && meeting.body_name !== meeting.title
+                      ? ` • ${meeting.body_name}`
+                      : ""}
+                    {meeting.meeting_date
+                      ? ` • ${formatCalendarDate(meeting.meeting_date)}`
+                      : ""}
                   </p>
                   <p className="text-sm leading-6 text-slate-600">
-                    Status: {humanizeIdentifier(meeting.status, "Unknown")} · Confidence: {humanizeIdentifier(meeting.confidence_label, "Unknown")}
+                    Status: {humanizeIdentifier(meeting.status, "Unknown")} ·
+                    Confidence:{" "}
+                    {humanizeIdentifier(meeting.confidence_label, "Unknown")}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
-                  <time className="text-sm text-slate-500" dateTime={meeting.meeting_date ?? meeting.updated_at}>
+                  <time
+                    className="text-sm text-slate-500"
+                    dateTime={meeting.meeting_date ?? meeting.updated_at}
+                  >
                     {meeting.meeting_date
                       ? `Meeting date: ${formatCalendarDate(meeting.meeting_date)}`
                       : `Updated: ${formatCalendarDate(meeting.updated_at, "Unavailable")}`}
