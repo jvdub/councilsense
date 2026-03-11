@@ -15,6 +15,10 @@ class ProviderEnumerationError(RuntimeError):
     pass
 
 
+MAX_CIVICCLERK_PAST_FEED_PAGES = 5
+MAX_CIVICCLERK_DEFAULT_FEED_PAGES = 1
+
+
 @dataclass(frozen=True)
 class CivicClerkEnumeratedEvent:
     source_meeting_id: str
@@ -135,24 +139,13 @@ def enumerate_civicclerk_events(
 
     enriched_events: list[dict[str, object]] = []
     for feed_url in feed_urls:
-        try:
-            raw = fetch_url(feed_url, timeout_seconds)
-            payload = json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception:
-            continue
-
-        items = payload.get("value") if isinstance(payload, dict) else None
-        if not isinstance(items, list):
-            continue
         enriched_events.extend(
-            _enrich_civicclerk_event(
-                event=item,
+            _fetch_civicclerk_feed_events(
+                feed_url=feed_url,
                 api_base_url=api_base_url,
                 timeout_seconds=timeout_seconds,
                 fetcher=fetch_url,
             )
-            for item in items
-            if isinstance(item, dict)
         )
 
     known_ids: set[int] = set()
@@ -296,6 +289,53 @@ def _build_civicclerk_events_feed_urls(*, api_base_url: str, fallback_events_url
     )
 
 
+def _fetch_civicclerk_feed_events(
+    *,
+    feed_url: str,
+    api_base_url: str,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], bytes],
+) -> tuple[dict[str, object], ...]:
+    next_url: str | None = feed_url
+    page_count = 0
+    max_pages = _max_civicclerk_feed_pages(feed_url)
+    events: list[dict[str, object]] = []
+
+    while next_url and page_count < max_pages:
+        try:
+            raw = fetcher(next_url, timeout_seconds)
+            payload = json.loads(raw.decode("utf-8", errors="replace"))
+        except Exception:
+            break
+        if not isinstance(payload, dict):
+            break
+
+        items = payload.get("value")
+        if isinstance(items, list):
+            events.extend(
+                _enrich_civicclerk_event(
+                    event=item,
+                    api_base_url=api_base_url,
+                    timeout_seconds=timeout_seconds,
+                    fetcher=fetcher,
+                )
+                for item in items
+                if isinstance(item, dict)
+            )
+
+        raw_next_url = payload.get("@odata.nextLink")
+        next_url = str(raw_next_url).strip() if isinstance(raw_next_url, str) and raw_next_url.strip() else None
+        page_count += 1
+
+    return tuple(events)
+
+
+def _max_civicclerk_feed_pages(feed_url: str) -> int:
+    if "startDateTime+lt" in feed_url:
+        return MAX_CIVICCLERK_PAST_FEED_PAGES
+    return MAX_CIVICCLERK_DEFAULT_FEED_PAGES
+
+
 def _fetch_event_ids_from_portal(
     *,
     source_url: str,
@@ -357,6 +397,10 @@ def _enrich_civicclerk_event(
     timeout_seconds: float,
     fetcher: Callable[[str, float], bytes],
 ) -> dict[str, object]:
+    existing_published_files = event.get("publishedFiles")
+    if isinstance(existing_published_files, list) and existing_published_files:
+        return event
+
     agenda_id = _parse_event_id(event.get("agendaId"))
     if agenda_id is None or agenda_id <= 0:
         return event
