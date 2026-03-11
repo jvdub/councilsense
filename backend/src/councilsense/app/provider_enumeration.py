@@ -72,6 +72,9 @@ class CivicClerkSourceMeetingEnumerationProvider:
             timeout_seconds=timeout_seconds,
             fetch_url=fetch_url,
         )
+        eligible_events = tuple(
+            event for event in events if _event_supports_source_type(event=event, source_type=source.source_type)
+        )
         return tuple(
             EnumeratedMeeting(
                 identity=DiscoveredMeetingIdentity(
@@ -87,8 +90,27 @@ class CivicClerkSourceMeetingEnumerationProvider:
                 provider_metadata=dict(event.provider_metadata),
                 raw_payload=dict(event.raw_payload),
             )
-            for event in events
+            for event in eligible_events
         )
+
+
+def _event_supports_source_type(*, event: CivicClerkEnumeratedEvent, source_type: str) -> bool:
+    normalized_source_type = source_type.strip().lower()
+    published_document_kinds = event.provider_metadata.get("published_document_kinds")
+    if not isinstance(published_document_kinds, tuple):
+        published_document_kinds = ()
+    available_document_kinds = {str(kind).strip().lower() for kind in published_document_kinds if str(kind).strip()}
+    today_date = datetime.now(tz=UTC).date().isoformat()
+
+    if normalized_source_type == "minutes":
+        return "minutes" in available_document_kinds
+    if normalized_source_type == "agenda":
+        return "agenda" in available_document_kinds or (
+            event.meeting_date is not None and event.meeting_date >= today_date
+        )
+    if normalized_source_type == "packet":
+        return "packet" in available_document_kinds
+    return True
 
 
 def get_source_meeting_enumeration_provider(source: CitySourceConfig) -> SourceMeetingEnumerationProvider:

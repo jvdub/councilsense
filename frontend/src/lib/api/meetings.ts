@@ -3,6 +3,7 @@ import {
   type CityMeetingsListResponse,
   type MeetingDetailResponse,
   type MeetingListFilters,
+  type MeetingProcessingRequestResponse,
 } from "../models/meetings";
 import { getApiBaseUrl } from "./baseUrl";
 
@@ -62,13 +63,36 @@ export async function fetchMeetingDetail(authToken: string, meetingId: string): 
   return fetchJsonWithRetry<MeetingDetailResponse>(path, authToken, "Failed to fetch meeting detail");
 }
 
-async function fetchJsonWithRetry<T>(path: string, authToken: string, fallbackMessage: string): Promise<T> {
+export async function createMeetingProcessingRequest(
+  authToken: string,
+  cityId: string,
+  discoveredMeetingId: string,
+): Promise<MeetingProcessingRequestResponse> {
+  const path = `/v1/cities/${encodeURIComponent(cityId)}/meetings/${encodeURIComponent(
+    discoveredMeetingId,
+  )}/processing-request`;
+  return fetchJsonWithRetry<MeetingProcessingRequestResponse>(
+    path,
+    authToken,
+    "Failed to request meeting processing",
+    { method: "POST" },
+  );
+}
+
+async function fetchJsonWithRetry<T>(
+  path: string,
+  authToken: string,
+  fallbackMessage: string,
+  requestInit?: Pick<RequestInit, "method">,
+): Promise<T> {
+  const method = requestInit?.method ?? "GET";
+  const maxAttempts = method === "GET" ? MAX_ATTEMPTS : 1;
   let attempt = 0;
 
-  while (attempt < MAX_ATTEMPTS) {
+  while (attempt < maxAttempts) {
     try {
       const response = await fetch(`${getApiBaseUrl()}${path}`, {
-        method: "GET",
+        method,
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -78,7 +102,7 @@ async function fetchJsonWithRetry<T>(path: string, authToken: string, fallbackMe
       if (!response.ok) {
         const error = await parseApiError(response, fallbackMessage);
 
-        if (error.retryable && attempt < MAX_ATTEMPTS - 1) {
+        if (error.retryable && attempt < maxAttempts - 1) {
           attempt += 1;
           continue;
         }
@@ -92,7 +116,7 @@ async function fetchJsonWithRetry<T>(path: string, authToken: string, fallbackMe
         throw error;
       }
 
-      const canRetry = attempt < MAX_ATTEMPTS - 1;
+      const canRetry = attempt < maxAttempts - 1;
       if (!canRetry) {
         throw new MeetingsApiError(fallbackMessage, 0, null, null, false);
       }
@@ -110,6 +134,9 @@ async function parseApiError(response: Response, fallbackMessage: string): Promi
 
   try {
     const payload = (await response.json()) as ApiErrorPayload;
+    if (typeof payload.detail === "string" && payload.detail.trim()) {
+      return new MeetingsApiError(payload.detail, status, null, null, retryable);
+    }
     const message = payload.error?.message ?? fallbackMessage;
     const code = payload.error?.code ?? null;
     const details = payload.error?.details ?? null;

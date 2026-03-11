@@ -29,8 +29,21 @@ from councilsense.db.discovered_meetings import (
 	DiscoveredMeetingRepository,
 	build_discovered_meeting_id,
 )
+from councilsense.db.meeting_processing_requests import (
+	MEETING_PROCESSING_ACTIVE_WORK_DEDUPE_KEY_VERSION,
+	MeetingProcessingRequestRecord,
+	MeetingProcessingRequestRepository,
+	build_meeting_processing_active_work_dedupe_key,
+	is_active_processing_request_status,
+	is_terminal_processing_request_status,
+)
 from councilsense.db.meetings import (
 	InvalidMeetingListCursorError,
+	MeetingCatalogCursor,
+	MeetingCatalogDiscoveredMeeting,
+	MeetingCatalogListItem,
+	MeetingCatalogListPage,
+	MeetingCatalogProcessingState,
 	MeetingListCursor,
 	MeetingListItem,
 	MeetingListPage,
@@ -97,7 +110,7 @@ from councilsense.db.governance import (
 	GovernanceRetentionPolicyRecord,
 )
 from councilsense.db.migrations import apply_migrations, get_migration_status
-from councilsense.db.seed import PILOT_CITY_ID, PILOT_CITY_SOURCE_ID, seed_city_registry
+from councilsense.db.seed import PILOT_CITY_AGENDA_SOURCE_ID, PILOT_CITY_ID, PILOT_CITY_SOURCE_ID, seed_city_registry
 
 __all__ = [
 	"CityConfig",
@@ -110,6 +123,11 @@ __all__ = [
 	"DiscoveredMeetingRecord",
 	"DiscoveredMeetingRepository",
 	"EnabledCityConfig",
+	"MeetingCatalogCursor",
+	"MeetingCatalogDiscoveredMeeting",
+	"MeetingCatalogListItem",
+	"MeetingCatalogListPage",
+	"MeetingCatalogProcessingState",
 	"SourceHealthRepository",
 	"AuthorityLevel",
 	"ArtifactKind",
@@ -128,11 +146,17 @@ __all__ = [
 	"MeetingListCursor",
 	"MeetingListItem",
 	"MeetingListPage",
+	"MeetingProcessingRequestRecord",
+	"MeetingProcessingRequestRepository",
+	"MEETING_PROCESSING_ACTIVE_WORK_DEDUPE_KEY_VERSION",
 	"MeetingReadRepository",
 	"MeetingRecord",
 	"MeetingWriteRepository",
 	"MissingMeetingCityError",
+	"build_meeting_processing_active_work_dedupe_key",
 	"build_discovered_meeting_id",
+	"is_active_processing_request_status",
+	"is_terminal_processing_request_status",
 	"NotificationAttemptOutcome",
 	"NotificationDeliveryDlqRecord",
 	"NotificationDeliveryAttemptRecord",
@@ -170,6 +194,7 @@ __all__ = [
 	"PublicationClaimRecord",
 	"PublicationStatus",
 	"PILOT_CITY_ID",
+	"PILOT_CITY_AGENDA_SOURCE_ID",
 	"PILOT_CITY_SOURCE_ID",
 	"RunLifecycleStatus",
 	"SourceFreshnessBreachEventRecord",

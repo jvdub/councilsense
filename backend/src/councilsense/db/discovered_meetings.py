@@ -35,6 +35,33 @@ class DiscoveredMeetingRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    def get_by_id(self, *, discovered_meeting_id: str) -> DiscoveredMeetingRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                city_id,
+                city_source_id,
+                provider_name,
+                source_meeting_id,
+                title,
+                meeting_date,
+                body_name,
+                source_url,
+                discovered_at,
+                synced_at,
+                meeting_id,
+                created_at,
+                updated_at
+            FROM discovered_meetings
+            WHERE id = ?
+            """,
+            (discovered_meeting_id.strip(),),
+        ).fetchone()
+        if row is None:
+            return None
+        return _to_discovered_meeting_record(row)
+
     def upsert_discovered_meeting(
         self,
         *,
@@ -176,6 +203,65 @@ class DiscoveredMeetingRepository:
             (city_source_id.strip(),),
         ).fetchall()
         return tuple(_to_discovered_meeting_record(row) for row in rows)
+
+    def has_event_for_source_type(
+        self,
+        *,
+        city_id: str,
+        provider_name: str,
+        source_meeting_id: str,
+        source_type: str,
+    ) -> bool:
+        row = self._connection.execute(
+            """
+            SELECT 1
+            FROM discovered_meetings dm
+            INNER JOIN city_sources cs ON cs.id = dm.city_source_id
+            WHERE dm.city_id = ?
+              AND dm.provider_name = ?
+              AND dm.source_meeting_id = ?
+              AND cs.source_type = ?
+            LIMIT 1
+            """,
+            (
+                city_id.strip(),
+                provider_name.strip().lower(),
+                source_meeting_id.strip(),
+                source_type.strip().lower(),
+            ),
+        ).fetchone()
+        return row is not None
+
+    def delete_event_for_other_source_types(
+        self,
+        *,
+        city_id: str,
+        provider_name: str,
+        source_meeting_id: str,
+        keep_source_type: str,
+    ) -> int:
+        with self._connection:
+            cursor = self._connection.execute(
+                """
+                DELETE FROM discovered_meetings
+                WHERE id IN (
+                    SELECT dm.id
+                    FROM discovered_meetings dm
+                    INNER JOIN city_sources cs ON cs.id = dm.city_source_id
+                    WHERE dm.city_id = ?
+                      AND dm.provider_name = ?
+                      AND dm.source_meeting_id = ?
+                      AND cs.source_type != ?
+                )
+                """,
+                (
+                    city_id.strip(),
+                    provider_name.strip().lower(),
+                    source_meeting_id.strip(),
+                    keep_source_type.strip().lower(),
+                ),
+            )
+        return int(cursor.rowcount)
 
 
 def build_discovered_meeting_id(*, identity: DiscoveredMeetingIdentity) -> str:

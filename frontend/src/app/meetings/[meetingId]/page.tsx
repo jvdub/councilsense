@@ -15,6 +15,7 @@ import {
   type MeetingResidentScanCardModel,
   type MeetingResidentScanFieldModel,
 } from "../../../lib/meetings/residentScanMode";
+import { resolveMeetingReturnPath } from "../../../lib/meetings/explorer";
 import {
   formatCalendarDate,
   formatCityLabel,
@@ -39,6 +40,7 @@ import { SuggestedPrompts } from "./SuggestedPrompts";
 
 type MeetingDetailPageProps = {
   params: Promise<{ meetingId: string }>;
+  searchParams?: Promise<{ returnTo?: string | string[] }>;
 };
 
 function renderStringList(items: string[], emptyMessage: string) {
@@ -403,6 +405,7 @@ function resolvePreferredSourceRecordUrl(detail: {
 
 export default async function MeetingDetailPage({
   params,
+  searchParams,
 }: MeetingDetailPageProps) {
   const authToken = await getAuthTokenFromCookie();
 
@@ -411,6 +414,8 @@ export default async function MeetingDetailPage({
   }
 
   const { meetingId } = await params;
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const returnToPath = resolveMeetingReturnPath(resolvedSearchParams.returnTo);
   const bootstrap = await fetchBootstrap(authToken);
   const redirectPath = getOnboardingRedirectPath(bootstrap, "/meetings");
 
@@ -442,7 +447,7 @@ export default async function MeetingDetailPage({
           </h1>
           <p className="mt-4">
             <Link
-              href="/meetings"
+              href={returnToPath}
               className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
             >
               Back to meetings
@@ -536,7 +541,7 @@ export default async function MeetingDetailPage({
       <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-8 shadow-xl shadow-slate-200/60 backdrop-blur">
         <p>
           <Link
-            href="/meetings"
+            href={returnToPath}
             className="text-sm font-semibold text-cyan-700 transition hover:text-cyan-900 hover:underline"
           >
             Back to meetings

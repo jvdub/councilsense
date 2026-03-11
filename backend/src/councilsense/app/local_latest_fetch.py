@@ -148,6 +148,7 @@ def fetch_latest_meeting(
     *,
     city_id: str = PILOT_CITY_ID,
     source_id: str | None = None,
+    source_url_override: str | None = None,
     latest_offset: int = 0,
     timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     artifact_root: str | None = None,
@@ -162,15 +163,21 @@ def fetch_latest_meeting(
         source_id=source_id,
     )
 
+    effective_source_url = (
+        source_url_override.strip()
+        if isinstance(source_url_override, str) and source_url_override.strip()
+        else source_url
+    )
+
     timeout = max(timeout_seconds, 1.0)
     candidate_offset = max(latest_offset, 0)
     fetcher = fetch_url or _fetch_url_bytes
     download_warning: str | None = None
     artifact_suffix = ".html"
     civicclerk_bundle: _CivicClerkBundleResult | None = None
-    if _is_civicclerk_portal_url(source_url):
+    if _is_civicclerk_portal_url(effective_source_url):
         civicclerk_bundle = _fetch_civicclerk_bundle_from_selected_event(
-            source_url=source_url,
+            source_url=effective_source_url,
             preferred_file_type=source_type,
             latest_offset=candidate_offset,
             timeout_seconds=timeout,
@@ -181,11 +188,11 @@ def fetch_latest_meeting(
         artifact_suffix = civicclerk_bundle.primary_artifact_suffix
         download_warning = civicclerk_bundle.download_warning
     else:
-        artifact_bytes = fetcher(source_url, timeout)
+        artifact_bytes = fetcher(effective_source_url, timeout)
         html_text = artifact_bytes.decode("utf-8", errors="replace")
         candidate = extract_latest_candidate(
             html=html_text,
-            source_url=source_url,
+            source_url=effective_source_url,
             latest_offset=candidate_offset,
         )
     fingerprint = _build_fingerprint(
@@ -226,7 +233,7 @@ def fetch_latest_meeting(
         "status": "processed",
         "metadata": {
             "source_id": selected_source_id,
-            "source_url": source_url,
+            "source_url": effective_source_url,
             "artifact_path": artifact_path,
             "candidate_url": candidate.candidate_url,
             "meeting_date": candidate.meeting_date_iso,
@@ -237,7 +244,7 @@ def fetch_latest_meeting(
                 {
                     "selected_event_id": civicclerk_bundle.selected_event_id,
                     "source_meeting_url": _build_civicclerk_event_portal_url(
-                        source_url=source_url,
+                        source_url=effective_source_url,
                         event_id=civicclerk_bundle.selected_event_id,
                     ),
                     "published_document_kinds": [item.document_kind for item in civicclerk_bundle.published_artifacts],
@@ -261,7 +268,7 @@ def fetch_latest_meeting(
         extra_fields={
             "candidate_document_kind": candidate.document_kind or "unknown",
             "meeting_temporal_status": _classify_meeting_temporal_status(candidate.meeting_date_iso) or "unknown",
-            "source_url": source_url,
+            "source_url": effective_source_url,
         },
     )
     emit_source_stage_outcome(
@@ -284,7 +291,7 @@ def fetch_latest_meeting(
     return LatestFetchResult(
         city_id=city_id,
         source_id=selected_source_id,
-        source_url=source_url,
+        source_url=effective_source_url,
         meeting_id=meeting.id,
         meeting_uid=meeting_uid,
         fingerprint=fingerprint,
@@ -755,6 +762,9 @@ def _select_published_file(*, event: dict[str, object], preferred_type: str) -> 
             file_type = str(item.get("type") or "").strip().lower()
             if file_type == alias:
                 return item
+
+    if preferred:
+        return None
 
     for item in published_files:
         if not isinstance(item, dict):

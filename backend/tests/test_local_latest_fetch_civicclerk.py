@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from councilsense.app.local_latest_fetch import _fetch_latest_candidate_from_civicclerk
 
 
@@ -147,6 +149,45 @@ def test_civicclerk_event_url_uses_explicit_event_id_and_meetings_endpoint() -> 
     assert artifact_suffix == ".txt"
     assert b"March 3, 2026" in artifact_bytes
     assert warning is None
+
+
+def test_civicclerk_minutes_source_fails_for_explicit_event_without_minutes() -> None:
+    event_payload = {
+        "id": 710,
+        "eventName": "City Council Meeting",
+        "eventDate": "2026-03-03T00:00:00Z",
+        "agendaId": 480,
+    }
+    meeting_payload = {
+        "id": 480,
+        "publishedFiles": [
+            {
+                "type": "Agenda",
+                "name": "Agenda",
+                "fileId": 1680,
+                "url": "Meetings/GetMeetingFile(fileId=1680,plainText=false)",
+            }
+        ],
+    }
+
+    def _stub_fetch(url: str, _: float) -> bytes:
+        if url.endswith("/Events/710"):
+            import json
+
+            return json.dumps(event_payload).encode("utf-8")
+        if url.endswith("/Meetings/480"):
+            import json
+
+            return json.dumps(meeting_payload).encode("utf-8")
+        raise AssertionError(f"Unexpected URL fetched: {url}")
+
+    with pytest.raises(Exception, match="No published minutes, agenda, or packet file was found"):
+        _fetch_latest_candidate_from_civicclerk(
+            source_url="https://eaglemountainut.portal.civicclerk.com/event/710/files",
+            preferred_file_type="minutes",
+            timeout_seconds=5.0,
+            fetch_url=_stub_fetch,
+        )
 
 
 def test_civicclerk_skips_newest_event_without_published_files() -> None:

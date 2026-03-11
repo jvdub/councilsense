@@ -5,12 +5,10 @@ import { redirect } from "next/navigation";
 import { fetchBootstrap } from "../../lib/api/bootstrap";
 import { fetchCityMeetings } from "../../lib/api/meetings";
 import { getAuthTokenFromCookie } from "../../lib/auth/session";
-import {
-  formatCalendarDate,
-  formatCityLabel,
-  humanizeIdentifier,
-} from "../../lib/meetings/presentation";
+import { isMeetingExplorerEnabled } from "../../lib/meetings/explorer";
+import { formatCityLabel } from "../../lib/meetings/presentation";
 import { getOnboardingRedirectPath } from "../../lib/onboarding/guard";
+import { MeetingsExplorer } from "./MeetingsExplorer";
 
 const DEFAULT_LIMIT = 20;
 
@@ -19,6 +17,7 @@ type SearchParams = {
   prev?: string | string[];
   limit?: string | string[];
   meeting_id?: string | string[];
+  show_future?: string | string[];
 };
 
 type MeetingsPageProps = {
@@ -51,6 +50,7 @@ function buildMeetingsHref(
   cursor: string | null,
   prev: string | null,
   limit: number,
+  showFuture: boolean,
 ): string {
   const query = new URLSearchParams();
 
@@ -63,9 +63,149 @@ function buildMeetingsHref(
   if (limit !== DEFAULT_LIMIT) {
     query.set("limit", String(limit));
   }
+  if (showFuture) {
+    query.set("show_future", "true");
+  }
 
   const suffix = query.toString();
   return suffix ? `/meetings?${suffix}` : "/meetings";
+}
+
+function isFutureMeetingsEnabled(value: string | null): boolean {
+  return value === "true";
+}
+
+function getTodayDateKey(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function isFutureMeetingDate(
+  meetingDate: string | null | undefined,
+  todayDateKey: string,
+): boolean {
+  const normalized = meetingDate?.trim();
+
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return false;
+  }
+
+  return normalized > todayDateKey;
+}
+
+function getBaselineExplorerItems(
+  items: Awaited<ReturnType<typeof fetchCityMeetings>>["items"],
+) {
+  return isMeetingExplorerEnabled()
+    ? items
+    : items.filter(
+        (meeting) => meeting.processing.processing_status === "processed",
+      );
+}
+
+function hasFutureMeetingsInItems(
+  items: Awaited<ReturnType<typeof fetchCityMeetings>>["items"],
+): boolean {
+  const todayDateKey = getTodayDateKey();
+  return getBaselineExplorerItems(items).some((meeting) =>
+    isFutureMeetingDate(meeting.meeting_date, todayDateKey),
+  );
+}
+
+function getExplorerItems(
+  items: Awaited<ReturnType<typeof fetchCityMeetings>>["items"],
+  showFutureMeetings: boolean,
+) {
+  const baselineItems = getBaselineExplorerItems(items);
+
+  if (showFutureMeetings) {
+    return baselineItems;
+  }
+
+  const todayDateKey = getTodayDateKey();
+  return baselineItems.filter(
+    (meeting) => !isFutureMeetingDate(meeting.meeting_date, todayDateKey),
+  );
+}
+
+async function fetchMeetingsForExplorer(
+  authToken: string,
+  cityId: string,
+  {
+    cursor,
+    limit,
+    showFutureMeetings,
+  }: {
+    cursor?: string;
+    limit: number;
+    showFutureMeetings: boolean;
+  },
+): Promise<{
+  response: Awaited<ReturnType<typeof fetchCityMeetings>>;
+  hasFutureMeetings: boolean;
+}> {
+  if (showFutureMeetings && isMeetingExplorerEnabled()) {
+    const response = await fetchCityMeetings(authToken, cityId, {
+      cursor,
+      limit,
+    });
+
+    return {
+      response,
+      hasFutureMeetings: hasFutureMeetingsInItems(response.items),
+    };
+  }
+
+  let currentCursor = cursor;
+  let nextCursor: string | null = null;
+  let backfillActive = false;
+  let hasFutureMeetings = false;
+  const visibleItems: Awaited<ReturnType<typeof fetchCityMeetings>>["items"] =
+    [];
+
+  while (true) {
+    const response = await fetchCityMeetings(authToken, cityId, {
+      cursor: currentCursor,
+      limit,
+    });
+    const pageItems = getExplorerItems(response.items, showFutureMeetings);
+    backfillActive ||= pageItems.length < response.items.length;
+    hasFutureMeetings ||= hasFutureMeetingsInItems(response.items);
+    const remainingSlots = limit - visibleItems.length;
+
+    if (remainingSlots > 0) {
+      visibleItems.push(...pageItems.slice(0, remainingSlots));
+    }
+
+    nextCursor = response.next_cursor;
+
+    if (
+      !backfillActive ||
+      visibleItems.length >= limit ||
+      response.next_cursor === null
+    ) {
+      return {
+        response: {
+          ...response,
+          items: visibleItems,
+          next_cursor: nextCursor,
+        },
+        hasFutureMeetings,
+      };
+    }
+
+    if (response.next_cursor === currentCursor) {
+      return {
+        response: {
+          ...response,
+          items: visibleItems,
+          next_cursor: response.next_cursor,
+        },
+        hasFutureMeetings,
+      };
+    }
+
+    currentCursor = response.next_cursor;
+  }
 }
 
 export default async function MeetingsPage(props: MeetingsPageProps) {
@@ -88,33 +228,51 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
   }
 
   const resolvedParams = (await searchParams) ?? {};
-  const meetingId = getSingleValue(resolvedParams.meeting_id)?.trim() ?? "";
-
-  if (meetingId) {
-    redirect(`/meetings/${encodeURIComponent(meetingId)}`);
-  }
-
   const cursor = getSingleValue(resolvedParams.cursor);
   const prevCursor = getSingleValue(resolvedParams.prev);
   const limit = parseLimit(getSingleValue(resolvedParams.limit));
+  const showFutureMeetings = isFutureMeetingsEnabled(
+    getSingleValue(resolvedParams.show_future),
+  );
+  const meetingId = getSingleValue(resolvedParams.meeting_id)?.trim() ?? "";
+  const currentListHref = buildMeetingsHref(
+    cursor,
+    prevCursor,
+    limit,
+    showFutureMeetings,
+  );
+
+  if (meetingId) {
+    const query = new URLSearchParams({ returnTo: currentListHref });
+    redirect(`/meetings/${encodeURIComponent(meetingId)}?${query.toString()}`);
+  }
 
   let meetingsError: string | null = null;
   let listResponse: Awaited<ReturnType<typeof fetchCityMeetings>> | null = null;
+  let hasFutureMeetings = false;
 
   try {
-    listResponse = await fetchCityMeetings(authToken, bootstrap.home_city_id, {
-      cursor: cursor ?? undefined,
-      limit,
-    });
+    const explorerResponse = await fetchMeetingsForExplorer(
+      authToken,
+      bootstrap.home_city_id,
+      {
+        cursor: cursor ?? undefined,
+        limit,
+        showFutureMeetings,
+      },
+    );
+    listResponse = explorerResponse.response;
+    hasFutureMeetings = explorerResponse.hasFutureMeetings;
   } catch (error) {
     meetingsError =
       error instanceof Error ? error.message : "Failed to load meetings";
   }
 
-  const hasMeetings = (listResponse?.items.length ?? 0) > 0;
+  const explorerItems = listResponse?.items ?? [];
+  const hasMeetings = explorerItems.length > 0;
   const nextCursor = listResponse?.next_cursor ?? null;
   const homeCityLabel = formatCityLabel(
-    listResponse?.items[0]?.city_name ?? null,
+    explorerItems[0]?.city_name ?? null,
     bootstrap.home_city_id,
   );
 
@@ -130,8 +288,9 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
               Meetings
             </h1>
             <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
-              Review recent local government meetings, scan confidence levels,
-              and open a meeting for a concise, evidence-backed summary.
+              Browse source meetings for your city, request a briefing when one
+              is missing, and open finished summaries without losing your place
+              in the explorer.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -143,6 +302,25 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
                 {homeCityLabel}
               </span>
             </div>
+            {hasFutureMeetings || showFutureMeetings ? (
+              <Link
+                href={buildMeetingsHref(
+                  cursor,
+                  prevCursor,
+                  limit,
+                  !showFutureMeetings,
+                )}
+                className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                {showFutureMeetings
+                  ? "Hide upcoming meetings"
+                  : "Show upcoming meetings"}
+              </Link>
+            ) : (
+              <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-300">
+                No future meetings with published agendas yet
+              </span>
+            )}
             <Link
               href="/settings"
               className="inline-flex items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-400/10 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
@@ -165,76 +343,40 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
       {!meetingsError && !hasMeetings ? (
         <section className="rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center shadow-sm">
           <p className="text-base font-medium text-slate-800">
-            No meetings found for your city yet.
+            {isMeetingExplorerEnabled()
+              ? showFutureMeetings
+                ? "No meetings found for your city yet."
+                : "No past or current meetings found for your city yet."
+              : "No processed meetings found for your city yet."}
           </p>
           <p className="mt-2 text-sm text-slate-500">
-            Check back after the next agenda packet or processing run.
+            {isMeetingExplorerEnabled()
+              ? showFutureMeetings
+                ? "Check back after the next agenda packet, source sync, or processing run."
+                : "Upcoming meetings are hidden by default. Show upcoming meetings to browse future sessions."
+              : "Turn the explorer back on after rollout, or check back after the next processing run."}
           </p>
         </section>
       ) : null}
 
       {!meetingsError && hasMeetings ? (
-        <ul className="grid gap-4 lg:grid-cols-2">
-          {listResponse?.items.map((meeting) => (
-            <li
-              key={meeting.id}
-              className="group rounded-[1.75rem] border border-slate-200/80 bg-white/90 p-6 shadow-lg shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-xl"
-            >
-              <div className="flex h-full flex-col justify-between gap-5">
-                <div className="space-y-3">
-                  <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
-                    {humanizeIdentifier(meeting.status, "Unknown")}
-                  </div>
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-                    <Link
-                      href={`/meetings/${meeting.id}`}
-                      className="transition hover:text-cyan-700"
-                    >
-                      {meeting.title}
-                    </Link>
-                  </h2>
-                  <p className="text-sm font-medium leading-6 text-slate-700">
-                    {formatCityLabel(meeting.city_name, meeting.city_id)}
-                    {meeting.body_name && meeting.body_name !== meeting.title
-                      ? ` • ${meeting.body_name}`
-                      : ""}
-                    {meeting.meeting_date
-                      ? ` • ${formatCalendarDate(meeting.meeting_date)}`
-                      : ""}
-                  </p>
-                  <p className="text-sm leading-6 text-slate-600">
-                    Status: {humanizeIdentifier(meeting.status, "Unknown")} ·
-                    Confidence:{" "}
-                    {humanizeIdentifier(meeting.confidence_label, "Unknown")}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
-                  <time
-                    className="text-sm text-slate-500"
-                    dateTime={meeting.meeting_date ?? meeting.updated_at}
-                  >
-                    {meeting.meeting_date
-                      ? `Meeting date: ${formatCalendarDate(meeting.meeting_date)}`
-                      : `Updated: ${formatCalendarDate(meeting.updated_at, "Unavailable")}`}
-                  </time>
-                  <Link
-                    href={`/meetings/${meeting.id}`}
-                    className="text-sm font-semibold text-cyan-700 transition group-hover:text-cyan-900"
-                  >
-                    View briefing →
-                  </Link>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <MeetingsExplorer
+          authToken={authToken}
+          cityId={bootstrap.home_city_id}
+          initialItems={explorerItems}
+          returnToPath={currentListHref}
+        />
       ) : null}
 
       {!meetingsError && (prevCursor || cursor) ? (
         <div>
           <Link
-            href={buildMeetingsHref(prevCursor, null, limit)}
+            href={buildMeetingsHref(
+              prevCursor,
+              null,
+              limit,
+              showFutureMeetings,
+            )}
             className="inline-flex items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           >
             Load newer meetings
@@ -245,7 +387,12 @@ export default async function MeetingsPage(props: MeetingsPageProps) {
       {!meetingsError && nextCursor ? (
         <div>
           <Link
-            href={buildMeetingsHref(nextCursor, cursor, limit)}
+            href={buildMeetingsHref(
+              nextCursor,
+              cursor,
+              limit,
+              showFutureMeetings,
+            )}
             className="inline-flex items-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             Load older meetings

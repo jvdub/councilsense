@@ -550,6 +550,7 @@ class LocalPipelineOrchestrator:
         meeting_id: str | None,
         ingest_stage_metadata: dict[str, object] | None,
         llm_config: LlmProviderConfig,
+        create_pending_run: bool = True,
     ) -> ProcessLatestResult:
         stage_outcomes: list[dict[str, object]] = []
         warnings: list[str] = []
@@ -557,7 +558,8 @@ class LocalPipelineOrchestrator:
         extracted_artifact_id: str | None = None
         source_id, source_type, source_url = self._resolve_source(city_id=city_id)
         cycle_id = _now_iso_utc()
-        self._run_repository.create_pending_run(run_id=run_id, city_id=city_id, cycle_id=cycle_id)
+        if create_pending_run:
+            self._run_repository.create_pending_run(run_id=run_id, city_id=city_id, cycle_id=cycle_id)
 
         fallback_used = False
         try:
@@ -1851,8 +1853,11 @@ def _build_llm_summary_prompt(
         "Avoid procedural meeting operations unless they materially change an outcome (attendance, roll call, call to order, adjournment, schedule mechanics). "
         + preview_instruction
         + "Do not include chain-of-thought, reasoning traces, or meta commentary. "
-        + "Return ONLY valid JSON with keys: summary, claim. "
-        + "summary must be 2-3 sentences and claim must be one specific sentence grounded in the meeting text.\n\n"
+        + "Return ONLY valid JSON with keys: summary, key_decisions, key_actions, claim. "
+        + "summary must be one paragraph of 3-5 sentences. "
+        + "key_decisions must be a JSON array with 1-2 specific decision statements when decisions exist, otherwise an empty array. "
+        + "key_actions must be a JSON array with 1-2 specific follow-up or assigned action statements when actions exist, otherwise an empty array. "
+        + "claim must be one specific sentence grounded in the meeting text.\n\n"
         + f"Meeting text:\n{(focused_source or cleaned_source)[:6000]}"
     )
 
@@ -1905,9 +1910,17 @@ def _materialize_llm_summary_output(
         claim_text = (derived_decisions[0] if derived_decisions else summary_text)[:180]
 
     excerpt_source = focused_source or cleaned_source
-    key_decisions, key_actions, notable_topics = _derive_grounded_sections(
+    derived_key_decisions, derived_key_actions, notable_topics = _derive_grounded_sections(
         excerpt_source,
         topic_hardening_enabled=topic_hardening_enabled,
+    )
+    key_decisions = _merge_section_candidates(
+        preferred=_coerce_llm_section_items(parsed_json.get("key_decisions")),
+        fallback=derived_key_decisions,
+    )
+    key_actions = _merge_section_candidates(
+        preferred=_coerce_llm_section_items(parsed_json.get("key_actions")),
+        fallback=derived_key_actions,
     )
     if specificity_retention_enabled:
         summary_text, key_decisions, key_actions = _enforce_anchor_carry_through(
@@ -1949,6 +1962,13 @@ def _materialize_llm_summary_output(
         structured_relevance=structured_relevance,
         authority_policy=authority_policy,
     )
+    summary_text = _ensure_rich_summary_text(
+        summary=summary_text,
+        key_decisions=key_decisions,
+        key_actions=key_actions,
+        source_text=excerpt_source,
+        preview_only=(material_context.is_preview_only or authority_policy.preview_only),
+    )
     notable_topics = _supplement_notable_topics(
         notable_topics=notable_topics,
         summary=summary_text,
@@ -1988,6 +2008,97 @@ def _extract_json_object(value: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise RuntimeError("ollama JSON payload was not an object")
     return parsed
+
+
+def _coerce_llm_section_items(value: object) -> tuple[str, ...]:
+    if isinstance(value, list):
+        items: list[str] = []
+        for raw_item in value:
+            if not isinstance(raw_item, str):
+                continue
+            normalized = _normalize_generated_text(raw_item)
+            if normalized and normalized not in items:
+                items.append(normalized)
+        return tuple(items[:2])
+
+    if isinstance(value, str):
+        normalized = _normalize_generated_text(value)
+        return ((normalized,) if normalized else ())
+
+    return ()
+
+
+def _merge_section_candidates(*, preferred: tuple[str, ...], fallback: tuple[str, ...]) -> tuple[str, ...]:
+    if preferred:
+        return preferred[:2]
+
+    merged: list[str] = []
+    for candidate in fallback:
+        normalized = _normalize_generated_text(candidate)
+        if not normalized:
+            continue
+        if normalized in merged:
+            continue
+        merged.append(normalized)
+        if len(merged) >= 2:
+            break
+    return tuple(merged)
+
+
+def _ensure_rich_summary_text(
+    *,
+    summary: str,
+    key_decisions: tuple[str, ...],
+    key_actions: tuple[str, ...],
+    source_text: str,
+    preview_only: bool,
+) -> str:
+    normalized_summary = _normalize_generated_text(summary)
+    if preview_only:
+        return normalized_summary
+
+    summary_sentences = [
+        _normalize_summary_sentence(sentence)
+        for sentence in _split_sentences(normalized_summary)
+        if _normalize_summary_sentence(sentence)
+    ]
+    if len(summary_sentences) >= 2 and len(normalized_summary) >= 140:
+        return normalized_summary[:520]
+
+    grounded_summary = _build_grounded_summary(source_text)
+    candidate_sentences: list[str] = [
+        *summary_sentences,
+        *key_decisions,
+        *key_actions,
+        *[
+            _normalize_summary_sentence(sentence)
+            for sentence in _split_sentences(grounded_summary)
+            if _normalize_summary_sentence(sentence)
+        ],
+    ]
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidate_sentences:
+        normalized_candidate = _normalize_generated_text(candidate)
+        if not normalized_candidate:
+            continue
+        if _is_low_value_summary_sentence(normalized_candidate):
+            continue
+        dedupe_key = normalized_candidate.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        selected.append(normalized_candidate)
+        if len(selected) >= 4:
+            break
+
+    if not selected:
+        return grounded_summary
+    if len(selected) == 1:
+        return grounded_summary
+
+    return " ".join(selected)[:520]
 
 
 def _derive_grounded_sections(

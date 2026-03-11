@@ -12,6 +12,7 @@ from typing import Any
 from councilsense.app.canonical_persistence import run_pilot_canonical_backfill
 from councilsense.app.local_latest_fetch import LatestFetchError, fetch_latest_meeting
 from councilsense.app.local_pipeline import LlmProviderConfig, LocalPipelineOrchestrator
+from councilsense.app.meeting_processing_requests import MeetingProcessingRequestService
 from councilsense.app.notification_delivery_worker import NotificationDeliveryWorker
 from councilsense.app.notification_fanout import (
     NotificationSubscriptionTarget,
@@ -19,11 +20,14 @@ from councilsense.app.notification_fanout import (
 )
 from councilsense.db import (
     CanonicalDocumentRepository,
+    DiscoveredMeetingRepository,
     MeetingWriteRepository,
+    MeetingProcessingRequestRepository,
     PILOT_CITY_ID,
     apply_migrations,
     seed_city_registry,
 )
+from councilsense.app.settings import OnDemandProcessingAdmissionControlSettings
 
 
 _DEFAULT_DB_PATH = "/data/councilsense-local.db"
@@ -551,13 +555,142 @@ def seed_processing_fixture(connection: sqlite3.Connection) -> dict[str, int]:
 def run_worker_once(connection: sqlite3.Connection) -> dict[str, int]:
     worker = NotificationDeliveryWorker(connection=connection, sender=lambda _: None)
     result = worker.run_once()
+    on_demand_result = _process_next_on_demand_request(connection)
     return {
         "claimed_count": result.claimed_count,
         "sent_count": result.sent_count,
         "retried_count": result.retried_count,
         "failed_count": result.failed_count,
         "suppressed_count": result.suppressed_count,
+        "on_demand_claimed_count": on_demand_result["claimed_count"],
+        "on_demand_processed_count": on_demand_result["processed_count"],
+        "on_demand_failed_count": on_demand_result["failed_count"],
     }
+
+
+def _process_next_on_demand_request(connection: sqlite3.Connection) -> dict[str, int]:
+    request_row = connection.execute(
+        """
+        SELECT req.id
+        FROM meeting_processing_requests req
+        INNER JOIN processing_runs pr ON pr.id = req.processing_run_id
+        LEFT JOIN processing_stage_outcomes pso ON pso.id = req.processing_stage_outcome_id
+        WHERE pr.status = 'pending'
+          AND (pso.started_at IS NULL)
+        ORDER BY req.created_at ASC, req.id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if request_row is None:
+        return {"claimed_count": 0, "processed_count": 0, "failed_count": 0}
+
+    request_repository = MeetingProcessingRequestRepository(connection)
+    discovered_repository = DiscoveredMeetingRepository(connection)
+    request = request_repository.get_request(request_id=str(request_row[0]))
+    if request is None:
+        return {"claimed_count": 0, "processed_count": 0, "failed_count": 0}
+
+    discovered = discovered_repository.get_by_id(discovered_meeting_id=request.discovered_meeting_id)
+    if discovered is None or request.processing_run_id is None or request.processing_stage_outcome_id is None:
+        _mark_on_demand_request_failed(connection=connection, request_id=request.id)
+        return {"claimed_count": 1, "processed_count": 0, "failed_count": 1}
+
+    try:
+        fetch_result = fetch_latest_meeting(
+            connection,
+            city_id=discovered.city_id,
+            source_id=discovered.city_source_id,
+            source_url_override=discovered.source_url,
+        )
+        connection.execute(
+            """
+            UPDATE discovered_meetings
+            SET meeting_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (fetch_result.meeting_id, discovered.id),
+        )
+        connection.execute(
+            """
+            UPDATE meeting_processing_requests
+            SET status = 'processing', meeting_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (fetch_result.meeting_id, request.id),
+        )
+        connection.execute(
+            """
+            UPDATE processing_stage_outcomes
+            SET
+                meeting_id = ?,
+                started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (fetch_result.meeting_id, request.processing_stage_outcome_id),
+        )
+
+        orchestrator = LocalPipelineOrchestrator(connection)
+        process_result = orchestrator.process_latest(
+            run_id=request.processing_run_id,
+            city_id=discovered.city_id,
+            meeting_id=fetch_result.meeting_id,
+            ingest_stage_metadata=dict(fetch_result.stage_outcomes[0]["metadata"]),
+            llm_config=LlmProviderConfig(
+                provider="none",
+                endpoint=None,
+                model=None,
+                timeout_seconds=_DEFAULT_LLM_TIMEOUT_SECONDS,
+                api_key=None,
+            ),
+            create_pending_run=False,
+        )
+    except Exception:
+        _mark_on_demand_request_failed(connection=connection, request_id=request.id)
+        return {"claimed_count": 1, "processed_count": 0, "failed_count": 1}
+
+    final_status = "completed" if process_result.status in {"processed", "limited_confidence", "manual_review_needed"} else "failed"
+    connection.execute(
+        """
+        UPDATE meeting_processing_requests
+        SET status = ?, meeting_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (final_status, fetch_result.meeting_id, request.id),
+    )
+    return {
+        "claimed_count": 1,
+        "processed_count": 1 if final_status == "completed" else 0,
+        "failed_count": 1 if final_status == "failed" else 0,
+    }
+
+
+def _mark_on_demand_request_failed(*, connection: sqlite3.Connection, request_id: str) -> None:
+    row = connection.execute(
+        """
+        SELECT processing_run_id
+        FROM meeting_processing_requests
+        WHERE id = ?
+        """,
+        (request_id,),
+    ).fetchone()
+    connection.execute(
+        """
+        UPDATE meeting_processing_requests
+        SET status = 'failed', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (request_id,),
+    )
+    if row is not None and row[0] is not None:
+        connection.execute(
+            """
+            UPDATE processing_runs
+            SET status = 'failed', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (str(row[0]),),
+        )
 
 
 def get_smoke_state(connection: sqlite3.Connection) -> dict[str, object]:

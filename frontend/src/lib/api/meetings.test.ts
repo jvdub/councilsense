@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createMeetingProcessingRequest,
   fetchCityMeetings,
   fetchMeetingDetail,
   MeetingsApiError,
@@ -153,6 +154,62 @@ describe("meetings api client", () => {
       status: 404,
       code: "not_found",
       details: { meeting_id: "missing-meeting-id" },
+      retryable: false,
+    });
+  });
+
+  it("creates a meeting processing request without retrying post semantics", async () => {
+    const fixture = {
+      discovered_meeting_id: "discovered-1",
+      meeting_id: null,
+      processing: {
+        processing_status: "queued",
+        processing_status_updated_at: "2026-03-11T10:00:00Z",
+        processing_request_id: "req-1",
+        request_outcome: "queued",
+      },
+    };
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(fixture), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await createMeetingProcessingRequest(
+      "token-123",
+      "salt-lake-city-ut",
+      "discovered-1",
+    );
+
+    expect(result).toEqual(fixture);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/v1/cities/salt-lake-city-ut/meetings/discovered-1/processing-request",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer token-123",
+        },
+        cache: "no-store",
+      },
+    );
+  });
+
+  it("parses fastapi detail errors for request-action messaging", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Too many active on-demand processing requests for user" }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      createMeetingProcessingRequest("token-123", "salt-lake-city-ut", "discovered-1"),
+    ).rejects.toMatchObject({
+      message: "Too many active on-demand processing requests for user",
+      status: 429,
       retryable: false,
     });
   });

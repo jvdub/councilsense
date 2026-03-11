@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from councilsense.api.auth import AuthenticatedUser, get_current_user
 from councilsense.api.profile import UserProfileService
+from councilsense.app.meeting_processing_requests import (
+    MeetingProcessingRequestAdmissionControlError,
+    MeetingProcessingRequestAlreadyProcessedError,
+    MeetingProcessingRequestNotFoundError,
+    MeetingProcessingRequestService,
+)
 from councilsense.app.settings import MeetingDetailAdditiveApiSettings
 from councilsense.app.settings import MeetingDetailFollowUpPromptsApiSettings
 from councilsense.app.settings import MeetingDetailResidentRelevanceApiSettings
 from councilsense.app.settings import Settings
-from councilsense.db import InvalidMeetingListCursorError, MeetingListCursor, MeetingReadRepository
+from councilsense.db import InvalidMeetingListCursorError, MeetingCatalogCursor, MeetingReadRepository
 from councilsense.db.meetings import MeetingDetail
 from councilsense.db.meetings import MeetingDetailClaim
 from councilsense.db.meetings import MeetingDetailEvidencePointer
@@ -32,23 +38,78 @@ CITY_ACCESS_DENIED_BODY = {
 
 class MeetingListItemResponse(BaseModel):
     id: str
+    meeting_id: str | None = None
     city_id: str
     city_name: str | None
-    meeting_uid: str
+    meeting_uid: str | None
     title: str
-    created_at: str
-    updated_at: str
+    created_at: str | None
+    updated_at: str | None
     meeting_date: str | None
     body_name: str | None
     status: str | None
     confidence_label: str | None
     reader_low_confidence: bool
+    detail_available: bool = True
+    discovered_meeting: MeetingCatalogDiscoveredMeetingResponse | None = None
+    processing: MeetingCatalogProcessingStateResponse
 
 
 class CityMeetingsListResponse(BaseModel):
     items: list[MeetingListItemResponse]
     next_cursor: str | None
     limit: int
+
+
+ReaderMeetingProcessingStatus = Literal["discovered", "queued", "processing", "processed", "failed"]
+ProcessingRequestOutcome = Literal["queued", "already_active"]
+
+
+class MeetingCatalogDiscoveredMeetingResponse(BaseModel):
+    discovered_meeting_id: str
+    source_meeting_id: str
+    source_provider_name: str
+    source_meeting_url: str | None
+    discovered_at: str
+    synced_at: str
+
+
+class MeetingCatalogProcessingStateResponse(BaseModel):
+    processing_status: ReaderMeetingProcessingStatus
+    processing_status_updated_at: str | None
+    processing_request_id: str | None = None
+    request_outcome: ProcessingRequestOutcome | None = None
+
+
+class MeetingCatalogListItemResponse(BaseModel):
+    id: str
+    meeting_id: str | None
+    city_id: str
+    city_name: str | None
+    meeting_uid: str | None
+    title: str
+    created_at: str | None
+    updated_at: str | None
+    meeting_date: str | None
+    body_name: str | None
+    status: str | None
+    confidence_label: str | None
+    reader_low_confidence: bool
+    detail_available: bool
+    discovered_meeting: MeetingCatalogDiscoveredMeetingResponse | None = None
+    processing: MeetingCatalogProcessingStateResponse
+
+
+class CityMeetingCatalogListResponse(BaseModel):
+    items: list[MeetingCatalogListItemResponse]
+    next_cursor: str | None
+    limit: int
+
+
+class MeetingProcessingRequestResponse(BaseModel):
+    discovered_meeting_id: str
+    meeting_id: str | None = None
+    processing: MeetingCatalogProcessingStateResponse
 
 
 class MeetingEvidencePointerResponse(BaseModel):
@@ -969,6 +1030,10 @@ def get_meeting_read_repository(request: Request) -> MeetingReadRepository:
     return request.app.state.meeting_read_repository
 
 
+def get_meeting_processing_request_service(request: Request) -> MeetingProcessingRequestService:
+    return request.app.state.meeting_processing_request_service
+
+
 def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
@@ -1004,10 +1069,10 @@ def get_city_meetings(
     if profile.home_city_id is None or profile.home_city_id != city_id:
         return _city_access_denied_response()
 
-    parsed_cursor: MeetingListCursor | None = None
+    parsed_cursor: MeetingCatalogCursor | None = None
     if cursor is not None:
         try:
-            parsed_cursor = MeetingListCursor.from_token(cursor)
+            parsed_cursor = MeetingCatalogCursor.from_token(cursor)
         except InvalidMeetingListCursorError:
             return JSONResponse(
                 status_code=422,
@@ -1020,16 +1085,17 @@ def get_city_meetings(
                 },
             )
 
-    page = repository.list_city_meetings(
+    page = repository.list_city_meeting_catalog(
         city_id=city_id,
         limit=limit,
         cursor=parsed_cursor,
-        publication_status=status,
+        processing_status=status,
     )
     return CityMeetingsListResponse(
         items=[
             MeetingListItemResponse(
                 id=item.id,
+                meeting_id=item.meeting_id,
                 city_id=item.city_id,
                 city_name=item.city_name,
                 meeting_uid=item.meeting_uid,
@@ -1041,11 +1107,76 @@ def get_city_meetings(
                 status=item.publication_status,
                 confidence_label=item.confidence_label,
                 reader_low_confidence=item.reader_low_confidence,
+                detail_available=item.detail_available,
+                discovered_meeting=(
+                    MeetingCatalogDiscoveredMeetingResponse(
+                        discovered_meeting_id=item.discovered_meeting.discovered_meeting_id,
+                        source_meeting_id=item.discovered_meeting.source_meeting_id,
+                        source_provider_name=item.discovered_meeting.source_provider_name,
+                        source_meeting_url=item.discovered_meeting.source_meeting_url,
+                        discovered_at=item.discovered_meeting.discovered_at,
+                        synced_at=item.discovered_meeting.synced_at,
+                    )
+                    if item.discovered_meeting is not None
+                    else None
+                ),
+                processing=MeetingCatalogProcessingStateResponse(
+                    processing_status=item.processing.processing_status,
+                    processing_status_updated_at=item.processing.processing_status_updated_at,
+                    processing_request_id=item.processing.processing_request_id,
+                ),
             )
             for item in page.items
         ],
         next_cursor=page.next_cursor.to_token() if page.next_cursor is not None else None,
         limit=limit,
+    )
+
+
+@router.post(
+    "/cities/{city_id}/meetings/{discovered_meeting_id}/processing-request",
+    response_model=MeetingProcessingRequestResponse,
+    status_code=201,
+)
+def create_meeting_processing_request(
+    city_id: str,
+    discovered_meeting_id: str,
+    http_response: Response,
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    profile_service: Annotated[UserProfileService, Depends(get_profile_service)],
+    service: Annotated[MeetingProcessingRequestService, Depends(get_meeting_processing_request_service)],
+) -> MeetingProcessingRequestResponse:
+    profile = profile_service.get_profile(user.user_id)
+    if profile.home_city_id is None or profile.home_city_id != city_id:
+        return _city_access_denied_response()
+
+    try:
+        result = service.queue_or_return(
+            city_id=city_id,
+            discovered_meeting_id=discovered_meeting_id,
+            requested_by=user.user_id,
+        )
+    except MeetingProcessingRequestNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Discovered meeting not found") from exc
+    except MeetingProcessingRequestAlreadyProcessedError as exc:
+        raise HTTPException(status_code=409, detail="Meeting already processed") from exc
+    except MeetingProcessingRequestAdmissionControlError as exc:
+        if exc.reason == "queued_limit_exceeded":
+            detail = "Too many queued on-demand processing requests for user"
+        else:
+            detail = "Too many active on-demand processing requests for user"
+        raise HTTPException(status_code=429, detail=detail) from exc
+
+    http_response.status_code = 201 if result.request_outcome == "queued" else 200
+    return MeetingProcessingRequestResponse(
+        discovered_meeting_id=result.discovered_meeting_id,
+        meeting_id=result.meeting_id,
+        processing=MeetingCatalogProcessingStateResponse(
+            processing_status=result.processing_status,
+            processing_status_updated_at=result.processing_status_updated_at,
+            processing_request_id=result.processing_request_id,
+            request_outcome=result.request_outcome,
+        ),
     )
 
 

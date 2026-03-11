@@ -5,11 +5,11 @@
 
 ## Ordered Checklist
 
-- [ ] [TASK-ST-039-01](TASK-ST-039-01-meetings-page-pagination-and-api-contract.md) — Meetings Page Pagination and API Contract
-- [ ] [TASK-ST-039-02](TASK-ST-039-02-tile-state-rendering-and-variants.md) — Tile State Rendering and Variants
-- [ ] [TASK-ST-039-03](TASK-ST-039-03-request-action-and-user-messaging.md) — Request Action and User Messaging
-- [ ] [TASK-ST-039-04](TASK-ST-039-04-deep-linking-and-navigation-preservation.md) — Deep-Linking and Navigation Preservation
-- [ ] [TASK-ST-039-05](TASK-ST-039-05-page-tests-accessibility-and-hardening.md) — Page Tests, Accessibility, and Hardening
+- [x] [TASK-ST-039-01](TASK-ST-039-01-meetings-page-pagination-and-api-contract.md) — Meetings Page Pagination and API Contract
+- [x] [TASK-ST-039-02](TASK-ST-039-02-tile-state-rendering-and-variants.md) — Tile State Rendering and Variants
+- [x] [TASK-ST-039-03](TASK-ST-039-03-request-action-and-user-messaging.md) — Request Action and User Messaging
+- [x] [TASK-ST-039-04](TASK-ST-039-04-deep-linking-and-navigation-preservation.md) — Deep-Linking and Navigation Preservation
+- [x] [TASK-ST-039-05](TASK-ST-039-05-page-tests-accessibility-and-hardening.md) — Page Tests, Accessibility, and Hardening
 
 ## Dependency Chain
 

@@ -1,16 +1,45 @@
+export type MeetingProcessingStatus =
+  | "discovered"
+  | "queued"
+  | "processing"
+  | "processed"
+  | "failed";
+
+export type MeetingProcessingRequestOutcome = "queued" | "already_active";
+
+export type MeetingDiscoveredMeeting = {
+  discovered_meeting_id: string;
+  source_meeting_id: string;
+  source_provider_name: string;
+  source_meeting_url: string | null;
+  discovered_at: string;
+  synced_at: string;
+};
+
+export type MeetingProcessingState = {
+  processing_status: MeetingProcessingStatus;
+  processing_status_updated_at: string | null;
+  processing_request_id?: string | null;
+  request_outcome?: MeetingProcessingRequestOutcome | null;
+};
+
 export type MeetingListItem = {
   id: string;
+  meeting_id: string | null;
   city_id: string;
   city_name: string | null;
-  meeting_uid: string;
+  meeting_uid: string | null;
   title: string;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
   meeting_date: string | null;
   body_name: string | null;
   status: string | null;
   confidence_label: string | null;
   reader_low_confidence: boolean;
+  detail_available: boolean;
+  discovered_meeting: MeetingDiscoveredMeeting | null;
+  processing: MeetingProcessingState;
 };
 
 export type CityMeetingsListResponse = {
@@ -197,10 +226,17 @@ export type MeetingListFilters = {
   status?: string;
 };
 
+export type MeetingProcessingRequestResponse = {
+  discovered_meeting_id: string;
+  meeting_id: string | null;
+  processing: MeetingProcessingState;
+};
+
 export type ApiErrorPayload = {
   error?: {
     code?: string;
     message?: string;
     details?: Record<string, unknown>;
   };
+  detail?: string | Record<string, unknown>;
 };

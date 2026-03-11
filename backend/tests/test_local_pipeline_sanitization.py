@@ -1079,6 +1079,81 @@ def test_materialize_llm_summary_output_supplements_notable_topics_from_summary_
     assert "youth council code" in lower_topics
 
 
+def test_materialize_llm_summary_output_prefers_llm_supplied_key_sections() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "Council approved ordinance 2026-12 and directed staff to publish the ordinance and implementation memo.",
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _materialize_llm_summary_output(
+        response_text=(
+            '{"summary":"Council approved ordinance 2026-12 after final discussion. Staff will publish the ordinance and implementation memo.",'
+            '"key_decisions":["Council approved ordinance 2026-12."],'
+            '"key_actions":["Staff will publish the ordinance and implementation memo."],'
+            '"claim":"Council approved ordinance 2026-12."}'
+        ),
+        source_text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-02-03",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=False,
+        evidence_projection_enabled=True,
+    )
+
+    assert output.key_decisions == ("Council approved ordinance 2026-12.",)
+    assert output.key_actions == ("Staff will publish the ordinance and implementation memo.",)
+
+
+def test_materialize_llm_summary_output_expands_terse_summary_into_paragraph() -> None:
+    compose_input = _build_compose_input(
+        sources=(
+            _compose_source(
+                "minutes",
+                "Council approved the Main Street paving contract. Staff will finalize signatures and publish the award memo. The contract covers resurfacing work for the corridor this spring.",
+            ),
+        ),
+        statuses={"minutes": "present", "agenda": "missing", "packet": "missing"},
+    )
+    authority_policy = _evaluate_authority_policy(compose_input=compose_input)
+
+    output = _materialize_llm_summary_output(
+        response_text=(
+            '{"summary":"Council approved the Main Street paving contract.",'
+            '"claim":"Council approved the Main Street paving contract."}'
+        ),
+        source_text=authority_policy.summarize_text,
+        artifact_id="artifact-local:test.txt",
+        section_ref="compose.multi_document",
+        compose_input=compose_input,
+        material_context=_MeetingMaterialContext(
+            document_kind="minutes",
+            meeting_date_iso="2026-02-03",
+            meeting_temporal_status="completed",
+        ),
+        authority_policy=authority_policy,
+        topic_hardening_enabled=True,
+        specificity_retention_enabled=False,
+        evidence_projection_enabled=True,
+    )
+
+    assert len([sentence for sentence in output.summary.split(". ") if sentence.strip()]) >= 2
+    assert "Main Street paving contract" in output.summary
+    assert "publish the award memo" in output.summary.lower()
+
+
 def _build_compose_input(
     *,
     sources: tuple[ComposedSourceDocument, ...],

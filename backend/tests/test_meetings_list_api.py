@@ -238,6 +238,10 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
     assert first_payload["items"][0]["city_name"] == "Eagle Mountain"
     assert first_payload["items"][0]["meeting_date"] == "2026-02-20"
     assert first_payload["items"][0]["body_name"] == "Eagle Mountain City Council"
+    assert first_payload["items"][0]["meeting_id"] == "meeting-c"
+    assert first_payload["items"][0]["detail_available"] is True
+    assert first_payload["items"][0]["discovered_meeting"] is None
+    assert first_payload["items"][0]["processing"]["processing_status"] == "processed"
     assert first_payload["items"][1]["reader_low_confidence"] is False
     assert first_payload["next_cursor"] is not None
 
@@ -258,7 +262,7 @@ def test_city_meetings_list_returns_paginated_items_with_status_and_confidence(m
         params={"status": "processed", "limit": 5},
     )
     assert filtered.status_code == 200
-    assert [item["id"] for item in filtered.json()["items"]] == ["meeting-b"]
+    assert [item["id"] for item in filtered.json()["items"]] == ["meeting-c", "meeting-b"]
 
 
 def test_city_meetings_list_response_contract_includes_required_fields(monkeypatch) -> None:
@@ -301,6 +305,7 @@ def test_city_meetings_list_response_contract_includes_required_fields(monkeypat
     item = payload["items"][0]
     assert set(item.keys()) == {
         "id",
+        "meeting_id",
         "city_id",
         "city_name",
         "meeting_uid",
@@ -312,14 +317,26 @@ def test_city_meetings_list_response_contract_includes_required_fields(monkeypat
         "status",
         "confidence_label",
         "reader_low_confidence",
+        "detail_available",
+        "discovered_meeting",
+        "processing",
     }
     assert item["id"] == "meeting-contract-1"
+    assert item["meeting_id"] == "meeting-contract-1"
     assert item["city_name"] == "Eagle Mountain"
     assert item["meeting_date"] == "2026-02-24"
     assert item["body_name"] is None
     assert item["status"] == "limited_confidence"
     assert item["confidence_label"] == "limited_confidence"
     assert item["reader_low_confidence"] is True
+    assert item["detail_available"] is True
+    assert item["discovered_meeting"] is None
+    assert item["processing"] == {
+        "processing_status": "processed",
+        "processing_status_updated_at": "2026-02-24 12:30:00",
+        "processing_request_id": None,
+        "request_outcome": None,
+    }
 
 
 def test_city_meetings_list_pagination_traversal_is_stable(monkeypatch) -> None:

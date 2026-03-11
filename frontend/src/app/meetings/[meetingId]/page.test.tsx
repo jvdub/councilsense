@@ -156,6 +156,9 @@ describe("MeetingDetailPage", () => {
     const { container } = render(
       await MeetingDetailPage({
         params: Promise.resolve({ meetingId: "meeting-1" }),
+        searchParams: Promise.resolve({
+          returnTo: "/meetings?cursor=cursor-a",
+        }),
       }),
     );
 
@@ -218,6 +221,9 @@ describe("MeetingDetailPage", () => {
     expect(
       screen.getAllByRole("link", { name: "Open source record" }).length,
     ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("link", { name: "Back to meetings" }),
+    ).toHaveAttribute("href", "/meetings?cursor=cursor-a");
     for (const link of screen.getAllByRole("link", {
       name: "Open source record",
     })) {
@@ -226,9 +232,6 @@ describe("MeetingDetailPage", () => {
         "https://example.org/meetings/council-session",
       );
     }
-    expect(
-      screen.getByRole("link", { name: "Back to meetings" }),
-    ).toHaveAttribute("href", "/meetings");
     expect(main).toHaveAttribute("data-render-mode", "baseline");
     expect(main).toHaveAttribute(
       "data-render-fallback",

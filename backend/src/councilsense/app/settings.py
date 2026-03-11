@@ -53,6 +53,12 @@ class MeetingDetailFollowUpPromptsApiSettings:
 
 
 @dataclass(frozen=True)
+class OnDemandProcessingAdmissionControlSettings:
+    max_active_requests_per_user: int
+    max_queued_requests_per_user: int
+
+
+@dataclass(frozen=True)
 class Settings:
     runtime_env: RuntimeEnvironment
     secret_source: SecretSourceKind
@@ -69,6 +75,7 @@ class Settings:
     meeting_detail_additive_api: MeetingDetailAdditiveApiSettings
     meeting_detail_resident_relevance_api: MeetingDetailResidentRelevanceApiSettings
     meeting_detail_follow_up_prompts_api: MeetingDetailFollowUpPromptsApiSettings
+    on_demand_processing_admission_control: OnDemandProcessingAdmissionControlSettings
 
 
 DEFAULT_SESSION_SECRET = "dev-session-secret-change-me"
@@ -86,6 +93,8 @@ DEFAULT_MEETING_DETAIL_LEGACY_EVIDENCE_REFERENCES_ENABLED = True
 DEFAULT_ST022_API_ADDITIVE_V1_FIELDS_ENABLED = False
 DEFAULT_ST033_API_RESIDENT_RELEVANCE_FIELDS_ENABLED = False
 DEFAULT_ST035_API_FOLLOW_UP_PROMPTS_ENABLED = False
+DEFAULT_ON_DEMAND_PROCESSING_MAX_ACTIVE_REQUESTS_PER_USER = 5
+DEFAULT_ON_DEMAND_PROCESSING_MAX_QUEUED_REQUESTS_PER_USER = 3
 SUPPORTED_ST022_API_ADDITIVE_BLOCKS = ("planned", "outcomes", "planned_outcome_mismatches")
 
 
@@ -290,6 +299,28 @@ def _parse_st035_api_follow_up_prompts() -> MeetingDetailFollowUpPromptsApiSetti
     )
 
 
+def _parse_on_demand_processing_admission_control() -> OnDemandProcessingAdmissionControlSettings:
+    max_active_requests_per_user = _parse_positive_int(
+        raw=os.getenv("ON_DEMAND_PROCESSING_ACTIVE_REQUESTS_PER_USER_LIMIT"),
+        default=DEFAULT_ON_DEMAND_PROCESSING_MAX_ACTIVE_REQUESTS_PER_USER,
+        env_name="ON_DEMAND_PROCESSING_ACTIVE_REQUESTS_PER_USER_LIMIT",
+    )
+    max_queued_requests_per_user = _parse_positive_int(
+        raw=os.getenv("ON_DEMAND_PROCESSING_QUEUED_REQUESTS_PER_USER_LIMIT"),
+        default=DEFAULT_ON_DEMAND_PROCESSING_MAX_QUEUED_REQUESTS_PER_USER,
+        env_name="ON_DEMAND_PROCESSING_QUEUED_REQUESTS_PER_USER_LIMIT",
+    )
+    if max_active_requests_per_user < max_queued_requests_per_user:
+        raise ValueError(
+            "ON_DEMAND_PROCESSING_ACTIVE_REQUESTS_PER_USER_LIMIT must be greater than or equal to "
+            "ON_DEMAND_PROCESSING_QUEUED_REQUESTS_PER_USER_LIMIT"
+        )
+    return OnDemandProcessingAdmissionControlSettings(
+        max_active_requests_per_user=max_active_requests_per_user,
+        max_queued_requests_per_user=max_queued_requests_per_user,
+    )
+
+
 def _parse_runtime_env(raw: str | None) -> RuntimeEnvironment:
     runtime_env = (raw or DEFAULT_RUNTIME_ENV).strip().lower()
     if runtime_env not in SUPPORTED_RUNTIME_ENVS:
@@ -376,6 +407,7 @@ def get_settings(*, service_name: Literal["api", "worker"] = "api", secret_sourc
         meeting_detail_additive_api=_parse_st022_api_additive_blocks(),
         meeting_detail_resident_relevance_api=_parse_st033_api_resident_relevance(),
         meeting_detail_follow_up_prompts_api=_parse_st035_api_follow_up_prompts(),
+        on_demand_processing_admission_control=_parse_on_demand_processing_admission_control(),
         disable_auth_guard=_parse_bool(
             raw=os.getenv("COUNCILSENSE_DISABLE_AUTH_GUARD"),
             default=False,

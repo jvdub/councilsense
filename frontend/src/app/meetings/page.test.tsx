@@ -11,9 +11,13 @@ const getAuthTokenFromCookieMock = vi.fn();
 const fetchBootstrapMock = vi.fn();
 const getOnboardingRedirectPathMock = vi.fn();
 const fetchCityMeetingsMock = vi.fn();
+const routerRefreshMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
+  useRouter: () => ({
+    refresh: routerRefreshMock,
+  }),
 }));
 
 vi.mock("../../lib/auth/session", () => ({
@@ -46,18 +50,23 @@ describe("MeetingsPage", () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-10T12:00:00Z"));
     redirectMock.mockClear();
     getAuthTokenFromCookieMock.mockReset();
     fetchBootstrapMock.mockReset();
     getOnboardingRedirectPathMock.mockReset();
     fetchCityMeetingsMock.mockReset();
+    routerRefreshMock.mockReset();
     getAuthTokenFromCookieMock.mockResolvedValue("token-abc");
     fetchBootstrapMock.mockResolvedValue(returningBootstrap);
     getOnboardingRedirectPathMock.mockReturnValue(null);
+    delete process.env.NEXT_PUBLIC_ST039_UI_MEETING_EXPLORER_ENABLED;
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it("redirects unauthenticated users to sign-in", async () => {
@@ -123,8 +132,312 @@ describe("MeetingsPage", () => {
       },
     );
     expect(
-      screen.getByText("No meetings found for your city yet."),
+      screen.getByText("No past or current meetings found for your city yet."),
     ).toBeInTheDocument();
+  });
+
+  it("hides future meetings by default and offers an override link", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-current-1",
+          meeting_id: null,
+          city_id: "seattle-wa",
+          city_name: "Seattle",
+          meeting_uid: null,
+          title: "Current Council Meeting",
+          created_at: null,
+          updated_at: "2026-03-10T09:00:00Z",
+          meeting_date: "2026-03-10",
+          body_name: "City Council",
+          status: null,
+          confidence_label: null,
+          reader_low_confidence: false,
+          detail_available: false,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-current-1",
+            source_meeting_id: "100",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/100",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "discovered",
+            processing_status_updated_at: "2026-03-10T10:00:00Z",
+            processing_request_id: null,
+          },
+        },
+        {
+          id: "meeting-future-1",
+          meeting_id: null,
+          city_id: "seattle-wa",
+          city_name: "Seattle",
+          meeting_uid: null,
+          title: "Future Council Meeting",
+          created_at: null,
+          updated_at: "2026-03-10T09:00:00Z",
+          meeting_date: "2026-03-20",
+          body_name: "City Council",
+          status: null,
+          confidence_label: null,
+          reader_low_confidence: false,
+          detail_available: false,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-future-1",
+            source_meeting_id: "101",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/101",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "discovered",
+            processing_status_updated_at: "2026-03-10T10:00:00Z",
+            processing_request_id: null,
+          },
+        },
+      ],
+      next_cursor: null,
+      limit: 20,
+    });
+
+    render(await MeetingsPage());
+
+    expect(
+      screen.getByRole("heading", { name: "Current Council Meeting" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Future Council Meeting" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Show upcoming meetings" }),
+    ).toHaveAttribute("href", "/meetings?show_future=true");
+  });
+
+  it("shows an unavailable state instead of a no-op upcoming toggle when no future meetings exist", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-past-1",
+          meeting_id: null,
+          city_id: "seattle-wa",
+          city_name: "Seattle",
+          meeting_uid: null,
+          title: "Past Council Meeting",
+          created_at: null,
+          updated_at: "2026-03-10T09:00:00Z",
+          meeting_date: "2026-03-09",
+          body_name: "City Council",
+          status: null,
+          confidence_label: null,
+          reader_low_confidence: false,
+          detail_available: false,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-past-1",
+            source_meeting_id: "105",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/105",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "discovered",
+            processing_status_updated_at: "2026-03-10T10:00:00Z",
+            processing_request_id: null,
+          },
+        },
+      ],
+      next_cursor: null,
+      limit: 20,
+    });
+
+    render(await MeetingsPage());
+
+    expect(
+      screen.getByText("No future meetings with published agendas yet"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Show upcoming meetings" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("backfills additional pages when hidden future meetings consume the first page", async () => {
+    fetchCityMeetingsMock
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "meeting-future-1",
+            meeting_id: null,
+            city_id: "seattle-wa",
+            city_name: "Seattle",
+            meeting_uid: null,
+            title: "Future Council Meeting",
+            created_at: null,
+            updated_at: "2026-03-10T09:00:00Z",
+            meeting_date: "2026-03-20",
+            body_name: "City Council",
+            status: null,
+            confidence_label: null,
+            reader_low_confidence: false,
+            detail_available: false,
+            discovered_meeting: {
+              discovered_meeting_id: "discovered-future-1",
+              source_meeting_id: "101",
+              source_provider_name: "civicclerk",
+              source_meeting_url: "https://example.org/meeting/101",
+              discovered_at: "2026-03-10T10:00:00Z",
+              synced_at: "2026-03-10T10:00:00Z",
+            },
+            processing: {
+              processing_status: "discovered",
+              processing_status_updated_at: "2026-03-10T10:00:00Z",
+              processing_request_id: null,
+            },
+          },
+        ],
+        next_cursor: "cursor-next-1",
+        limit: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "meeting-recent-1",
+            meeting_id: null,
+            city_id: "seattle-wa",
+            city_name: "Seattle",
+            meeting_uid: null,
+            title: "Recent Council Meeting",
+            created_at: null,
+            updated_at: "2026-03-10T09:00:00Z",
+            meeting_date: "2026-03-09",
+            body_name: "City Council",
+            status: null,
+            confidence_label: null,
+            reader_low_confidence: false,
+            detail_available: false,
+            discovered_meeting: {
+              discovered_meeting_id: "discovered-recent-1",
+              source_meeting_id: "102",
+              source_provider_name: "civicclerk",
+              source_meeting_url: "https://example.org/meeting/102",
+              discovered_at: "2026-03-10T10:00:00Z",
+              synced_at: "2026-03-10T10:00:00Z",
+            },
+            processing: {
+              processing_status: "discovered",
+              processing_status_updated_at: "2026-03-10T10:00:00Z",
+              processing_request_id: null,
+            },
+          },
+        ],
+        next_cursor: null,
+        limit: 1,
+      });
+
+    render(
+      await MeetingsPage({
+        searchParams: Promise.resolve({
+          limit: "1",
+        }),
+      }),
+    );
+
+    expect(fetchCityMeetingsMock).toHaveBeenNthCalledWith(
+      1,
+      "token-abc",
+      "seattle-wa",
+      {
+        cursor: undefined,
+        limit: 1,
+      },
+    );
+    expect(fetchCityMeetingsMock).toHaveBeenNthCalledWith(
+      2,
+      "token-abc",
+      "seattle-wa",
+      {
+        cursor: "cursor-next-1",
+        limit: 1,
+      },
+    );
+    expect(
+      screen.getByRole("heading", { name: "Recent Council Meeting" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Future Council Meeting" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows future meetings when the filter override is enabled", async () => {
+    fetchCityMeetingsMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: "meeting-future-1",
+          meeting_id: null,
+          city_id: "seattle-wa",
+          city_name: "Seattle",
+          meeting_uid: null,
+          title: "Future Council Meeting",
+          created_at: null,
+          updated_at: "2026-03-10T09:00:00Z",
+          meeting_date: "2026-03-20",
+          body_name: "City Council",
+          status: null,
+          confidence_label: null,
+          reader_low_confidence: false,
+          detail_available: false,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-future-1",
+            source_meeting_id: "101",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/101",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "discovered",
+            processing_status_updated_at: "2026-03-10T10:00:00Z",
+            processing_request_id: null,
+          },
+        },
+      ],
+      next_cursor: "cursor-next",
+      limit: 10,
+    });
+
+    render(
+      await MeetingsPage({
+        searchParams: Promise.resolve({
+          show_future: "true",
+          cursor: "cursor-current",
+          prev: "cursor-prev",
+          limit: "10",
+        }),
+      }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Future Council Meeting" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Hide upcoming meetings" }),
+    ).toHaveAttribute(
+      "href",
+      "/meetings?cursor=cursor-current&prev=cursor-prev&limit=10",
+    );
+    expect(
+      screen.getByRole("link", { name: "Load newer meetings" }),
+    ).toHaveAttribute(
+      "href",
+      "/meetings?cursor=cursor-prev&limit=10&show_future=true",
+    );
+    expect(
+      screen.getByRole("link", { name: "Load older meetings" }),
+    ).toHaveAttribute(
+      "href",
+      "/meetings?cursor=cursor-next&prev=cursor-current&limit=10&show_future=true",
+    );
   });
 
   it("renders meetings list rows with status and confidence metadata", async () => {
@@ -132,6 +445,7 @@ describe("MeetingsPage", () => {
       items: [
         {
           id: "meeting-1",
+          meeting_id: "meeting-1",
           city_id: "seattle-wa",
           city_name: "Seattle",
           meeting_uid: "uid-1",
@@ -143,6 +457,20 @@ describe("MeetingsPage", () => {
           status: "processed",
           confidence_label: "high",
           reader_low_confidence: false,
+          detail_available: true,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-1",
+            source_meeting_id: "71",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/71",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "processed",
+            processing_status_updated_at: "2026-02-25 19:00:00",
+            processing_request_id: null,
+          },
         },
       ],
       next_cursor: null,
@@ -164,8 +492,9 @@ describe("MeetingsPage", () => {
       screen.getByText("Seattle • City Council • February 25, 2026"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Status: Processed · Confidence: High"),
+      screen.getByText("A briefing is ready to open for this meeting."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Briefing ready")).toBeInTheDocument();
     expect(
       screen.getByText("Meeting date: February 25, 2026"),
     ).toBeInTheDocument();
@@ -185,6 +514,7 @@ describe("MeetingsPage", () => {
       items: [
         {
           id: "meeting-lc-1",
+          meeting_id: "meeting-lc-1",
           city_id: "seattle-wa",
           city_name: "Seattle",
           meeting_uid: "uid-lc-1",
@@ -196,6 +526,20 @@ describe("MeetingsPage", () => {
           status: "limited_confidence",
           confidence_label: "limited_confidence",
           reader_low_confidence: true,
+          detail_available: true,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-lc-1",
+            source_meeting_id: "72",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/72",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "processed",
+            processing_status_updated_at: "2026-02-24 18:00:00",
+            processing_request_id: null,
+          },
         },
       ],
       next_cursor: null,
@@ -204,11 +548,7 @@ describe("MeetingsPage", () => {
 
     render(await MeetingsPage());
 
-    expect(
-      screen.getByText(
-        "Status: Limited Confidence · Confidence: Limited Confidence",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Briefing ready")).toBeInTheDocument();
   });
 
   it("renders an empty state when no meetings are returned", async () => {
@@ -221,7 +561,7 @@ describe("MeetingsPage", () => {
     render(await MeetingsPage());
 
     expect(
-      screen.getByText("No meetings found for your city yet."),
+      screen.getByText("No past or current meetings found for your city yet."),
     ).toBeInTheDocument();
   });
 
@@ -243,6 +583,7 @@ describe("MeetingsPage", () => {
       items: [
         {
           id: "meeting-2",
+          meeting_id: "meeting-2",
           city_id: "seattle-wa",
           city_name: "Seattle",
           meeting_uid: "uid-2",
@@ -254,6 +595,20 @@ describe("MeetingsPage", () => {
           status: "limited_confidence",
           confidence_label: "limited_confidence",
           reader_low_confidence: true,
+          detail_available: true,
+          discovered_meeting: {
+            discovered_meeting_id: "discovered-2",
+            source_meeting_id: "73",
+            source_provider_name: "civicclerk",
+            source_meeting_url: "https://example.org/meeting/73",
+            discovered_at: "2026-03-10T10:00:00Z",
+            synced_at: "2026-03-10T10:00:00Z",
+          },
+          processing: {
+            processing_status: "processed",
+            processing_status_updated_at: "2026-02-24 18:00:00",
+            processing_request_id: null,
+          },
         },
       ],
       next_cursor: "cursor-next",
@@ -286,6 +641,21 @@ describe("MeetingsPage", () => {
     ).toHaveAttribute(
       "href",
       "/meetings?cursor=cursor-next&prev=cursor-current&limit=10",
+    );
+  });
+
+  it("preserves the current explorer path when deep-linking to a processed meeting", async () => {
+    await expect(
+      MeetingsPage({
+        searchParams: Promise.resolve({
+          meeting_id: "meeting-42",
+          cursor: "cursor-current",
+          prev: "cursor-prev",
+          limit: "10",
+        }),
+      }),
+    ).rejects.toThrow(
+      "REDIRECT:/meetings/meeting-42?returnTo=%2Fmeetings%3Fcursor%3Dcursor-current%26prev%3Dcursor-prev%26limit%3D10",
     );
   });
 });

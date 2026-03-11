@@ -142,6 +142,81 @@ class MeetingListPage:
     next_cursor: MeetingListCursor | None
 
 
+@dataclass(frozen=True)
+class MeetingCatalogCursor:
+    sort_key: str
+    item_id: str
+
+    def to_token(self) -> str:
+        return json.dumps(
+            {"sort_key": self.sort_key, "item_id": self.item_id},
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+
+    @classmethod
+    def from_token(cls, token: str) -> MeetingCatalogCursor:
+        try:
+            payload = json.loads(token)
+        except json.JSONDecodeError as exc:
+            raise InvalidMeetingListCursorError() from exc
+
+        if not isinstance(payload, dict):
+            raise InvalidMeetingListCursorError()
+
+        sort_key = payload.get("sort_key")
+        item_id = payload.get("item_id")
+        if not isinstance(sort_key, str) or not sort_key.strip():
+            raise InvalidMeetingListCursorError()
+        if not isinstance(item_id, str) or not item_id.strip():
+            raise InvalidMeetingListCursorError()
+        return cls(sort_key=sort_key.strip(), item_id=item_id.strip())
+
+
+@dataclass(frozen=True)
+class MeetingCatalogProcessingState:
+    processing_status: str
+    processing_status_updated_at: str | None
+    processing_request_id: str | None
+
+
+@dataclass(frozen=True)
+class MeetingCatalogDiscoveredMeeting:
+    discovered_meeting_id: str
+    source_meeting_id: str
+    source_provider_name: str
+    source_meeting_url: str | None
+    discovered_at: str
+    synced_at: str
+
+
+@dataclass(frozen=True)
+class MeetingCatalogListItem:
+    id: str
+    meeting_id: str | None
+    city_id: str
+    city_name: str | None
+    meeting_uid: str | None
+    title: str
+    created_at: str | None
+    updated_at: str | None
+    meeting_date: str | None
+    body_name: str | None
+    publication_status: str | None
+    confidence_label: str | None
+    reader_low_confidence: bool
+    detail_available: bool
+    discovered_meeting: MeetingCatalogDiscoveredMeeting | None
+    processing: MeetingCatalogProcessingState
+    sort_key: str
+
+
+@dataclass(frozen=True)
+class MeetingCatalogListPage:
+    items: tuple[MeetingCatalogListItem, ...]
+    next_cursor: MeetingCatalogCursor | None
+
+
 class MissingMeetingCityError(ValueError):
     def __init__(self) -> None:
         super().__init__("Meeting city_id is required")
@@ -343,6 +418,245 @@ class MeetingReadRepository:
             next_cursor = MeetingListCursor(created_at=last_item.created_at, meeting_id=last_item.id)
 
         return MeetingListPage(items=items, next_cursor=next_cursor)
+
+    def list_city_meeting_catalog(
+        self,
+        *,
+        city_id: str,
+        limit: int,
+        cursor: MeetingCatalogCursor | None = None,
+        processing_status: str | None = None,
+    ) -> MeetingCatalogListPage:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        params: list[str | int] = [city_id, city_id, city_id]
+        where_clauses = ["combined.city_id = ?"]
+        if processing_status is not None:
+            where_clauses.append("combined.processing_status = ?")
+            params.append(processing_status)
+        if cursor is not None:
+            where_clauses.append("(combined.sort_key < ? OR (combined.sort_key = ? AND combined.id < ?))")
+            params.extend((cursor.sort_key, cursor.sort_key, cursor.item_id))
+        params.append(limit)
+
+        rows = self._connection.execute(
+            f"""
+            WITH latest_publication AS (
+                SELECT
+                    sp.meeting_id,
+                    sp.publication_status,
+                    sp.confidence_label,
+                    sp.published_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY sp.meeting_id
+                        ORDER BY sp.published_at DESC, sp.id DESC
+                    ) AS publication_rank
+                FROM summary_publications sp
+            ),
+            latest_request AS (
+                SELECT
+                    req.id,
+                    req.discovered_meeting_id,
+                    req.status,
+                    req.updated_at,
+                    pr.status AS run_status,
+                    pso.started_at AS stage_started_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY req.discovered_meeting_id
+                        ORDER BY req.created_at DESC, req.id DESC
+                    ) AS request_rank
+                FROM meeting_processing_requests req
+                LEFT JOIN processing_runs pr ON pr.id = req.processing_run_id
+                LEFT JOIN processing_stage_outcomes pso ON pso.id = req.processing_stage_outcome_id
+            ),
+            combined AS (
+                SELECT
+                    dm.id AS id,
+                    dm.meeting_id AS meeting_id,
+                    dm.city_id AS city_id,
+                    c.name AS city_name,
+                    m.meeting_uid AS meeting_uid,
+                    COALESCE(m.title, dm.title) AS title,
+                    m.created_at AS created_at,
+                    COALESCE(m.updated_at, dm.updated_at) AS updated_at,
+                    dm.meeting_date AS meeting_date,
+                    dm.body_name AS body_name,
+                    lp.publication_status AS publication_status,
+                    lp.confidence_label AS confidence_label,
+                    CASE WHEN lp.confidence_label IN ('low', 'limited_confidence') THEN 1 ELSE 0 END AS reader_low_confidence,
+                    CASE WHEN m.id IS NOT NULL THEN 1 ELSE 0 END AS detail_available,
+                    dm.id AS discovered_meeting_id,
+                    dm.source_meeting_id AS source_meeting_id,
+                    dm.provider_name AS source_provider_name,
+                    dm.source_url AS source_meeting_url,
+                    dm.discovered_at AS discovered_at,
+                    dm.synced_at AS synced_at,
+                    lr.id AS processing_request_id,
+                    CASE
+                        WHEN lp.publication_status IS NOT NULL THEN 'processed'
+                        WHEN lr.run_status = 'pending' AND lr.stage_started_at IS NOT NULL THEN 'processing'
+                        WHEN lr.run_status = 'pending' THEN 'queued'
+                        WHEN lr.status IN ('requested', 'accepted') THEN 'queued'
+                        WHEN lr.status = 'processing' THEN 'processing'
+                        WHEN lr.status IN ('failed', 'completed', 'cancelled') THEN 'failed'
+                        WHEN lr.run_status IN ('failed', 'processed', 'limited_confidence', 'manual_review_needed') THEN 'failed'
+                        ELSE 'discovered'
+                    END AS processing_status,
+                    CASE
+                        WHEN lp.published_at IS NOT NULL THEN lp.published_at
+                        WHEN lr.run_status = 'pending' AND lr.stage_started_at IS NOT NULL THEN lr.stage_started_at
+                        WHEN lr.updated_at IS NOT NULL THEN lr.updated_at
+                        ELSE COALESCE(dm.synced_at, dm.discovered_at)
+                    END AS processing_status_updated_at,
+                    CASE
+                        WHEN dm.meeting_date IS NOT NULL THEN dm.meeting_date || 'T23:59:59Z'
+                        ELSE COALESCE(m.created_at, dm.synced_at, dm.discovered_at)
+                    END AS sort_key
+                FROM discovered_meetings dm
+                INNER JOIN cities c ON c.id = dm.city_id
+                LEFT JOIN meetings m ON m.id = dm.meeting_id
+                LEFT JOIN latest_publication lp
+                    ON lp.meeting_id = m.id
+                   AND lp.publication_rank = 1
+                LEFT JOIN latest_request lr
+                    ON lr.discovered_meeting_id = dm.id
+                   AND lr.request_rank = 1
+                WHERE dm.city_id = ?
+
+                UNION ALL
+
+                SELECT
+                    m.id AS id,
+                    m.id AS meeting_id,
+                    m.city_id AS city_id,
+                    c.name AS city_name,
+                    m.meeting_uid AS meeting_uid,
+                    m.title AS title,
+                    m.created_at AS created_at,
+                    m.updated_at AS updated_at,
+                    NULL AS meeting_date,
+                    NULL AS body_name,
+                    lp.publication_status AS publication_status,
+                    lp.confidence_label AS confidence_label,
+                    CASE WHEN lp.confidence_label IN ('low', 'limited_confidence') THEN 1 ELSE 0 END AS reader_low_confidence,
+                    1 AS detail_available,
+                    NULL AS discovered_meeting_id,
+                    NULL AS source_meeting_id,
+                    NULL AS source_provider_name,
+                    NULL AS source_meeting_url,
+                    NULL AS discovered_at,
+                    NULL AS synced_at,
+                    NULL AS processing_request_id,
+                    CASE
+                        WHEN lp.publication_status IS NOT NULL THEN 'processed'
+                        ELSE 'processing'
+                    END AS processing_status,
+                    COALESCE(lp.published_at, m.updated_at, m.created_at) AS processing_status_updated_at,
+                    m.created_at AS sort_key
+                FROM meetings m
+                INNER JOIN cities c ON c.id = m.city_id
+                LEFT JOIN latest_publication lp
+                    ON lp.meeting_id = m.id
+                   AND lp.publication_rank = 1
+                WHERE m.city_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM discovered_meetings dm
+                      WHERE dm.meeting_id = m.id
+                  )
+            )
+            SELECT
+                combined.id,
+                combined.meeting_id,
+                combined.city_id,
+                combined.city_name,
+                combined.meeting_uid,
+                combined.title,
+                combined.created_at,
+                combined.updated_at,
+                combined.meeting_date,
+                combined.body_name,
+                combined.publication_status,
+                combined.confidence_label,
+                combined.reader_low_confidence,
+                combined.detail_available,
+                combined.discovered_meeting_id,
+                combined.source_meeting_id,
+                combined.source_provider_name,
+                combined.source_meeting_url,
+                combined.discovered_at,
+                combined.synced_at,
+                combined.processing_request_id,
+                combined.processing_status,
+                combined.processing_status_updated_at,
+                combined.sort_key
+            FROM combined
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY combined.sort_key DESC, combined.id DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+
+        items_list: list[MeetingCatalogListItem] = []
+        for row in rows:
+            meeting_id = str(row[1]) if row[1] is not None else None
+            ingest_context = self._lookup_ingest_context(meeting_id=meeting_id) if meeting_id is not None else None
+            meeting_date = str(row[8]) if row[8] is not None else None
+            body_name = str(row[9]) if row[9] is not None else None
+            if meeting_date is None and meeting_id is not None and ingest_context is not None and row[6] is not None:
+                meeting_date = self._resolve_meeting_date(created_at=str(row[6]), ingest_context=ingest_context)
+            if body_name is None and ingest_context is not None:
+                body_name = ingest_context.body_name
+            source_meeting_url = str(row[17]) if row[17] is not None else None
+            if source_meeting_url is None and ingest_context is not None:
+                source_meeting_url = ingest_context.source_meeting_url
+
+            discovered_meeting = None
+            if row[14] is not None:
+                discovered_meeting = MeetingCatalogDiscoveredMeeting(
+                    discovered_meeting_id=str(row[14]),
+                    source_meeting_id=str(row[15]),
+                    source_provider_name=str(row[16]),
+                    source_meeting_url=source_meeting_url,
+                    discovered_at=str(row[18]),
+                    synced_at=str(row[19]),
+                )
+
+            items_list.append(
+                MeetingCatalogListItem(
+                    id=str(row[0]),
+                    meeting_id=meeting_id,
+                    city_id=str(row[2]),
+                    city_name=str(row[3]) if row[3] is not None else None,
+                    meeting_uid=str(row[4]) if row[4] is not None else None,
+                    title=str(row[5]),
+                    created_at=str(row[6]) if row[6] is not None else None,
+                    updated_at=str(row[7]) if row[7] is not None else None,
+                    meeting_date=meeting_date,
+                    body_name=body_name,
+                    publication_status=str(row[10]) if row[10] is not None else None,
+                    confidence_label=str(row[11]) if row[11] is not None else None,
+                    reader_low_confidence=bool(row[12]),
+                    detail_available=bool(row[13]),
+                    discovered_meeting=discovered_meeting,
+                    processing=MeetingCatalogProcessingState(
+                        processing_status=str(row[21]),
+                        processing_status_updated_at=str(row[22]) if row[22] is not None else None,
+                        processing_request_id=str(row[20]) if row[20] is not None else None,
+                    ),
+                    sort_key=str(row[23]),
+                )
+            )
+
+        items = tuple(items_list)
+        next_cursor = None
+        if len(items) == limit:
+            last_item = items[-1]
+            next_cursor = MeetingCatalogCursor(sort_key=last_item.sort_key, item_id=last_item.id)
+
+        return MeetingCatalogListPage(items=items, next_cursor=next_cursor)
 
     def get_meeting_detail(self, *, meeting_id: str, include_additive_blocks: bool = False) -> MeetingDetail | None:
         return self._get_meeting_detail(meeting_id=meeting_id, include_additive_blocks=include_additive_blocks)

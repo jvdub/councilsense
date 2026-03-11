@@ -204,5 +204,6 @@ npm --prefix frontend run test
 - Architecture baseline: `ARCHITECTURE.md`
 - Backend plan: `BACKEND.md`
 - Frontend plan: `FRONTEND.md`
+- Source catalog API semantics: `docs/source-catalog-api-semantics.md`
 - Story backlog: `STORIES/README.md`
 - Task orchestration status: `STORIES/TASKS/ORCHESTRATION_STATUS.md`

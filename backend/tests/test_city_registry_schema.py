@@ -50,6 +50,8 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
     assert "0027_st029_publish_replay_idempotency_guards.sql" in before.pending
     assert "0028_st029_pipeline_replay_success_audit.sql" in before.pending
     assert "0029_st036_discovered_meetings_schema.sql" in before.pending
+    assert "0030_st037_meeting_processing_requests.sql" in before.pending
+    assert "0031_st038_on_demand_processing_hardening.sql" in before.pending
 
     applied_once = apply_migrations(connection)
     assert applied_once == (
@@ -83,6 +85,8 @@ def test_migration_status_and_apply_are_idempotent(connection: sqlite3.Connectio
         "0027_st029_publish_replay_idempotency_guards.sql",
         "0028_st029_pipeline_replay_success_audit.sql",
         "0029_st036_discovered_meetings_schema.sql",
+        "0030_st037_meeting_processing_requests.sql",
+        "0031_st038_on_demand_processing_hardening.sql",
     )
 
     after_first_apply = get_migration_status(connection)
@@ -126,6 +130,7 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
         "canonical_documents",
         "canonical_document_artifacts",
         "discovered_meetings",
+        "meeting_processing_requests",
         "pipeline_dlq_entries",
         "pipeline_replay_audit_events",
         "schema_migrations",
@@ -188,6 +193,13 @@ def test_city_tables_and_indexes_exist(connection: sqlite3.Connection) -> None:
     assert "idx_discovered_meetings_city_meeting_date" in index_names
     assert "idx_discovered_meetings_source_scope_synced" in index_names
     assert "idx_discovered_meetings_meeting_id" in index_names
+    assert "idx_meeting_processing_requests_city_status_created" in index_names
+    assert "idx_meeting_processing_requests_discovered_created" in index_names
+    assert "idx_meeting_processing_requests_meeting_status_created" in index_names
+    assert "idx_meeting_processing_requests_active_discovered" in index_names
+    assert "idx_meeting_processing_requests_requested_by_status_created" in index_names
+    assert "idx_meeting_processing_requests_run_status_created" in index_names
+    assert "idx_meeting_processing_requests_active_work_dedupe" in index_names
     assert "idx_pipeline_dlq_entries_city_status" in index_names
     assert "idx_pipeline_dlq_entries_run" in index_names
     assert "idx_pipeline_dlq_entries_source" in index_names

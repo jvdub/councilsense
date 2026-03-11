@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from councilsense.app.provider_enumeration import (
     CivicClerkSourceMeetingEnumerationProvider,
@@ -9,11 +10,11 @@ from councilsense.app.provider_enumeration import (
 from councilsense.db.city_registry import CitySourceConfig
 
 
-def _build_source(*, source_url: str) -> CitySourceConfig:
+def _build_source(*, source_url: str, source_type: str = "minutes") -> CitySourceConfig:
     return CitySourceConfig(
         id="source-eagle-mountain-ut-minutes-primary",
         city_id="city-eagle-mountain-ut",
-        source_type="minutes",
+        source_type=source_type,
         source_url=source_url,
         parser_name="civicclerk-events-api",
         parser_version="v1",
@@ -56,7 +57,10 @@ def test_civicclerk_provider_enumerates_stable_normalized_meetings() -> None:
             return b"<html></html>"
         raise AssertionError(f"Unexpected URL fetched: {url}")
 
-    source = _build_source(source_url="https://eaglemountainut.portal.civicclerk.com/")
+    source = _build_source(
+        source_url="https://eaglemountainut.portal.civicclerk.com/",
+        source_type="agenda",
+    )
     provider = CivicClerkSourceMeetingEnumerationProvider()
 
     meetings = provider.enumerate_meetings(source=source, timeout_seconds=5.0, fetch_url=_stub_fetch)
@@ -99,6 +103,84 @@ def test_civicclerk_provider_normalizes_sparse_payloads_without_identity_churn()
     assert events[0].meeting_date is None
     assert events[0].body_name == "City Council"
     assert events[0].provider_metadata["published_document_kinds"] == ()
+
+
+def test_civicclerk_minutes_source_filters_out_events_without_minutes() -> None:
+    payload = {
+        "value": [
+            {
+                "id": 71,
+                "eventName": "City Council Meeting",
+                "eventDate": "2026-03-10T00:00:00Z",
+                "publishedFiles": [
+                    {"type": "Agenda", "name": "Agenda", "url": "stream/71-agenda.pdf"},
+                    {"type": "Packet", "name": "Packet", "url": "stream/71-packet.pdf"},
+                ],
+            },
+            {
+                "id": 70,
+                "eventName": "City Council Meeting",
+                "eventDate": "2026-03-03T00:00:00Z",
+                "publishedFiles": [
+                    {"type": "Minutes", "name": "Minutes", "url": "stream/70-minutes.pdf"},
+                    {"type": "Agenda", "name": "Agenda", "url": "stream/70-agenda.pdf"},
+                ],
+            },
+        ]
+    }
+
+    def _stub_fetch(url: str, _: float) -> bytes:
+        if "/Events?" in url or "/events?" in url:
+            return json.dumps(payload).encode("utf-8")
+        if url == "https://eaglemountainut.portal.civicclerk.com/":
+            return b"<html></html>"
+        raise AssertionError(f"Unexpected URL fetched: {url}")
+
+    source = _build_source(source_url="https://eaglemountainut.portal.civicclerk.com/")
+    provider = CivicClerkSourceMeetingEnumerationProvider()
+
+    meetings = provider.enumerate_meetings(source=source, timeout_seconds=5.0, fetch_url=_stub_fetch)
+
+    assert [item.identity.source_meeting_id for item in meetings] == ["70"]
+    assert meetings[0].provider_metadata["published_document_kinds"] == ("minutes", "agenda")
+
+
+def test_civicclerk_agenda_source_includes_future_scheduled_events_without_uploaded_agendas() -> None:
+    future_date = (datetime.now(tz=UTC).date() + timedelta(days=14)).isoformat()
+    past_date = (datetime.now(tz=UTC).date() - timedelta(days=14)).isoformat()
+    payload = {
+        "value": [
+            {
+                "id": 91,
+                "eventName": "City Council Meeting",
+                "eventDate": f"{future_date}T00:00:00Z",
+                "publishedFiles": [],
+            },
+            {
+                "id": 90,
+                "eventName": "City Council Meeting",
+                "eventDate": f"{past_date}T00:00:00Z",
+                "publishedFiles": [],
+            },
+        ]
+    }
+
+    def _stub_fetch(url: str, _: float) -> bytes:
+        if "/Events?" in url or "/events?" in url:
+            return json.dumps(payload).encode("utf-8")
+        if url == "https://eaglemountainut.portal.civicclerk.com/":
+            return b"<html></html>"
+        raise AssertionError(f"Unexpected URL fetched: {url}")
+
+    source = _build_source(
+        source_url="https://eaglemountainut.portal.civicclerk.com/",
+        source_type="agenda",
+    )
+    provider = CivicClerkSourceMeetingEnumerationProvider()
+
+    meetings = provider.enumerate_meetings(source=source, timeout_seconds=5.0, fetch_url=_stub_fetch)
+
+    assert [item.identity.source_meeting_id for item in meetings] == ["91"]
 
 
 def test_civicclerk_provider_is_deterministic_when_feeds_arrive_reordered() -> None:
